@@ -1408,11 +1408,32 @@ class OfficeConverter:
         print(f"  合并输出目录: {self.merge_output_dir}")
         print("=" * 60)
 
+        scan_folder = self.config["target_folder"]
+        
+        # 确定扫描来源：默认目标目录
+        # 如果是“仅合并”模式，根据配置决定是源目录还是目标目录
+        scan_source_type = "target"
+        if self.run_mode == MODE_MERGE_ONLY:
+            scan_source_type = self.config.get("merge_source", "source")
+        
+        if scan_source_type == "source":
+            scan_folder = self.config["source_folder"]
+            print(f"  [仅合并模式] 正在扫描源目录: {scan_folder}")
+        else:
+            # convert_then_merge 或 merge_only(选了target)
+            print(f"  [合并扫描] 正在扫描目标目录: {scan_folder}")
+
         all_pdfs = []
-        for root, dirs, files in os.walk(self.config["target_folder"]):
-            if os.path.abspath(root) in map(
-                os.path.abspath, [self.failed_dir, self.merge_output_dir]
-            ):
+        # 如果目标目录在源目录里（或者是子目录），要防止扫描到输出目录
+        exclude_abs_paths = set(map(os.path.abspath, [self.failed_dir, self.merge_output_dir]))
+        
+        # 如果扫描的是源目录，且目标目录也在里面，则排除目标目录
+        # 如果扫描的是目标目录，本身就在里面，自然会扫描到（除了 excluded 的 failed/merged）
+        if scan_source_type == "source":
+             exclude_abs_paths.add(os.path.abspath(self.config["target_folder"]))
+
+        for root, dirs, files in os.walk(scan_folder):
+            if os.path.abspath(root) in exclude_abs_paths:
                 continue
             for f in files:
                 if f.lower().endswith(".pdf"):
@@ -2006,6 +2027,7 @@ def create_default_config(config_path):
             },
             "overwrite_same_size": True,
             "merge_mode": MERGE_MODE_CATEGORY,
+            "merge_source": "source",
             "temp_sandbox_root": "",
         }
         with open(config_path, "w", encoding="utf-8") as f:

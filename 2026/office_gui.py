@@ -372,6 +372,25 @@ class OfficeGUI(tk.Tk):
         )
         self.rb_merge_all.pack(side="left", padx=4)
 
+        # 合并来源（仅合并模式下显示/有效）
+        self.lbl_merge_source = ttk.Label(frm_merge, text="来源:")
+        self.lbl_merge_source.pack(side="left", padx=(10, 2))
+        self.var_merge_source = tk.StringVar(value="source")
+        self.rb_merge_src_source = ttk.Radiobutton(
+            frm_merge,
+            text="源目录",
+            value="source",
+            variable=self.var_merge_source,
+        )
+        self.rb_merge_src_source.pack(side="left", padx=4)
+        self.rb_merge_src_target = ttk.Radiobutton(
+            frm_merge,
+            text="目标目录",
+            value="target",
+            variable=self.var_merge_source,
+        )
+        self.rb_merge_src_target.pack(side="left", padx=4)
+
         row += 1
 
         # === 分组3：执行配置 (引擎/沙箱) ===
@@ -615,6 +634,19 @@ class OfficeGUI(tk.Tk):
         self.rb_merge_cat.configure(state=state_merge)
         self.rb_merge_all.configure(state=state_merge)
 
+        # 合并来源：只有在 MODE_MERGE_ONLY 时才允许选择；如果是“先转换再合并”，强制为 target
+        if mode == MODE_MERGE_ONLY and is_merge_related:
+             state_merge_source = "normal"
+        else:
+             state_merge_source = "disabled"
+             # 如果不是仅合并模式，且是转换再合并，则强制设为 target 以免误解
+             if mode == MODE_CONVERT_THEN_MERGE:
+                 self.var_merge_source.set("target")
+
+        self.lbl_merge_source.configure(state=state_merge_source)
+        self.rb_merge_src_source.configure(state=state_merge_source)
+        self.rb_merge_src_target.configure(state=state_merge_source)
+
     def _on_toggle_sandbox(self):
         # 如果当前模式本身就禁用了引擎组，这里就不应该启用
         mode = self.var_run_mode.get()
@@ -682,6 +714,7 @@ class OfficeGUI(tk.Tk):
 
         self.var_enable_merge.set(1 if cfg.get("enable_merge", True) else 0)
         self.var_merge_mode.set(cfg.get("merge_mode", MERGE_MODE_CATEGORY))
+        self.var_merge_source.set(cfg.get("merge_source", "source"))
 
         # 运行模式 / 子模式 / 策略（作为默认）
         self.var_run_mode.set(cfg.get("run_mode", MODE_CONVERT_THEN_MERGE))
@@ -740,6 +773,7 @@ class OfficeGUI(tk.Tk):
 
         cfg["enable_merge"] = bool(self.var_enable_merge.get())
         cfg["merge_mode"] = self.var_merge_mode.get()
+        cfg["merge_source"] = self.var_merge_source.get()
 
         cfg["run_mode"] = self.var_run_mode.get()
         cfg["collect_mode"] = self.var_collect_mode.get()
@@ -867,6 +901,7 @@ class OfficeGUI(tk.Tk):
                 cfg["temp_sandbox_root"] = self.var_temp_sandbox_root.get().strip()
                 cfg["enable_merge"] = bool(self.var_enable_merge.get())
                 cfg["merge_mode"] = self.var_merge_mode.get()
+                cfg["merge_source"] = self.var_merge_source.get()
                 cfg["kill_process_mode"] = self.var_kill_mode.get()
                 cfg["default_engine"] = self.var_engine.get()
 
