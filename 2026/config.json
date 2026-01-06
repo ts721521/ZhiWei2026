@@ -1,10 +1,10 @@
 {
-    "source_folder": "C:\\Docs",
+    "source_folder": "E:/21_SE_Doc/BaiduNetdiskWorkspace/SynologyDrive/OneDrive - Schneider Electric/5_AVEVA_Doc/1_AIM/AIM L1培训材料-SE上海",
     "target_folder": "C:\\PDFs",
     "log_folder": "./logs",
     "enable_sandbox": true,
-    "default_engine": "ask",
-    "kill_process_mode": "ask",
+    "default_engine": "wps",
+    "kill_process_mode": "auto",
     "auto_retry_failed": false,
     "timeout_seconds": 60,
     "pdf_wait_seconds": 15,
@@ -41,6 +41,9 @@
         ]
     },
     "overwrite_same_size": true,
-    "merge_mode": "category_split",
-    "temp_sandbox_root": ""
+    "merge_mode": "all_in_one",
+    "temp_sandbox_root": "",
+    "run_mode": "merge_only",
+    "collect_mode": "copy_and_index",
+    "content_strategy": "standard"
 }

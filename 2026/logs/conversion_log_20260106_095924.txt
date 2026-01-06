@@ -1,0 +1,16 @@
+2026-01-06 09:59:24.001210 === 任务开始 (v5.15.1) ===
+运行模式: merge_only (仅合并)
+合并模式: all_in_one (全部合并成一个文件)
+源目录: E:/21_SE_Doc/BaiduNetdiskWorkspace/SynologyDrive/OneDrive - Schneider Electric/5_AVEVA_Doc/1_AIM/AIM L1培训材料-SE上海
+目标目录: C:\PDFs
+排除文件夹: ['temp', 'backup', 'archive']
+沙箱模式: 启用 | 临时转换目录: C:\Users\admin\AppData\Local\Temp\OfficeToPDF_Sandbox
+合并输出目录: C:\PDFs\_MERGED
+
+=== 最终统计 (v5.15.1) ===
+总处理: 0
+成功: 0
+失败: 0
+超时: 0
+跳过(含空文件/策略): 0
+
