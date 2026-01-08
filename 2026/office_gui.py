@@ -21,6 +21,7 @@ import tkinter as tk
 from tkinter import ttk, filedialog, messagebox
 import tempfile
 import traceback
+from datetime import datetime
 
 from office_converter import (
     OfficeConverter,
@@ -391,6 +392,50 @@ class OfficeGUI(tk.Tk):
         )
         self.rb_merge_src_target.pack(side="left", padx=4)
 
+        r_mode += 1
+
+        # 日期过滤
+        self.lbl_date_filter = ttk.Label(group_mode, text="日期过滤:")
+        self.lbl_date_filter.grid(row=r_mode, column=0, sticky="w")
+        
+        frm_date = ttk.Frame(group_mode)
+        frm_date.grid(row=r_mode, column=1, columnspan=3, sticky="w")
+        
+        self.var_enable_date_filter = tk.IntVar(value=0)
+        self.chk_date_filter = ttk.Checkbutton(
+            frm_date, 
+            text="启用", 
+            variable=self.var_enable_date_filter,
+            command=self._on_toggle_date_filter
+        )
+        self.chk_date_filter.pack(side="left", padx=4)
+        
+        from datetime import datetime
+        today_str = datetime.now().strftime("%Y-%m-%d")
+        self.var_date_str = tk.StringVar(value=today_str)  # YYYY-MM-DD
+        self.ent_date = ttk.Entry(frm_date, textvariable=self.var_date_str, width=12, state="disabled")
+        self.ent_date.pack(side="left", padx=4)
+        ttk.Label(frm_date, text="(YYYY-MM-DD)").pack(side="left")
+        
+        self.var_filter_mode = tk.StringVar(value="after")
+        self.rb_filter_after = ttk.Radiobutton(
+            frm_date,
+            text="之后",
+            value="after",
+            variable=self.var_filter_mode,
+            state="disabled"
+        )
+        self.rb_filter_after.pack(side="left", padx=(10, 4))
+        
+        self.rb_filter_before = ttk.Radiobutton(
+            frm_date,
+            text="之前",
+            value="before",
+            variable=self.var_filter_mode,
+            state="disabled"
+        )
+        self.rb_filter_before.pack(side="left", padx=4)
+
         row += 1
 
         # === 分组3：执行配置 (引擎/沙箱) ===
@@ -646,6 +691,13 @@ class OfficeGUI(tk.Tk):
         self.lbl_merge_source.configure(state=state_merge_source)
         self.rb_merge_src_source.configure(state=state_merge_source)
         self.rb_merge_src_target.configure(state=state_merge_source)
+
+    def _on_toggle_date_filter(self):
+        enabled = bool(self.var_enable_date_filter.get())
+        state = "normal" if enabled else "disabled"
+        self.ent_date.configure(state=state)
+        self.rb_filter_after.configure(state=state)
+        self.rb_filter_before.configure(state=state)
 
     def _on_toggle_sandbox(self):
         # 如果当前模式本身就禁用了引擎组，这里就不应该启用
@@ -910,6 +962,16 @@ class OfficeGUI(tk.Tk):
                 converter.content_strategy = self.var_strategy.get()
                 converter.merge_mode = self.var_merge_mode.get()
                 converter.engine_type = self.var_engine.get()
+
+                # 设置日期过滤
+                if self.var_enable_date_filter.get():
+                    date_str = self.var_date_str.get().strip()
+                    try:
+                        converter.filter_date = datetime.strptime(date_str, "%Y-%m-%d")
+                        converter.filter_mode = self.var_filter_mode.get()
+                        print(f"[GUI] 已启用日期过滤: {converter.filter_mode} {date_str}")
+                    except ValueError:
+                        print(f"[GUI] [警告] 日期格式无效: {date_str}，将忽略日期过滤。")
 
                 # 重新根据覆盖后的 target / temp_sandbox_root 计算路径（简单重算一遍）
                 # 临时目录

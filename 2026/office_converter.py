@@ -138,6 +138,10 @@ class OfficeConverter:
         self.price_keywords = []
         self.excluded_folders = []
 
+        # 日期过滤
+        self.filter_date = None  # datetime object or None
+        self.filter_mode = "after"  # "after" or "before"
+
         self.progress_callback = None  # GUI 回调钩子: func(current, total)
         self.generated_pdfs = []
 
@@ -1908,7 +1912,31 @@ class OfficeConverter:
                             if not f.startswith("~$"):
                                 ext = os.path.splitext(f)[1].lower()
                                 if ext in valid_exts:
-                                    files.append(os.path.join(root, f))
+                                    full_path = os.path.join(root, f)
+                                    
+                                    # 日期过滤逻辑
+                                    if self.filter_date:
+                                        try:
+                                            # 获取文件创建时间 (Windows) 或修改时间 (Unix)
+                                            # Windows 上 st_ctime 是创建时间
+                                            ctime = os.path.getctime(full_path)
+                                            file_date = datetime.fromtimestamp(ctime)
+                                            
+                                            # 比较只精确到日期
+                                            f_date = file_date.date()
+                                            filter_d = self.filter_date.date()
+                                            
+                                            if self.filter_mode == "after":
+                                                if f_date < filter_d:
+                                                    continue
+                                            else:  # before
+                                                if f_date > filter_d:
+                                                    continue
+                                        except Exception:
+                                            # 获取时间失败则不过滤
+                                            pass
+
+                                    files.append(full_path)
 
                     logging.info(f"开始处理 {len(files)} 个文件...")
                     self.stats["total"] = len(files)
