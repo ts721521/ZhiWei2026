@@ -2,6 +2,10 @@
 
 All notable changes to this project will be documented in this file.
 
+## [v5.15.3] - 2026-01-08
+### Fixed
+- **Runtime Error**: Fixed missing `traceback` import causing crash when logging merge errors.
+
 ## [v5.15.2] - 2026-01-08
 ### Added
 - **PDF Index Hotspots**: The generated index page now includes clickable links jumping to the corresponding document start page.
