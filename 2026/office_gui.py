@@ -392,6 +392,23 @@ class OfficeGUI(tk.Tk):
         )
         self.rb_merge_src_target.pack(side="left", padx=4)
 
+        # 新增合并选项：索引页 & Excel清单
+        self.var_enable_merge_index = tk.IntVar(value=0)
+        self.chk_merge_index = ttk.Checkbutton(
+            frm_merge,
+            text="索引页",
+            variable=self.var_enable_merge_index,
+        )
+        self.chk_merge_index.pack(side="left", padx=(10, 4))
+
+        self.var_enable_merge_excel = tk.IntVar(value=0)
+        self.chk_merge_excel = ttk.Checkbutton(
+            frm_merge,
+            text="Excel清单",
+            variable=self.var_enable_merge_excel,
+        )
+        self.chk_merge_excel.pack(side="left", padx=4)
+
         r_mode += 1
 
         # 日期过滤
@@ -678,6 +695,8 @@ class OfficeGUI(tk.Tk):
         self.lbl_merge_mode.configure(state=state_merge)
         self.rb_merge_cat.configure(state=state_merge)
         self.rb_merge_all.configure(state=state_merge)
+        self.chk_merge_index.configure(state=state_merge)
+        self.chk_merge_excel.configure(state=state_merge)
 
         # 合并来源：只有在 MODE_MERGE_ONLY 时才允许选择；如果是“先转换再合并”，强制为 target
         if mode == MODE_MERGE_ONLY and is_merge_related:
@@ -767,6 +786,8 @@ class OfficeGUI(tk.Tk):
         self.var_enable_merge.set(1 if cfg.get("enable_merge", True) else 0)
         self.var_merge_mode.set(cfg.get("merge_mode", MERGE_MODE_CATEGORY))
         self.var_merge_source.set(cfg.get("merge_source", "source"))
+        self.var_enable_merge_index.set(1 if cfg.get("enable_merge_index", False) else 0)
+        self.var_enable_merge_excel.set(1 if cfg.get("enable_merge_excel", False) else 0)
 
         # 运行模式 / 子模式 / 策略（作为默认）
         self.var_run_mode.set(cfg.get("run_mode", MODE_CONVERT_THEN_MERGE))
@@ -826,6 +847,8 @@ class OfficeGUI(tk.Tk):
         cfg["enable_merge"] = bool(self.var_enable_merge.get())
         cfg["merge_mode"] = self.var_merge_mode.get()
         cfg["merge_source"] = self.var_merge_source.get()
+        cfg["enable_merge_index"] = bool(self.var_enable_merge_index.get())
+        cfg["enable_merge_excel"] = bool(self.var_enable_merge_excel.get())
 
         cfg["run_mode"] = self.var_run_mode.get()
         cfg["collect_mode"] = self.var_collect_mode.get()
@@ -954,6 +977,8 @@ class OfficeGUI(tk.Tk):
                 cfg["enable_merge"] = bool(self.var_enable_merge.get())
                 cfg["merge_mode"] = self.var_merge_mode.get()
                 cfg["merge_source"] = self.var_merge_source.get()
+                cfg["enable_merge_index"] = bool(self.var_enable_merge_index.get())
+                cfg["enable_merge_excel"] = bool(self.var_enable_merge_excel.get())
                 cfg["kill_process_mode"] = self.var_kill_mode.get()
                 cfg["default_engine"] = self.var_engine.get()
 
@@ -962,6 +987,8 @@ class OfficeGUI(tk.Tk):
                 converter.content_strategy = self.var_strategy.get()
                 converter.merge_mode = self.var_merge_mode.get()
                 converter.engine_type = self.var_engine.get()
+                converter.enable_merge_index = bool(self.var_enable_merge_index.get())
+                converter.enable_merge_excel = bool(self.var_enable_merge_excel.get())
 
                 # 设置日期过滤
                 if self.var_enable_date_filter.get():

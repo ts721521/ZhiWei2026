@@ -53,7 +53,7 @@ try:
 except ImportError:
     HAS_OPENPYXL = False
 
-__version__ = "5.15.1"
+__version__ = "5.15.2"
 
 # Office 常量
 wdFormatPDF = 17
@@ -141,6 +141,10 @@ class OfficeConverter:
         # 日期过滤
         self.filter_date = None  # datetime object or None
         self.filter_mode = "after"  # "after" or "before"
+
+        # 合并选项
+        self.enable_merge_index = False
+        self.enable_merge_excel = False
 
         self.progress_callback = None  # GUI 回调钩子: func(current, total)
         self.generated_pdfs = []
@@ -1396,6 +1400,186 @@ class OfficeConverter:
 
     # =============== 合并功能 ===============
 
+    def _create_index_doc_and_convert(self, word_app, file_list, title):
+        """
+        利用 Word 生成索引页 PDF。
+        file_list: [filename, ...]
+        返回: (pdf_path, item_count_per_page, first_page_y_start, line_height)
+        """
+        try:
+            doc = word_app.Documents.Add()
+            word_app.Visible = False  # Ensure invisible
+
+            # 页面设置：A4 (595.35 x 841.995 pt), 边距 72pt (1 inch)
+            try:
+                doc.PageSetup.PaperSize = 7  # wdPaperA4
+                doc.PageSetup.TopMargin = 72
+                doc.PageSetup.BottomMargin = 72
+                doc.PageSetup.LeftMargin = 72
+                doc.PageSetup.RightMargin = 72
+            except Exception:
+                pass
+
+            selection = word_app.Selection
+            
+            # Title: 16pt, Bold, Center
+            selection.ParagraphFormat.Alignment = 1  # Center
+            selection.Font.Name = "微软雅黑"
+            selection.Font.Size = 16
+            selection.Font.Bold = True
+            selection.ParagraphFormat.LineSpacingRule = 0 # wdLineSpaceSingle
+            selection.TypeText(title + "\n")
+            
+            # 空一行: 10.5pt
+            selection.ParagraphFormat.Alignment = 0  # Left
+            selection.Font.Size = 10.5
+            selection.Font.Bold = False
+            selection.TypeText("\n")
+
+            # 列表内容: 10.5pt, 固定行距 20pt
+            selection.ParagraphFormat.LineSpacingRule = 4 # wdLineSpaceExactly
+            selection.ParagraphFormat.LineSpacing = 20
+            
+            # 记录用于计算坐标的参数
+            # A4高度 ~842pt. TopMargin 72. 
+            # Title行 (16pt font + single space ~ 1.2*16=19.2? Word行距较复杂，这里估算)
+            # 实测 Word 单倍行距 16pt 约占 20-22pt 高度. 
+            # 简化模型：
+            # TopMargin: 72
+            # Title Line: ~30 (含段后)
+            # Empty Line: ~15
+            # List Start Y (from bottom): PageHeight - (72 + 30 + 15) = 842 - 117 = 725
+            # 为确保准确，最好后续仅依靠固定行距递减。
+            # 假设列表第一行文字基线或顶部在 Y=700 左右。
+            # 我们将在 merge 阶段微调。
+            
+            for i, fname in enumerate(file_list, 1):
+                # 截断过长文件名 (A4 宽 595 - 144 = 451pt. 10.5pt 汉字约 10.5pt宽? 英文一半. 450/10.5 ≈ 42字)
+                # 保守截断 45 字符
+                if len(fname) > 45:
+                    fname = fname[:42] + "..."
+                selection.TypeText(f"{i}. {fname}\n")
+
+            temp_pdf = os.path.join(self.temp_sandbox, f"index_{uuid.uuid4().hex}.pdf")
+            
+            doc.ExportAsFixedFormat(
+                OutputFileName=temp_pdf,
+                ExportFormat=17, # wdExportFormatPDF
+                OpenAfterExport=False,
+                OptimizeFor=0,
+                CreateBookmarks=1,
+                DocStructureTags=True,
+            )
+            doc.Close(SaveChanges=0)
+            return temp_pdf
+        except Exception as e:
+            logging.error(f"生成索引页失败: {e}")
+            return None
+
+    def _get_merge_tasks(self):
+        """
+        扫描目标目录（或源目录），根据合并策略生成任务列表。
+        返回: [(output_filename, [pdf_path_list]), ...]
+        """
+        scan_folder = self.config["target_folder"]
+        scan_source_type = "target"
+        if self.run_mode == MODE_MERGE_ONLY:
+            scan_source_type = self.config.get("merge_source", "source")
+
+        if scan_source_type == "source":
+            scan_folder = self.config["source_folder"]
+            print(f"  [仅合并模式] 正在扫描源目录: {scan_folder}")
+        else:
+            print(f"  [合并扫描] 正在扫描目标目录: {scan_folder}")
+
+        all_pdfs = []
+        exclude_abs_paths = set(
+            map(os.path.abspath, [self.failed_dir, self.merge_output_dir])
+        )
+        if scan_source_type == "source":
+            exclude_abs_paths.add(os.path.abspath(self.config["target_folder"]))
+
+        for root, dirs, files in os.walk(scan_folder):
+            # 动态排除目录：修改 dirs 列表以阻止 os.walk 进入排除目录
+            # 注意：os.walk 遍历时修改 dirs 可以控制后续遍历
+            dirs[:] = [
+                d for d in dirs 
+                if os.path.abspath(os.path.join(root, d)) not in exclude_abs_paths
+            ]
+
+            if os.path.abspath(root) in exclude_abs_paths:
+                continue
+            for f in files:
+                if f.lower().endswith(".pdf"):
+                    all_pdfs.append(os.path.join(root, f))
+
+        if not all_pdfs:
+            print("[提示] 目标目录中没有 PDF 文件，无法合并。")
+            return []
+
+        all_pdfs.sort()
+
+        merge_tasks = []  # [(output_name, [pdf_paths])]
+
+        if self.merge_mode == MERGE_MODE_ALL_IN_ONE:
+            timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+            output_name = f"Merged_All_{timestamp}.pdf"
+            merge_tasks.append((output_name, all_pdfs))
+        else:
+            # 分类拆卷
+            categories = {
+                "报价单文件": "Price_",
+                "Word文档": "Word_",
+                "Excel表格": "Excel_",
+                "PPT幻灯片": "PPT_",
+                "原PDF文件": "PDF_",
+            }
+            max_size_bytes = self.config.get("max_merge_size_mb", 80) * 1024 * 1024
+
+            for cat_name, prefix in categories.items():
+                current_cat_files = [
+                    p for p in all_pdfs if os.path.basename(p).startswith(prefix)
+                ]
+                if not current_cat_files:
+                    continue
+                current_cat_files.sort()
+
+                # Grouping logic
+                groups = []
+                current_group = []
+                current_size = 0
+                for pdf_path in current_cat_files:
+                    try:
+                        f_size = os.path.getsize(pdf_path)
+                    except Exception:
+                        continue
+
+                    if f_size > max_size_bytes:
+                        if current_group:
+                            groups.append(current_group)
+                            current_group = []
+                            current_size = 0
+                        groups.append([pdf_path])
+                        continue
+
+                    if current_size + f_size > max_size_bytes:
+                        groups.append(current_group)
+                        current_group = [pdf_path]
+                        current_size = f_size
+                    else:
+                        current_group.append(pdf_path)
+                        current_size += f_size
+                if current_group:
+                    groups.append(current_group)
+
+                timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+                cat_label = prefix.rstrip("_")
+                for idx, group in enumerate(groups, 1):
+                    output_filename = f"Merged_{cat_label}_{timestamp}_{idx}.pdf"
+                    merge_tasks.append((output_filename, group))
+        
+        return merge_tasks
+
     def merge_pdfs(self):
         if not self.config.get("enable_merge", True):
             return
@@ -1405,140 +1589,388 @@ class OfficeConverter:
             )
             logging.warning("未检测到 pypdf 库，跳过合并。")
             return
+        
+        # 尝试导入 pypdf 注释相关类
+        try:
+            from pypdf.generic import DictionaryObject, NumberObject, FloatObject, NameObject, TextStringObject, ArrayObject, RectangleObject
+            HAS_PYPDF_GENERIC = True
+        except ImportError:
+            HAS_PYPDF_GENERIC = False
 
         print("\n" + "=" * 60)
         print("  开始 PDF 合并 ...")
         print(f"  合并模式: {self.get_readable_merge_mode()} ({self.merge_mode})")
         print(f"  合并输出目录: {self.merge_output_dir}")
+        if self.enable_merge_index:
+            print("  [选项] 启用索引页生成 (带跳转热点)")
+        if self.enable_merge_excel:
+            print("  [选项] 启用 Excel 清单生成 (单文件单行)")
         print("=" * 60)
 
-        scan_folder = self.config["target_folder"]
-        
-        # 确定扫描来源：默认目标目录
-        # 如果是“仅合并”模式，根据配置决定是源目录还是目标目录
-        scan_source_type = "target"
-        if self.run_mode == MODE_MERGE_ONLY:
-            scan_source_type = self.config.get("merge_source", "source")
-        
-        if scan_source_type == "source":
-            scan_folder = self.config["source_folder"]
-            print(f"  [仅合并模式] 正在扫描源目录: {scan_folder}")
-        else:
-            # convert_then_merge 或 merge_only(选了target)
-            print(f"  [合并扫描] 正在扫描目标目录: {scan_folder}")
+        # 准备 Excel
+        wb_merge = None
+        ws_merge = None
+        merge_excel_path = None
+        if self.enable_merge_excel:
+            if not HAS_OPENPYXL:
+                print("  [警告] 未检测到 openpyxl，无法生成 Excel 清单。")
+            else:
+                timestamp_excel = datetime.now().strftime("%Y%m%d_%H%M%S")
+                merge_excel_path = os.path.join(
+                    self.merge_output_dir, f"Merge_List_{timestamp_excel}.xlsx"
+                )
+                wb_merge = Workbook()
+                ws_merge = wb_merge.active
+                ws_merge.title = "MergeList"
+                ws_merge.append(["合并文件名", "包含文件清单"])
+                # Set width
+                ws_merge.column_dimensions["A"].width = 40
+                ws_merge.column_dimensions["B"].width = 60
 
-        all_pdfs = []
-        # 如果目标目录在源目录里（或者是子目录），要防止扫描到输出目录
-        exclude_abs_paths = set(map(os.path.abspath, [self.failed_dir, self.merge_output_dir]))
-        
-        # 如果扫描的是源目录，且目标目录也在里面，则排除目标目录
-        # 如果扫描的是目标目录，本身就在里面，自然会扫描到（除了 excluded 的 failed/merged）
-        if scan_source_type == "source":
-             exclude_abs_paths.add(os.path.abspath(self.config["target_folder"]))
+        # 获取任务分组
+        # 格式: [(output_filename, [pdf_path1, pdf_path2, ...]), ...]
+        merge_tasks = self._get_merge_tasks()
 
-        for root, dirs, files in os.walk(scan_folder):
-            if os.path.abspath(root) in exclude_abs_paths:
-                continue
-            for f in files:
-                if f.lower().endswith(".pdf"):
-                    all_pdfs.append(os.path.join(root, f))
+        total_tasks = len(merge_tasks)
+        print(f"  共生成 {total_tasks} 个合并任务。")
 
-        if not all_pdfs:
-            print("[提示] 目标目录中没有 PDF 文件，无法合并。")
-            return
+        # 准备 Word App (如果需要生成索引)
+        word_app = None
+        if self.enable_merge_index and total_tasks > 0:
+            try:
+                pythoncom.CoInitialize()
+                word_app = win32com.client.Dispatch("Word.Application")
+                word_app.Visible = False
+                word_app.DisplayAlerts = 0
+            except Exception as e:
+                logging.error(f"启动 Word 失败，无法生成索引页: {e}")
+                word_app = None
 
-        all_pdfs.sort()
+        for idx, (output_filename, group) in enumerate(merge_tasks, 1):
+            print(f"  Processing [{idx}/{total_tasks}]: {output_filename}")
+            
+            # Excel 记录 (拆分行)
+            if ws_merge:
+                for sub_file in group:
+                    ws_merge.append([output_filename, os.path.basename(sub_file)])
 
-        if self.merge_mode == MERGE_MODE_ALL_IN_ONE:
-            timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-            output_name = f"Merged_All_{timestamp}.pdf"
-            output_path = os.path.join(self.merge_output_dir, output_name)
-            print(f">> 全量合并，共 {len(all_pdfs)} 个 PDF -> {output_name}")
+            output_path = os.path.join(self.merge_output_dir, output_filename)
+            
             try:
                 merger = PdfWriter()
-                for p in all_pdfs:
-                    merger.append(p)
+                current_page_index = 0
+                
+                # 1. 生成并添加索引页
+                index_pdf_path = None
+                file_basenames = [os.path.basename(p) for p in group]
+                
+                # 记录每个文件在合并后 PDF 中的起始页码
+                # 初始偏移量为索引页的页数（待定）
+                file_start_pages = [] 
+
+                if self.enable_merge_index and word_app:
+                    index_pdf_path = self._create_index_doc_and_convert(word_app, file_basenames, "文件索引")
+                
+                if index_pdf_path and os.path.exists(index_pdf_path):
+                    idx_reader = PdfReader(index_pdf_path)
+                    index_page_count = len(idx_reader.pages)
+                    
+                    # 将索引页加入 writer
+                    for p in idx_reader.pages:
+                        merger.add_page(p)
+                    
+                    current_page_index += index_page_count
+                else:
+                    index_page_count = 0
+
+                # 2. 添加内容文件并记录页码
+                for pdf_file in group:
+                    fname = os.path.basename(pdf_file)
+                    
+                    # 记录该文件的起始页码 (绝对页码)
+                    file_start_pages.append(current_page_index)
+                    
+                    # 添加书签
+                    merger.add_outline_item(fname, current_page_index)
+                    
+                    try:
+                        reader = PdfReader(pdf_file)
+                        for page in reader.pages:
+                            merger.add_page(page)
+                        current_page_index += len(reader.pages)
+                    except Exception as e:
+                        logging.error(f"合并读取失败 {pdf_file}: {e}")
+
+                # 3. 如果有索引页，添加点击跳转链接 (Link Annotation)
+                # 仅处理第一页索引（假设文件数不超过一页，或者只处理第一页的链接）
+                # 若需支持多页索引链接，逻辑会更复杂。这里先实现单页/首页支持。
+                if index_page_count > 0 and HAS_PYPDF_GENERIC:
+                    # 参数设定 (需与 _create_index_doc_and_convert 对应)
+                    # A4 Height = 842 pt
+                    # TopMargin = 72 pt
+                    # Title + Space ≈ 60 pt (估算: 16pt title + spacing + 10.5pt empty line)
+                    # List Start Y ≈ 842 - 72 - 50 = 720 (微调)
+                    
+                    # 修正估算：
+                    # Word 坐标系原点在左上，PDF 在左下。
+                    # Word TopMargin 72 -> PDF Y = 842 - 72 = 770.
+                    # Title 行占用约 30pt -> Y = 740.
+                    # Empty Line 占用约 20pt -> Y = 720.
+                    # 第一行文字基线约在 700-710.
+                    # 行距 20pt.
+                    
+                    start_y = 715 # 经验值微调
+                    line_height = 20
+                    
+                    # 获取索引页对象 (通常是第0页)
+                    # 注意：merger.pages[0] 获取的是 PageObject
+                    idx_page = merger.pages[0]
+                    
+                    for i, target_page_num in enumerate(file_start_pages):
+                        # 如果列表太长超过一页，这里暂不处理第二页的链接
+                        # A4 一页大概能放 (842 - 144 - 50) / 20 ≈ 32 行
+                        if i > 35: 
+                            break
+                            
+                        # 计算热点区域
+                        # Left: 72, Right: 595-72=523
+                        # Top: start_y - i*20
+                        # Bottom: Top - 20
+                        rect_top = start_y - (i * line_height)
+                        rect_bottom = rect_top - line_height
+                        rect = [72, rect_bottom, 520, rect_top] # [x1, y1, x2, y2]
+                        
+                        # 创建 Link Annotation
+                        # 目标: GoTo 页面 target_page_num
+                        # 构造字典对象
+                        
+                        # 目标页面对象引用 (IndirectObject)
+                        # pypdf writer 中页面还没写入 stream，但可以通过 get_object() 拿到引用?
+                        # merger.pages[n] 返回的是 PageObject。
+                        # Destination 数组通常是 [PageRef, /Fit]
+                        
+                        # pypdf 2.x/3.x add_annotation 封装较少，需手动构造
+                        link_annotation = DictionaryObject()
+                        link_annotation.update({
+                            NameObject("/Type"): NameObject("/Annot"),
+                            NameObject("/Subtype"): NameObject("/Link"),
+                            NameObject("/Rect"): ArrayObject([FloatObject(c) for c in rect]),
+                            NameObject("/Border"): ArrayObject([NumberObject(0), NumberObject(0), NumberObject(0)]),
+                            NameObject("/Dest"): ArrayObject([
+                                merger.pages[target_page_num].indirect_ref,
+                                NameObject("/Fit")
+                            ])
+                        })
+                        
+                        if "/Annots" not in idx_page:
+                            idx_page[NameObject("/Annots")] = ArrayObject()
+                        
+                        idx_page["/Annots"].append(link_annotation)
+
+                # 4. 写入文件
                 merger.write(output_path)
                 merger.close()
-                logging.info(f"全量合并成功: {output_path}")
-                print("--> 全部合并完成。")
+                
+                if index_pdf_path and os.path.exists(index_pdf_path):
+                    os.remove(index_pdf_path)
+                    
             except Exception as e:
-                logging.error(f"全量合并失败: {e}")
-                print(f"[错误] 全部合并失败: {e}")
-            return
+                print(f" [失败] {e}")
+                logging.error(f"合并任务失败 {output_filename}: {e}")
+                traceback.print_exc()
 
-        # 分类拆卷模式（原有行为）
-        categories = {
-            "报价单文件": "Price_",
-            "Word文档": "Word_",
-            "Excel表格": "Excel_",
-            "PPT幻灯片": "PPT_",
-            "原PDF文件": "PDF_",
-        }
+        if word_app:
+            try:
+                word_app.Quit()
+            except Exception:
+                pass
+            pythoncom.CoUninitialize()
 
-        max_size_bytes = self.config.get("max_merge_size_mb", 80) * 1024 * 1024
-        total_merged_count = 0
+        if wb_merge:
+            try:
+                wb_merge.save(merge_excel_path)
+                print(f"\n  Excel 清单已保存: {merge_excel_path}")
+            except Exception as e:
+                logging.error(f"保存 Excel 清单失败: {e}")
 
-        for cat_name, prefix in categories.items():
-            current_cat_files = [
-                p for p in all_pdfs if os.path.basename(p).startswith(prefix)
-            ]
-            if not current_cat_files:
-                continue
-            current_cat_files.sort()
-            print(f"\n>> 正在处理类别: {cat_name} (共 {len(current_cat_files)} 个文件)")
 
-            groups = []
-            current_group = []
-            current_size = 0
+        # 准备 Word (如果需要索引页)
+        word_app = None
+        word_opened_here = False
+        if self.enable_merge_index:
+            # 如果 self.word_app 存在则复用，否则新建
+            # 注意：通常此时 self.word_app 可能已被 close_office_apps 关闭
+            # 所以这里我们尝试获取或新建
+            try:
+                word_app = self._get_local_app("word")
+                word_opened_here = True
+            except Exception as e:
+                print(f"  [警告] 无法启动 Word 生成索引页: {e}")
+                self.enable_merge_index = False
 
-            for pdf_path in current_cat_files:
-                try:
-                    f_size = os.path.getsize(pdf_path)
-                except Exception:
+        try:
+            scan_folder = self.config["target_folder"]
+            scan_source_type = "target"
+            if self.run_mode == MODE_MERGE_ONLY:
+                scan_source_type = self.config.get("merge_source", "source")
+
+            if scan_source_type == "source":
+                scan_folder = self.config["source_folder"]
+                print(f"  [仅合并模式] 正在扫描源目录: {scan_folder}")
+            else:
+                print(f"  [合并扫描] 正在扫描目标目录: {scan_folder}")
+
+            all_pdfs = []
+            exclude_abs_paths = set(
+                map(os.path.abspath, [self.failed_dir, self.merge_output_dir])
+            )
+            if scan_source_type == "source":
+                exclude_abs_paths.add(os.path.abspath(self.config["target_folder"]))
+
+            for root, dirs, files in os.walk(scan_folder):
+                if os.path.abspath(root) in exclude_abs_paths:
                     continue
+                for f in files:
+                    if f.lower().endswith(".pdf"):
+                        all_pdfs.append(os.path.join(root, f))
 
-                if f_size > max_size_bytes:
+            if not all_pdfs:
+                print("[提示] 目标目录中没有 PDF 文件，无法合并。")
+                return
+
+            all_pdfs.sort()
+
+            # --- 构造合并任务列表 ---
+            merge_tasks = []  # [(output_name, [pdf_paths])]
+
+            if self.merge_mode == MERGE_MODE_ALL_IN_ONE:
+                timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+                output_name = f"Merged_All_{timestamp}.pdf"
+                merge_tasks.append((output_name, all_pdfs))
+            else:
+                # 分类拆卷
+                categories = {
+                    "报价单文件": "Price_",
+                    "Word文档": "Word_",
+                    "Excel表格": "Excel_",
+                    "PPT幻灯片": "PPT_",
+                    "原PDF文件": "PDF_",
+                }
+                max_size_bytes = self.config.get("max_merge_size_mb", 80) * 1024 * 1024
+
+                for cat_name, prefix in categories.items():
+                    current_cat_files = [
+                        p for p in all_pdfs if os.path.basename(p).startswith(prefix)
+                    ]
+                    if not current_cat_files:
+                        continue
+                    current_cat_files.sort()
+
+                    # Grouping logic
+                    groups = []
+                    current_group = []
+                    current_size = 0
+                    for pdf_path in current_cat_files:
+                        try:
+                            f_size = os.path.getsize(pdf_path)
+                        except Exception:
+                            continue
+
+                        if f_size > max_size_bytes:
+                            if current_group:
+                                groups.append(current_group)
+                                current_group = []
+                                current_size = 0
+                            groups.append([pdf_path])
+                            continue
+
+                        if current_size + f_size > max_size_bytes:
+                            groups.append(current_group)
+                            current_group = [pdf_path]
+                            current_size = f_size
+                        else:
+                            current_group.append(pdf_path)
+                            current_size += f_size
                     if current_group:
                         groups.append(current_group)
-                        current_group = []
-                        current_size = 0
-                    groups.append([pdf_path])
-                    continue
 
-                if current_size + f_size > max_size_bytes:
-                    groups.append(current_group)
-                    current_group = [pdf_path]
-                    current_size = f_size
-                else:
-                    current_group.append(pdf_path)
-                    current_size += f_size
+                    timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+                    cat_label = prefix.rstrip("_")
+                    for idx, group in enumerate(groups, 1):
+                        output_filename = f"Merged_{cat_label}_{timestamp}_{idx}.pdf"
+                        merge_tasks.append((output_filename, group))
 
-            if current_group:
-                groups.append(current_group)
-
-            timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-            cat_label = prefix.rstrip("_")
-
-            for idx, group in enumerate(groups, 1):
-                output_filename = f"Merged_{cat_label}_{timestamp}_{idx}.pdf"
+            # --- 执行合并 ---
+            total_merged_count = 0
+            for output_filename, group in merge_tasks:
                 output_path = os.path.join(self.merge_output_dir, output_filename)
+                print(f"   正在生成: {output_filename} ({len(group)} 个文件)...", end="")
 
-                print(f"   生成第 {idx} 卷 ({len(group)} 个文件)...", end="")
                 try:
                     merger = PdfWriter()
+                    current_page_index = 0
+
+                    # 1. 生成并添加索引页
+                    if self.enable_merge_index and word_app:
+                        file_basenames = [os.path.basename(p) for p in group]
+                        index_pdf = self._create_index_doc_and_convert(
+                            word_app, file_basenames, "文件索引"
+                        )
+                        if index_pdf and os.path.exists(index_pdf):
+                            merger.append(index_pdf)
+                            # 计算索引页页数，以便后续书签定位
+                            try:
+                                reader_idx = PdfReader(index_pdf)
+                                current_page_index += len(reader_idx.pages)
+                            except Exception:
+                                pass
+                            # 删除临时索引PDF (可选，或保留在沙箱)
+
+                    # 2. 添加内容文件 & 书签
+                    file_names_log = []
                     for pdf in group:
-                        merger.append(pdf)
+                        fname = os.path.basename(pdf)
+                        file_names_log.append(fname)
+
+                        # 添加书签 (指向当前页)
+                        merger.append(pdf, import_outline=False)
+                        merger.add_outline_item(fname, current_page_index)
+
+                        try:
+                            reader = PdfReader(pdf)
+                            current_page_index += len(reader.pages)
+                        except Exception:
+                            pass
+
                     merger.write(output_path)
                     merger.close()
                     print(" [完成]")
-                    logging.info(f"分类合并成功 [{cat_name}]: {output_path}")
+                    logging.info(f"合并成功: {output_path}")
                     total_merged_count += 1
+
+                    # 3. 记录到 Excel
+                    if wb_merge:
+                        ws_merge.append([output_filename, "\n".join(file_names_log)])
+
                 except Exception as e:
                     print(f" [失败] {e}")
-                    logging.error(f"分类合并失败 [{cat_name}]: {output_path} | {e}")
+                    logging.error(f"合并失败: {output_path} | {e}")
 
-        print(f"\n--> 分类拆卷合并完成，共生成 {total_merged_count} 个汇总文件。")
+            if wb_merge:
+                try:
+                    wb_merge.save(merge_excel_path)
+                    print(f"  [Excel] 合并清单已保存: {merge_excel_path}")
+                except Exception as e:
+                    print(f"  [Excel] 保存失败: {e}")
+
+            print(f"\n--> 合并完成，共生成 {total_merged_count} 个汇总文件。")
+
+        finally:
+            if word_opened_here and word_app:
+                try:
+                    word_app.Quit()
+                except Exception:
+                    pass
 
     # =============== 文件梳理去重 ==================
 
