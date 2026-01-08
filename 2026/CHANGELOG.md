@@ -2,6 +2,19 @@
 
 All notable changes to this project will be documented in this file.
 
+## [v5.15.7] - 2026-01-08
+### Fixed
+- **PDF Merge Compatibility**: Fixed `AttributeError: 'PageObject' object has no attribute 'indirect_ref'` by adding fallback support for older `pypdf` versions (using `indirect_reference` or skipping links safely).
+
+## [v5.15.6] - 2026-01-08
+### Fixed
+- **Merge Output**: Added post-write validation and printed output paths to avoid “silent no-output” situations.
+- **UX**: After merge, opens the `_MERGED` directory when outputs exist.
+
+## [v5.15.5] - 2026-01-08
+### Changed
+- **PDF Index Hotspots**: Made all index entries clickable across multiple index pages.
+
 ## [v5.15.4] - 2026-01-08
 ### Fixed
 - **Merge Logic**: Completely removed duplicated legacy merge logic that caused incorrect Excel output and double processing.

@@ -54,7 +54,7 @@ try:
 except ImportError:
     HAS_OPENPYXL = False
 
-__version__ = "5.15.4"
+__version__ = "5.15.6"
 
 # Office 常量
 wdFormatPDF = 17
@@ -1422,24 +1422,26 @@ class OfficeConverter:
                 pass
 
             selection = word_app.Selection
-            
-            # Title: 16pt, Bold, Center
-            selection.ParagraphFormat.Alignment = 1  # Center
-            selection.Font.Name = "微软雅黑"
-            selection.Font.Size = 16
-            selection.Font.Bold = True
-            selection.ParagraphFormat.LineSpacingRule = 0 # wdLineSpaceSingle
-            selection.TypeText(title + "\n")
-            
-            # 空一行: 10.5pt
-            selection.ParagraphFormat.Alignment = 0  # Left
-            selection.Font.Size = 10.5
-            selection.Font.Bold = False
-            selection.TypeText("\n")
 
-            # 列表内容: 10.5pt, 固定行距 20pt
-            selection.ParagraphFormat.LineSpacingRule = 4 # wdLineSpaceExactly
-            selection.ParagraphFormat.LineSpacing = 20
+            lines_per_page = 32
+
+            def write_header():
+                selection.ParagraphFormat.Alignment = 1
+                selection.Font.Name = "微软雅黑"
+                selection.Font.Size = 16
+                selection.Font.Bold = True
+                selection.ParagraphFormat.LineSpacingRule = 0
+                selection.TypeText(title + "\n")
+
+                selection.ParagraphFormat.Alignment = 0
+                selection.Font.Size = 10.5
+                selection.Font.Bold = False
+                selection.TypeText("\n")
+
+                selection.ParagraphFormat.LineSpacingRule = 4
+                selection.ParagraphFormat.LineSpacing = 20
+
+            write_header()
             
             # 记录用于计算坐标的参数
             # A4高度 ~842pt. TopMargin 72. 
@@ -1455,6 +1457,9 @@ class OfficeConverter:
             # 我们将在 merge 阶段微调。
             
             for i, fname in enumerate(file_list, 1):
+                if i > 1 and (i - 1) % lines_per_page == 0:
+                    selection.InsertBreak(7)
+                    write_header()
                 # 截断过长文件名 (A4 宽 595 - 144 = 451pt. 10.5pt 汉字约 10.5pt宽? 英文一半. 450/10.5 ≈ 42字)
                 # 保守截断 45 字符
                 if len(fname) > 45:
@@ -1583,13 +1588,13 @@ class OfficeConverter:
 
     def merge_pdfs(self):
         if not self.config.get("enable_merge", True):
-            return
+            return []
         if not HAS_PYPDF:
             print(
                 "\n[提示] 未检测到 pypdf 库，跳过合并步骤。请运行 pip install pypdf 安装。"
             )
             logging.warning("未检测到 pypdf 库，跳过合并。")
-            return
+            return []
         
         # 尝试导入 pypdf 注释相关类
         try:
@@ -1647,6 +1652,8 @@ class OfficeConverter:
                 logging.error(f"启动 Word 失败，无法生成索引页: {e}")
                 word_app = None
 
+        generated_outputs = []
+
         for idx, (output_filename, group) in enumerate(merge_tasks, 1):
             print(f"  Processing [{idx}/{total_tasks}]: {output_filename}")
             
@@ -1703,8 +1710,6 @@ class OfficeConverter:
                         logging.error(f"合并读取失败 {pdf_file}: {e}")
 
                 # 3. 如果有索引页，添加点击跳转链接 (Link Annotation)
-                # 仅处理第一页索引（假设文件数不超过一页，或者只处理第一页的链接）
-                # 若需支持多页索引链接，逻辑会更复杂。这里先实现单页/首页支持。
                 if index_page_count > 0 and HAS_PYPDF_GENERIC:
                     # 参数设定 (需与 _create_index_doc_and_convert 对应)
                     # A4 Height = 842 pt
@@ -1720,24 +1725,20 @@ class OfficeConverter:
                     # 第一行文字基线约在 700-710.
                     # 行距 20pt.
                     
-                    start_y = 715 # 经验值微调
+                    start_y = 715
                     line_height = 20
-                    
-                    # 获取索引页对象 (通常是第0页)
-                    # 注意：merger.pages[0] 获取的是 PageObject
-                    idx_page = merger.pages[0]
-                    
+
+                    lines_per_page = 32
+
                     for i, target_page_num in enumerate(file_start_pages):
-                        # 如果列表太长超过一页，这里暂不处理第二页的链接
-                        # A4 一页大概能放 (842 - 144 - 50) / 20 ≈ 32 行
-                        if i > 35: 
+                        page_idx = i // lines_per_page
+                        row_idx = i % lines_per_page
+                        if page_idx >= index_page_count:
                             break
-                            
-                        # 计算热点区域
-                        # Left: 72, Right: 595-72=523
-                        # Top: start_y - i*20
-                        # Bottom: Top - 20
-                        rect_top = start_y - (i * line_height)
+
+                        idx_page = merger.pages[page_idx]
+
+                        rect_top = start_y - (row_idx * line_height)
                         rect_bottom = rect_top - line_height
                         rect = [72, rect_bottom, 520, rect_top] # [x1, y1, x2, y2]
                         
@@ -1745,11 +1746,18 @@ class OfficeConverter:
                         # 目标: GoTo 页面 target_page_num
                         # 构造字典对象
                         
-                        # 目标页面对象引用 (IndirectObject)
-                        # pypdf writer 中页面还没写入 stream，但可以通过 get_object() 拿到引用?
-                        # merger.pages[n] 返回的是 PageObject。
-                        # Destination 数组通常是 [PageRef, /Fit]
+                        # 目标页面对象引用 (IndirectObject) 兼容性处理
+                        # pypdf 不同版本属性名不同: 3.x+ 用 indirect_ref, 旧版可能用 indirect_reference
+                        target_page_obj = merger.pages[target_page_num]
+                        target_page_ref = getattr(target_page_obj, "indirect_ref", None)
+                        if target_page_ref is None:
+                            target_page_ref = getattr(target_page_obj, "indirect_reference", None)
                         
+                        if target_page_ref is None:
+                            # 如果无法获取引用，记录警告并跳过该链接，防止崩溃
+                            logging.warning(f"无法获取页面 {target_page_num} 的引用对象(indirect_ref/reference)，跳过此索引链接生成。")
+                            continue
+
                         # pypdf 2.x/3.x add_annotation 封装较少，需手动构造
                         link_annotation = DictionaryObject()
                         link_annotation.update({
@@ -1758,19 +1766,29 @@ class OfficeConverter:
                             NameObject("/Rect"): ArrayObject([FloatObject(c) for c in rect]),
                             NameObject("/Border"): ArrayObject([NumberObject(0), NumberObject(0), NumberObject(0)]),
                             NameObject("/Dest"): ArrayObject([
-                                merger.pages[target_page_num].indirect_ref,
+                                target_page_ref,
                                 NameObject("/Fit")
                             ])
                         })
                         
                         if "/Annots" not in idx_page:
                             idx_page[NameObject("/Annots")] = ArrayObject()
-                        
+
                         idx_page["/Annots"].append(link_annotation)
 
                 # 4. 写入文件
                 merger.write(output_path)
                 merger.close()
+
+                if not os.path.exists(output_path):
+                    raise RuntimeError(f"合并输出文件未生成: {output_path}")
+                try:
+                    if os.path.getsize(output_path) <= 0:
+                        raise RuntimeError(f"合并输出文件大小异常(0字节): {output_path}")
+                except OSError:
+                    pass
+
+                generated_outputs.append(output_path)
                 
                 if index_pdf_path and os.path.exists(index_pdf_path):
                     os.remove(index_pdf_path)
@@ -1793,6 +1811,17 @@ class OfficeConverter:
                 print(f"\n  Excel 清单已保存: {merge_excel_path}")
             except Exception as e:
                 logging.error(f"保存 Excel 清单失败: {e}")
+
+        if total_tasks <= 0:
+            print("\n  [提示] 未生成任何合并任务：请确认扫描目录下存在 PDF 文件。")
+        elif len(generated_outputs) <= 0:
+            print("\n  [提示] 合并任务已执行，但未生成输出文件：请检查日志与输出目录权限。")
+        else:
+            print("\n  合并输出文件：")
+            for p in generated_outputs:
+                print(f"  - {p}")
+
+        return generated_outputs
 
 
     # =============== 文件梳理去重 ==================
@@ -2252,11 +2281,12 @@ class OfficeConverter:
                 print("当前模式为仅合并，跳过转换步骤。")
 
             # 合并阶段
+            merge_outputs = []
             if self.run_mode in (
                 MODE_CONVERT_THEN_MERGE,
                 MODE_MERGE_ONLY,
             ) and self.config.get("enable_merge", True):
-                self.merge_pdfs()
+                merge_outputs = self.merge_pdfs() or []
 
             summary = (
                 f"\n=== 最终统计 (v{__version__}) ===\n"
@@ -2271,7 +2301,10 @@ class OfficeConverter:
 
         # 打开目标目录
         try:
-            os.startfile(self.config["target_folder"])
+            open_dir = self.config["target_folder"]
+            if merge_outputs and self.merge_output_dir and os.path.isdir(self.merge_output_dir):
+                open_dir = self.merge_output_dir
+            os.startfile(open_dir)
         except Exception:
             pass
 
