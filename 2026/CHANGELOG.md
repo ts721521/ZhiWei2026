@@ -2,6 +2,11 @@
 
 All notable changes to this project will be documented in this file.
 
+## [v5.15.4] - 2026-01-08
+### Fixed
+- **Merge Logic**: Completely removed duplicated legacy merge logic that caused incorrect Excel output and double processing.
+- **Excel Listing**: Verified that the merge list now correctly outputs one row per component file.
+
 ## [v5.15.3] - 2026-01-08
 ### Fixed
 - **Runtime Error**: Fixed missing `traceback` import causing crash when logging merge errors.
