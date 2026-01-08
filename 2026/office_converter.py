@@ -15,6 +15,7 @@ import shutil
 import logging
 import argparse
 import uuid
+import traceback
 import tempfile
 import subprocess
 import threading
@@ -53,7 +54,7 @@ try:
 except ImportError:
     HAS_OPENPYXL = False
 
-__version__ = "5.15.2"
+__version__ = "5.15.3"
 
 # Office 常量
 wdFormatPDF = 17
