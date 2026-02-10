@@ -286,6 +286,7 @@ class OfficeGUI(tb.Window):
         self._tooltips = []
         self._tooltip_widget_ids = set()
         self._normalizing_inputs = False
+        self.source_folders_list = []  # List to store multiple source folders
         self.tooltip_delay_ms = self.TOOLTIP_DEFAULTS["tooltip_delay_ms"]
         self.tooltip_bg = self.TOOLTIP_DEFAULTS["tooltip_bg"]
         self.tooltip_fg = self.TOOLTIP_DEFAULTS["tooltip_fg"]
@@ -629,8 +630,41 @@ class OfficeGUI(tb.Window):
         lf_paths = tb.Labelframe(parent, text=self.tr("sec_paths"), padding=10)
         lf_paths.pack(fill=X, pady=5)
         self._add_section_help(lf_paths, "tip_section_run_paths")
+
+        # Source Folders (Multi-select)
+        frm_src = tb.Frame(lf_paths)
+        frm_src.pack(fill=X, pady=(5, 0))
+        tb.Label(frm_src, text=self.tr("lbl_source"), font=("System", 9, "bold")).pack(anchor="w")
+
+        frm_src_body = tb.Frame(frm_src)
+        frm_src_body.pack(fill=X, expand=YES)
+
+        self.lst_source_folders = tk.Listbox(frm_src_body, height=4, selectmode=EXTENDED, font=("System", 9), activestyle="dotbox")
+        self.lst_source_folders.pack(side=LEFT, fill=X, expand=YES)
+
+        scr_src = tb.Scrollbar(frm_src_body, orient="vertical", command=self.lst_source_folders.yview)
+        scr_src.pack(side=LEFT, fill=Y)
+        self.lst_source_folders.configure(yscrollcommand=scr_src.set)
+        self.lst_source_folders.bind("<Double-Button-1>", self.open_source_folder)
+
+        frm_src_btns = tb.Frame(frm_src_body)
+        frm_src_btns.pack(side=LEFT, fill=Y, padx=(5, 0))
+
+        self.btn_add_src = tb.Button(frm_src_btns, text="+", width=3, command=self.add_source_folder, bootstyle="success-outline")
+        self.btn_add_src.pack(pady=1)
+        self._attach_tooltip(self.btn_add_src, "tip_add_source_folder")
+
+        self.btn_del_src = tb.Button(frm_src_btns, text="-", width=3, command=self.remove_source_folder, bootstyle="danger-outline")
+        self.btn_del_src.pack(pady=1)
+        self._attach_tooltip(self.btn_del_src, "tip_remove_source_folder")
+
+        self.btn_clr_src = tb.Button(frm_src_btns, text="C", width=3, command=self.clear_source_folders, bootstyle="secondary-outline")
+        self.btn_clr_src.pack(pady=1)
+        self._attach_tooltip(self.btn_clr_src, "tip_clear_source_folders")
+
+        # Compatibility
         self.var_source_folder = tk.StringVar()
-        self._create_path_row(lf_paths, "lbl_source", self.var_source_folder, self.browse_source, self.open_source_folder)
+
         self.var_target_folder = tk.StringVar()
         self._create_path_row(lf_paths, "lbl_target", self.var_target_folder, self.browse_target, self.open_target_folder)
 
@@ -1018,10 +1052,43 @@ class OfficeGUI(tb.Window):
 
     # ===================== 目录/按钮动作 =====================
 
-    def browse_source(self):
-        path = filedialog.askdirectory(title="选择源目录")
+    def add_source_folder(self):
+        path = filedialog.askdirectory(title=self.tr("tip_add_source_folder"))
         if path:
-            self.var_source_folder.set(path)
+            if sys.platform == "win32":
+                path = path.replace("/", "\\")
+            if path not in self.source_folders_list:
+                self.source_folders_list.append(path)
+                self.lst_source_folders.insert(END, path)
+        # Sync to hidden var for compatibility
+        if self.source_folders_list:
+            self.var_source_folder.set(self.source_folders_list[0])
+
+
+    def remove_source_folder(self):
+        selection = self.lst_source_folders.curselection()
+        if not selection:
+            return
+        for index in reversed(selection):
+            path = self.lst_source_folders.get(index)
+            self.lst_source_folders.delete(index)
+            if path in self.source_folders_list:
+                self.source_folders_list.remove(path)
+        # Sync
+        if self.source_folders_list:
+            self.var_source_folder.set(self.source_folders_list[0])
+        else:
+            self.var_source_folder.set("")
+
+
+    def clear_source_folders(self):
+        self.source_folders_list = []
+        self.lst_source_folders.delete(0, END)
+        self.var_source_folder.set("")
+
+
+    def browse_source(self):
+        self.add_source_folder()
 
     def browse_target(self):
         path = filedialog.askdirectory(title="选择目标目录")
@@ -1029,7 +1096,16 @@ class OfficeGUI(tb.Window):
             self.var_target_folder.set(path)
             self.refresh_locator_maps()
 
-    def open_source_folder(self):
+    def open_source_folder(self, event=None):
+        # Try to get selection from listbox first
+        if hasattr(self, "lst_source_folders"):
+            selection = self.lst_source_folders.curselection()
+            if selection:
+                path = self.lst_source_folders.get(selection[0])
+                self._open_path(path)
+                return
+
+        # Fallback to var (first item usually)
         path = self.var_source_folder.get().strip()
         self._open_path(path)
 
@@ -1571,7 +1647,23 @@ class OfficeGUI(tb.Window):
         self.validate_tooltip_inputs(silent=True)
 
         # 运行参数
-        self.var_source_folder.set(cfg.get("source_folder", ""))
+        # 运行参数
+        src_list = cfg.get("source_folders", [])
+        if not src_list:
+             # Backward compatibility
+             single = cfg.get("source_folder", "")
+             if single:
+                 src_list = [single]
+        
+        self.source_folders_list = src_list
+        self.lst_source_folders.delete(0, END)
+        for p in self.source_folders_list:
+            self.lst_source_folders.insert(END, p)
+        
+        if self.source_folders_list:
+            self.var_source_folder.set(self.source_folders_list[0])
+        else:
+            self.var_source_folder.set("")
         self.var_target_folder.set(cfg.get("target_folder", ""))
         self.var_enable_sandbox.set(1 if cfg.get("enable_sandbox", True) else 0)
         self.var_temp_sandbox_root.set(cfg.get("temp_sandbox_root", ""))
@@ -1641,7 +1733,8 @@ class OfficeGUI(tb.Window):
                 cfg = {}
 
         # 运行参数
-        cfg["source_folder"] = self.var_source_folder.get().strip()
+        cfg["source_folders"] = self.source_folders_list
+        cfg["source_folder"] = self.source_folders_list[0] if self.source_folders_list else ""
         cfg["target_folder"] = self.var_target_folder.get().strip()
         cfg["enable_sandbox"] = bool(self.var_enable_sandbox.get())
         cfg["temp_sandbox_root"] = self.var_temp_sandbox_root.get().strip()
@@ -1778,19 +1871,27 @@ class OfficeGUI(tb.Window):
             messagebox.showerror(self.tr("btn_start"), self.tr("msg_validation_fix_before_run"))
             return
 
-        # 自动去除路径可能包含的引号
-        source = self.var_source_folder.get().strip().strip('"').strip("'")
-        target = self.var_target_folder.get().strip().strip('"').strip("'")
+        # Prepare source folders
+        clean_sources = []
+        for s in self.source_folders_list:
+            s = s.strip().strip('"').strip("'")
+            if os.path.isdir(s):
+                clean_sources.append(s)
+        
+        # Compatibility backup
+        if not clean_sources:
+             fallback = self.var_source_folder.get().strip().strip('"').strip("'")
+             if fallback and os.path.isdir(fallback):
+                 clean_sources.append(fallback)
 
-        # 回写去引号后的值到 UI
-        self.var_source_folder.set(source)
+        target = self.var_target_folder.get().strip().strip('"').strip("'")
         self.var_target_folder.set(target)
 
-        if not source or not os.path.isdir(source):
-            messagebox.showerror("错误", "请先设置有效的【源目录】。")
+        if not clean_sources:
+            messagebox.showerror("错误", "请先添加有效的【源文件夹】。")
             return
         if not target:
-            messagebox.showerror("错误", "请先设置有效的【目标目录】。")
+            messagebox.showerror("错误", "请先设置有效的【目标文件夹】。")
             return
 
         self.stop_requested = False
@@ -1799,72 +1900,109 @@ class OfficeGUI(tb.Window):
 
         def worker():
             try:
-                print(f"[GUI] 使用配置文件: {self.config_path}")
-                converter = GUIOfficeConverter(self.config_path)
-                # 注入进度回调
-                converter.progress_callback = self.on_progress_update
-                self.current_converter = converter
-
-                # 用当前界面参数覆盖 runtime（不写回 config.json）
-                cfg = converter.config
-                cfg["source_folder"] = source
-                cfg["target_folder"] = target
-                cfg["enable_sandbox"] = bool(self.var_enable_sandbox.get())
-                cfg["temp_sandbox_root"] = self.var_temp_sandbox_root.get().strip()
-                cfg["enable_merge"] = bool(self.var_enable_merge.get())
-                cfg["merge_mode"] = self.var_merge_mode.get()
-                cfg["merge_source"] = self.var_merge_source.get()
-                cfg["enable_merge_index"] = bool(self.var_enable_merge_index.get())
-                cfg["enable_merge_excel"] = bool(self.var_enable_merge_excel.get())
-                cfg["kill_process_mode"] = self.var_kill_mode.get()
-                cfg["default_engine"] = self.var_engine.get()
-
-                converter.run_mode = self.var_run_mode.get()
-                converter.collect_mode = self.var_collect_mode.get()
-                converter.content_strategy = self.var_strategy.get()
-                converter.merge_mode = self.var_merge_mode.get()
-                converter.engine_type = self.var_engine.get()
-                converter.enable_merge_index = bool(self.var_enable_merge_index.get())
-                converter.enable_merge_excel = bool(self.var_enable_merge_excel.get())
-
-                # 设置日期过滤
-                if self.var_enable_date_filter.get():
-                    date_str = self.var_date_str.get().strip()
-                    try:
-                        converter.filter_date = datetime.strptime(date_str, "%Y-%m-%d")
-                        converter.filter_mode = self.var_filter_mode.get()
-                        print(f"[GUI] 已启用日期过滤: {converter.filter_mode} {date_str}")
-                    except ValueError:
-                        print(f"[GUI] [警告] 日期格式无效: {date_str}，将忽略日期过滤。")
-
-                # 重新根据覆盖后的 target / temp_sandbox_root 计算路径（简单重算一遍）
-                # 临时目录
-                temp_root = cfg.get("temp_sandbox_root", "").strip()
-                if temp_root:
-                    if not os.path.isabs(temp_root):
-                        temp_root = os.path.abspath(
-                            os.path.join(get_app_path(), temp_root)
-                        )
+                base_mode = self.var_run_mode.get()
+                steps = []
+                
+                # 1. Build Execution Steps
+                if base_mode == MODE_COLLECT_ONLY:
+                    for src in clean_sources:
+                        steps.append({"source": src, "mode": MODE_COLLECT_ONLY, "desc": f"归集: {src}"})
+                
+                elif base_mode == MODE_MERGE_ONLY:
+                     # If merge_source is 'target', run once. If 'source', run for each (though arguably ambiguous).
+                     # Safe default: run for each if source-based, else run once.
+                     m_src = self.var_merge_source.get()
+                     if m_src == "target":
+                         steps.append({"source": clean_sources[0], "mode": MODE_MERGE_ONLY, "desc": "合并 (基于目标目录)"})
+                     else:
+                         for src in clean_sources:
+                             steps.append({"source": src, "mode": MODE_MERGE_ONLY, "desc": f"合并 (基于源: {src})"})
+                
                 else:
-                    temp_root = tempfile.gettempdir()
-                converter.temp_sandbox_root = temp_root
-                converter.temp_sandbox = os.path.join(temp_root, "OfficeToPDF_Sandbox")
-                os.makedirs(converter.temp_sandbox, exist_ok=True)
-                print(f"[GUI] 本次临时转换目录: {converter.temp_sandbox}")
+                    # Convert Only or Convert Then Merge
+                    # Phase 1: Convert All
+                    for src in clean_sources:
+                        steps.append({"source": src, "mode": MODE_CONVERT_ONLY, "desc": f"转换: {src}"})
+                    
+                    # Phase 2: Merge (if needed)
+                    if base_mode == MODE_CONVERT_THEN_MERGE and self.var_enable_merge.get():
+                         m_src = self.var_merge_source.get()
+                         if m_src == "target":
+                             steps.append({"source": clean_sources[0], "mode": MODE_MERGE_ONLY, "desc": "合并 (基于目标目录)"})
+                         else:
+                             for src in clean_sources:
+                                 steps.append({"source": src, "mode": MODE_MERGE_ONLY, "desc": f"合并 (基于源: {src})"})
 
-                # 失败目录 & 合并目录
-                converter.failed_dir = os.path.join(
-                    cfg["target_folder"], "_FAILED_FILES"
-                )
-                os.makedirs(converter.failed_dir, exist_ok=True)
-                converter.merge_output_dir = os.path.join(
-                    cfg["target_folder"], "_MERGED"
-                )
-                os.makedirs(converter.merge_output_dir, exist_ok=True)
+                total_steps = len(steps)
+                print(f"[GUI] 总步骤数: {total_steps}")
+                
+                for idx, step in enumerate(steps, 1):
+                    if self.stop_requested:
+                        print("[GUI] 停止请求已接收，跳过后续步骤。")
+                        break
 
-                # 运行
-                converter.run()
-                print("[GUI] 任务已完成。")
+                    step_desc = step["desc"]
+                    print(f"\n[GUI] >>> 执行步骤 {idx}/{total_steps}: {step_desc}")
+                    self.txt_log.insert("end", f"\n>>> 步骤 {idx}/{total_steps}: {step_desc}\n")
+                    self.txt_log.see("end")
+
+                    print(f"[GUI] 使用配置文件: {self.config_path}")
+                    converter = GUIOfficeConverter(self.config_path)
+                    converter.progress_callback = self.on_progress_update
+                    self.current_converter = converter
+
+                    # Override Config
+                    cfg = converter.config
+                    cfg["source_folder"] = step["source"]
+                    cfg["target_folder"] = target
+                    cfg["enable_sandbox"] = bool(self.var_enable_sandbox.get())
+                    cfg["temp_sandbox_root"] = self.var_temp_sandbox_root.get().strip()
+                    cfg["enable_merge"] = bool(self.var_enable_merge.get())
+                    cfg["merge_mode"] = self.var_merge_mode.get()
+                    cfg["merge_source"] = self.var_merge_source.get()
+                    cfg["enable_merge_index"] = bool(self.var_enable_merge_index.get())
+                    cfg["enable_merge_excel"] = bool(self.var_enable_merge_excel.get())
+                    cfg["kill_process_mode"] = self.var_kill_mode.get()
+                    cfg["default_engine"] = self.var_engine.get()
+
+                    converter.run_mode = step["mode"]
+                    converter.collect_mode = self.var_collect_mode.get()
+                    converter.content_strategy = self.var_strategy.get()
+                    converter.merge_mode = self.var_merge_mode.get()
+                    converter.engine_type = self.var_engine.get()
+                    converter.enable_merge_index = bool(self.var_enable_merge_index.get())
+                    converter.enable_merge_excel = bool(self.var_enable_merge_excel.get())
+
+                    # Date Filter
+                    if self.var_enable_date_filter.get():
+                        date_str = self.var_date_str.get().strip()
+                        try:
+                            converter.filter_date = datetime.strptime(date_str, "%Y-%m-%d")
+                            converter.filter_mode = self.var_filter_mode.get()
+                        except ValueError:
+                             pass
+
+                    # Path init logic (Duplicated from original worker but necessary)
+                    temp_root = cfg.get("temp_sandbox_root", "").strip()
+                    if temp_root:
+                        if not os.path.isabs(temp_root):
+                            temp_root = os.path.abspath(os.path.join(get_app_path(), temp_root))
+                    else:
+                        temp_root = tempfile.gettempdir()
+                    converter.temp_sandbox_root = temp_root
+                    converter.temp_sandbox = os.path.join(temp_root, "OfficeToPDF_Sandbox")
+                    os.makedirs(converter.temp_sandbox, exist_ok=True)
+
+                    converter.failed_dir = os.path.join(cfg["target_folder"], "_FAILED_FILES")
+                    os.makedirs(converter.failed_dir, exist_ok=True)
+                    converter.merge_output_dir = os.path.join(cfg["target_folder"], "_MERGED")
+                    os.makedirs(converter.merge_output_dir, exist_ok=True)
+
+                    converter.run()
+                
+                print("[GUI] 所有任务已完成。")
+                self.txt_log.insert("end", "\n========== 任务结束 ==========\n")
+                self.txt_log.see("end")
 
             except Exception as e:
                 print(f"[GUI] 运行出错: {e}")
