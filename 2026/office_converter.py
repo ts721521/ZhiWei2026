@@ -25,9 +25,38 @@ import hashlib
 from datetime import datetime
 from pathlib import Path
 
-import win32com.client
-import pythoncom
-import pywintypes
+# Windows 下依赖 win32com，非 Windows 环境需做 mock 或禁用
+HAS_WIN32 = False
+try:
+    import win32com.client
+    import pythoncom
+    import pywintypes
+    HAS_WIN32 = True
+except ImportError:
+    # 非 Windows 环境 mock 必要对象以避免 ImportFail
+    class MockComError(Exception):
+        pass
+        
+    class MockPyWinTypes:
+        com_error = MockComError
+        
+    class MockPythonCom:
+        def CoInitialize(self): pass
+        def CoUninitialize(self): pass
+
+    class MockWin32ComClient:
+        def Dispatch(self, *args, **kwargs):
+            raise RuntimeError("Win32 COM not supported")
+        def DispatchEx(self, *args, **kwargs):
+            raise RuntimeError("Win32 COM not supported")
+
+    class MockWin32Com:
+        client = MockWin32ComClient()
+
+    pywintypes = MockPyWinTypes()
+    pythoncom = MockPythonCom()
+    win32com = MockWin32Com()
+
 
 # Windows 下用于带超时的键盘输入（仅 CLI 重试选择用）
 try:
@@ -325,6 +354,8 @@ class OfficeConverter:
     # =============== 进程管理 ===============
 
     def get_process_list(self, process_names):
+        if not HAS_WIN32:
+            return []
         running_list = []
         try:
             cmd = "tasklist /FO CSV /NH"
@@ -415,7 +446,7 @@ class OfficeConverter:
             self._kill_process_by_name(app)
 
     def _kill_process_by_name(self, app_name):
-        if not app_name:
+        if not app_name or not HAS_WIN32:
             return
         try:
             cmd = f"taskkill /F /IM {app_name}.exe"
@@ -767,6 +798,9 @@ class OfficeConverter:
         self._kill_process_by_name(app_name)
 
     def _get_local_app(self, app_type):
+        if not HAS_WIN32:
+            raise RuntimeError("当前系统不支持 Windows COM 接口，无法进行 Office 转换。")
+
         pythoncom.CoInitialize()
         if self.engine_type == ENGINE_WPS:
             prog_id = {
