@@ -68,5 +68,17 @@
         "tooltip_font_family": "System",
         "tooltip_font_size": 9,
         "tooltip_auto_theme": true
-    }
+    },
+    "source_folder_win": "E:/21_SE_Doc/BaiduNetdiskWorkspace/SynologyDrive/OneDrive - Schneider Electric/5_AVEVA_Doc/1_AIM/AIM L1培训材料-SE上海",
+    "target_folder_win": "C:\\PDFs",
+    "temp_sandbox_root_win": "",
+    "source_folders_win": [
+        "E:/21_SE_Doc/BaiduNetdiskWorkspace/SynologyDrive/OneDrive - Schneider Electric/5_AVEVA_Doc/1_AIM/AIM L1培训材料-SE上海"
+    ],
+    "source_folders": [
+        "E:/21_SE_Doc/BaiduNetdiskWorkspace/SynologyDrive/OneDrive - Schneider Electric/5_AVEVA_Doc/1_AIM/AIM L1培训材料-SE上海"
+    ],
+    "merge_source": "source",
+    "enable_merge_index": false,
+    "enable_merge_excel": false
 }

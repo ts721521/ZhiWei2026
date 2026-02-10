@@ -133,6 +133,12 @@ def get_app_path():
     else:
         return os.path.dirname(os.path.abspath(__file__))
 
+def is_mac():
+    return sys.platform == "darwin"
+
+def is_win():
+    return sys.platform == "win32"
+
 
 def clear_console():
     try:
@@ -180,6 +186,8 @@ class OfficeConverter:
 
         self.progress_callback = None  # GUI 回调钩子: func(current, total)
         self.generated_pdfs = []
+        self.conversion_index_records = []
+        self.merge_index_records = []
 
         # 仅在主线程下注册 signal（GUI 后台线程不会注册）
         if threading.current_thread() is threading.main_thread():
@@ -469,8 +477,26 @@ class OfficeConverter:
             print(f"[错误] 无法加载配置文件: {e}")
             sys.exit(1)
 
-        self.config["source_folder"] = os.path.abspath(self.config["source_folder"])
-        self.config["target_folder"] = os.path.abspath(self.config["target_folder"])
+        self.config["source_folder"] = self._get_path_from_config("source_folder")
+        self.config["target_folder"] = self._get_path_from_config("target_folder")
+
+    def _get_path_from_config(self, key_base):
+        """
+        根据当前操作系统读取带后缀的路径配置（_win / _mac），
+        如果没有特定后缀，则回退到无后缀 Key。
+        """
+        val = None
+        if is_win():
+             val = self.config.get(f"{key_base}_win")
+        elif is_mac():
+             val = self.config.get(f"{key_base}_mac")
+        
+        if not val:
+            val = self.config.get(key_base)
+            
+        if val:
+            return os.path.abspath(val)
+        return ""
 
         # 通用默认值
         if "timeout_seconds" not in self.config:
@@ -498,6 +524,10 @@ class OfficeConverter:
 
         if "merge_mode" not in self.config:
             self.config["merge_mode"] = MERGE_MODE_CATEGORY
+        if "enable_merge_index" not in self.config:
+            self.config["enable_merge_index"] = False
+        if "enable_merge_excel" not in self.config:
+            self.config["enable_merge_excel"] = False
         if "enable_merge_map" not in self.config:
             self.config["enable_merge_map"] = True
         if "bookmark_with_short_id" not in self.config:
@@ -540,6 +570,12 @@ class OfficeConverter:
         self.collect_mode = self.config.get("collect_mode", self.collect_mode)
         self.content_strategy = self.config.get(
             "content_strategy", self.content_strategy
+        )
+        self.enable_merge_index = bool(
+            self.config.get("enable_merge_index", self.enable_merge_index)
+        )
+        self.enable_merge_excel = bool(
+            self.config.get("enable_merge_excel", self.enable_merge_excel)
         )
 
     def save_config(self):
@@ -1020,6 +1056,42 @@ class OfficeConverter:
         except Exception:
             pass
 
+    # =============== MacOS Automation Support (Stub/Future) ===============
+
+    def _convert_on_mac(self, file_source, sandbox_target_pdf, ext):
+        """
+        Separate implementation for macOS using 'osascript' (AppleScript).
+        Requires Microsoft Office for Mac to be installed.
+        """
+        if not is_mac():
+            return False
+            
+        # Simplistic implementation structure - user may need to expand this
+        # or rely on LibreOffice CLI if preferred.
+        # For now, we try to use 'soffice' (LibreOffice) if available, or just log error.
+        
+        # Check for soffice first (LibreOffice)
+        soffice = shutil.which("soffice")
+        if soffice:
+            cmd = [soffice, "--headless", "--convert-to", "pdf", "--outdir", os.path.dirname(sandbox_target_pdf), file_source]
+            try:
+                subprocess.run(cmd, check=True, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+                # LibreOffice output name might differ, need to rename to sandbox_target_pdf
+                # But outdir is sandbox dir.
+                # Assuming standard naming: source.docx -> source.pdf
+                base = os.path.splitext(os.path.basename(file_source))[0]
+                possible_output = os.path.join(os.path.dirname(sandbox_target_pdf), base + ".pdf")
+                if os.path.exists(possible_output) and possible_output != sandbox_target_pdf:
+                    shutil.move(possible_output, sandbox_target_pdf)
+                return True
+            except Exception as e:
+                logging.error(f"LibreOffice conversion failed: {e}")
+                
+        # If no soffice, try basic AppleScript for Word/Excel? 
+        # (This is complex to implement fully robustly in one step without testing environment)
+        logging.warning("macOS Office Automation not fully implemented. Install LibreOffice for best results.")
+        return False
+
     # =============== 核心转换 ===============
 
     def convert_logic_in_thread(
@@ -1028,6 +1100,14 @@ class OfficeConverter:
         app = None
         doc = None
         try:
+            if is_mac():
+                # macOS specific path
+                if self._convert_on_mac(file_source, sandbox_target_pdf, ext):
+                    return
+                # If failed, fall through logic (which might fail if no win32com)
+                if not HAS_WIN32:
+                     raise RuntimeError("macOS conversion failed (LibreOffice not found?) and win32com not available.")
+
             if ext in self.config["allowed_extensions"]["word"]:
                 app = self._get_local_app("word")
                 try:
@@ -1379,6 +1459,7 @@ class OfficeConverter:
                         f"\r{progress_prefix} {status}: {fname} (耗时: {elapsed:.2f}s)    "
                     )
                     logging.info(f"{status}: {fpath} -> {final_path}")
+                    self._append_conversion_index_record(fpath, final_path, status)
 
             except Exception as e:
                 elapsed = time.time() - start
@@ -1778,6 +1859,7 @@ class OfficeConverter:
 
         generated_outputs = []
         generated_map_outputs = []
+        merge_index_records = []
         merge_batch_id = datetime.now().strftime("%Y%m%d_%H%M%S")
 
         for idx, (output_filename, group) in enumerate(merge_tasks, 1):
@@ -1962,6 +2044,16 @@ class OfficeConverter:
                     pass
 
                 generated_outputs.append(output_path)
+                if map_records:
+                    merged_pdf_md5 = ""
+                    try:
+                        merged_pdf_md5 = self._compute_md5(output_path)
+                    except Exception:
+                        pass
+                    for rec in map_records:
+                        rec["merged_pdf_md5"] = merged_pdf_md5
+                    merge_index_records.extend(map_records)
+
                 if self.config.get("enable_merge_map", True):
                     try:
                         csv_path, json_path = self._write_merge_map(output_path, map_records)
@@ -1987,10 +2079,23 @@ class OfficeConverter:
                 pass
             pythoncom.CoUninitialize()
 
+        self.merge_index_records = merge_index_records
+
         if wb_merge:
             try:
+                if merge_index_records:
+                    ws_merge_index = wb_merge.create_sheet("MergeIndex")
+                    self._write_merge_index_sheet(ws_merge_index, merge_index_records)
+                if self.conversion_index_records:
+                    ws_conv_index = wb_merge.create_sheet("ConvertedPDFs")
+                    self._write_conversion_index_sheet(
+                        ws_conv_index, self.conversion_index_records
+                    )
+                if ws_merge:
+                    self._style_header_row(ws_merge)
+                    self._auto_fit_sheet(ws_merge)
                 wb_merge.save(merge_excel_path)
-                print(f"\n  Excel 清单已保存: {merge_excel_path}")
+                print(f"\n  Excel 索引已保存: {merge_excel_path}")
             except Exception as e:
                 logging.error(f"保存 Excel 清单失败: {e}")
 
@@ -2027,6 +2132,185 @@ class OfficeConverter:
     def _make_file_hyperlink(path: str) -> str:
         path = os.path.abspath(path)
         return "file:///" + path.replace("\\", "/")
+
+    def _append_conversion_index_record(self, source_path, pdf_path, status=""):
+        if not source_path or not pdf_path:
+            return
+        if not os.path.exists(pdf_path):
+            return
+
+        src_abs = os.path.abspath(source_path)
+        pdf_abs = os.path.abspath(pdf_path)
+
+        try:
+            src_md5 = self._compute_md5(src_abs)
+        except Exception:
+            src_md5 = ""
+        try:
+            pdf_md5 = self._compute_md5(pdf_abs)
+        except Exception:
+            pdf_md5 = ""
+
+        try:
+            src_rel = os.path.relpath(src_abs, self.config["source_folder"])
+        except Exception:
+            src_rel = src_abs
+        try:
+            pdf_rel = os.path.relpath(pdf_abs, self.config["target_folder"])
+        except Exception:
+            pdf_rel = pdf_abs
+
+        self.conversion_index_records.append(
+            {
+                "source_filename": os.path.basename(src_abs),
+                "source_abspath": src_abs,
+                "source_relpath": src_rel,
+                "source_md5": src_md5,
+                "pdf_filename": os.path.basename(pdf_abs),
+                "pdf_abspath": pdf_abs,
+                "pdf_relpath": pdf_rel,
+                "pdf_md5": pdf_md5,
+                "status": status or "",
+            }
+        )
+
+    @staticmethod
+    def _style_header_row(ws):
+        if not HAS_OPENPYXL:
+            return
+        for cell in ws[1]:
+            cell.font = Font(bold=True)
+
+    @staticmethod
+    def _auto_fit_sheet(ws, max_width=90):
+        for col in ws.columns:
+            max_length = 0
+            col_letter = col[0].column_letter
+            for cell in col:
+                try:
+                    v = str(cell.value) if cell.value is not None else ""
+                    max_length = max(max_length, len(v))
+                except Exception:
+                    pass
+            ws.column_dimensions[col_letter].width = min(max_length + 2, max_width)
+
+    def _write_conversion_index_sheet(self, ws, records):
+        headers = [
+            "序号",
+            "源文档名",
+            "源文档位置",
+            "源文档MD5",
+            "输出PDF名",
+            "输出PDF位置",
+            "输出PDF MD5",
+            "转换状态",
+        ]
+        ws.append(headers)
+        self._style_header_row(ws)
+
+        for idx, rec in enumerate(records, 1):
+            ws.append(
+                [
+                    idx,
+                    rec.get("source_filename", ""),
+                    rec.get("source_abspath", ""),
+                    rec.get("source_md5", ""),
+                    rec.get("pdf_filename", ""),
+                    rec.get("pdf_abspath", ""),
+                    rec.get("pdf_md5", ""),
+                    rec.get("status", ""),
+                ]
+            )
+            src_cell = ws.cell(row=idx + 1, column=3)
+            src_path = rec.get("source_abspath", "")
+            if src_path:
+                src_cell.hyperlink = self._make_file_hyperlink(src_path)
+                src_cell.style = "Hyperlink"
+
+            pdf_cell = ws.cell(row=idx + 1, column=6)
+            pdf_path = rec.get("pdf_abspath", "")
+            if pdf_path:
+                pdf_cell.hyperlink = self._make_file_hyperlink(pdf_path)
+                pdf_cell.style = "Hyperlink"
+
+        self._auto_fit_sheet(ws)
+
+    def _write_merge_index_sheet(self, ws, records):
+        headers = [
+            "序号",
+            "合并PDF名",
+            "合并PDF位置",
+            "合并PDF MD5",
+            "源PDF序号",
+            "源PDF名",
+            "源PDF位置",
+            "源PDF MD5",
+            "短ID",
+            "文档位置(页码)",
+            "起始页",
+            "结束页",
+            "页数",
+        ]
+        ws.append(headers)
+        self._style_header_row(ws)
+
+        for idx, rec in enumerate(records, 1):
+            start_page = rec.get("start_page_1based", "")
+            end_page = rec.get("end_page_1based", "")
+            position = f"{start_page}-{end_page}" if start_page and end_page else ""
+
+            ws.append(
+                [
+                    idx,
+                    rec.get("merged_pdf_name", ""),
+                    rec.get("merged_pdf_path", ""),
+                    rec.get("merged_pdf_md5", ""),
+                    rec.get("source_index", ""),
+                    rec.get("source_filename", ""),
+                    rec.get("source_abspath", ""),
+                    rec.get("source_md5", ""),
+                    rec.get("source_short_id", ""),
+                    position,
+                    start_page,
+                    end_page,
+                    rec.get("page_count", ""),
+                ]
+            )
+
+            merged_cell = ws.cell(row=idx + 1, column=3)
+            merged_path = rec.get("merged_pdf_path", "")
+            if merged_path:
+                merged_cell.hyperlink = self._make_file_hyperlink(merged_path)
+                merged_cell.style = "Hyperlink"
+
+            source_cell = ws.cell(row=idx + 1, column=7)
+            source_path = rec.get("source_abspath", "")
+            if source_path:
+                source_cell.hyperlink = self._make_file_hyperlink(source_path)
+                source_cell.style = "Hyperlink"
+
+        self._auto_fit_sheet(ws)
+
+    def _write_conversion_index_workbook(self):
+        if not self.conversion_index_records:
+            return None
+        if not HAS_OPENPYXL:
+            print("\n[提示] 未检测到 openpyxl，无法生成转换索引 Excel。")
+            logging.warning("缺少 openpyxl，无法生成转换索引 Excel。")
+            return None
+
+        timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+        index_path = os.path.join(
+            self.config["target_folder"], f"Convert_Index_{timestamp}.xlsx"
+        )
+        wb = Workbook()
+        ws = wb.active
+        ws.title = "ConvertedPDFs"
+        self._write_conversion_index_sheet(ws, self.conversion_index_records)
+        wb.save(index_path)
+        print(f"\n转换索引已保存: {index_path}")
+        logging.info(f"转换索引已保存: {index_path}")
+        return index_path
 
     def collect_office_files_and_build_excel(self):
         if not HAS_OPENPYXL:
@@ -2340,6 +2624,8 @@ class OfficeConverter:
         # 日志初始化 & 参数总览
         self.setup_logging()
         self.print_runtime_summary()
+        self.conversion_index_records = []
+        self.merge_index_records = []
 
         if self.run_mode == MODE_COLLECT_ONLY:
             self.collect_office_files_and_build_excel()
@@ -2463,6 +2749,12 @@ class OfficeConverter:
 
                     self.close_office_apps()
 
+                if self.run_mode == MODE_CONVERT_ONLY and self.enable_merge_excel:
+                    try:
+                        self._write_conversion_index_workbook()
+                    except Exception as e:
+                        logging.error(f"写入转换索引失败: {e}")
+
             elif self.run_mode == MODE_MERGE_ONLY:
                 print("当前模式为仅合并，跳过转换步骤。")
 
@@ -2531,6 +2823,8 @@ def create_default_config(config_path):
             "merge_mode": MERGE_MODE_CATEGORY,
             "merge_source": "source",
             "temp_sandbox_root": "",
+            "enable_merge_index": False,
+            "enable_merge_excel": False,
             "enable_merge_map": True,
             "bookmark_with_short_id": True,
             "everything": {
