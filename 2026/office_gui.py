@@ -25,9 +25,123 @@ from types import SimpleNamespace
 import tkinter as tk
 from tkinter import filedialog, messagebox, ttk, colorchooser
 from tkinter.constants import *  # Explicitly import standard constants
-import ttkbootstrap as tb
-from ttkbootstrap.constants import *
-from ttkbootstrap.widgets.scrolled import ScrolledText
+try:
+    import ttkbootstrap as tb
+    from ttkbootstrap.constants import *
+    from ttkbootstrap.widgets.scrolled import ScrolledText
+    HAS_TTKBOOTSTRAP = True
+except ModuleNotFoundError:
+    from tkinter.scrolledtext import ScrolledText as _TkScrolledText
+    HAS_TTKBOOTSTRAP = False
+
+    class _FallbackStyle:
+        def __init__(self, theme_name="default"):
+            self._theme_name = theme_name or "default"
+
+        def theme_use(self, theme_name=None):
+            if theme_name is None:
+                return self._theme_name
+            self._theme_name = theme_name
+            return self._theme_name
+
+    class _BootstyleMixin:
+        def __init__(self, *args, **kwargs):
+            kwargs.pop("bootstyle", None)
+            super().__init__(*args, **kwargs)
+
+        def configure(self, cnf=None, **kwargs):
+            kwargs.pop("bootstyle", None)
+            if isinstance(cnf, dict) and "bootstyle" in cnf:
+                cnf = dict(cnf)
+                cnf.pop("bootstyle", None)
+            return super().configure(cnf, **kwargs)
+
+        config = configure
+
+    class _FallbackWindow(tk.Tk):
+        def __init__(self, *args, themename=None, **kwargs):
+            super().__init__(*args, **kwargs)
+            self.style = _FallbackStyle(themename or "default")
+
+    class _FallbackFrame(_BootstyleMixin, ttk.Frame):
+        pass
+
+    class _FallbackLabel(_BootstyleMixin, ttk.Label):
+        pass
+
+    class _FallbackButton(_BootstyleMixin, ttk.Button):
+        pass
+
+    class _FallbackCheckbutton(_BootstyleMixin, ttk.Checkbutton):
+        pass
+
+    class _FallbackProgressbar(_BootstyleMixin, ttk.Progressbar):
+        pass
+
+    class _FallbackPanedwindow(_BootstyleMixin, ttk.PanedWindow):
+        pass
+
+    class _FallbackNotebook(_BootstyleMixin, ttk.Notebook):
+        pass
+
+    class _FallbackScrollbar(_BootstyleMixin, ttk.Scrollbar):
+        pass
+
+    class _FallbackEntry(_BootstyleMixin, ttk.Entry):
+        pass
+
+    class _FallbackLabelframe(_BootstyleMixin, ttk.Labelframe):
+        pass
+
+    class _FallbackRadiobutton(_BootstyleMixin, ttk.Radiobutton):
+        pass
+
+    class _FallbackSeparator(_BootstyleMixin, ttk.Separator):
+        pass
+
+    class _FallbackCombobox(_BootstyleMixin, ttk.Combobox):
+        pass
+
+    class _FallbackDateEntry(_FallbackEntry):
+        def __init__(self, *args, **kwargs):
+            kwargs.pop("dateformat", None)
+            kwargs.pop("firstweekday", None)
+            kwargs.pop("startdate", None)
+            super().__init__(*args, **kwargs)
+            self.entry = self
+
+    class ScrolledText(_TkScrolledText):
+        def __init__(self, *args, **kwargs):
+            kwargs.pop("bootstyle", None)
+            super().__init__(*args, **kwargs)
+            self.text = self
+
+        def configure(self, cnf=None, **kwargs):
+            kwargs.pop("bootstyle", None)
+            if isinstance(cnf, dict) and "bootstyle" in cnf:
+                cnf = dict(cnf)
+                cnf.pop("bootstyle", None)
+            return super().configure(cnf, **kwargs)
+
+        config = configure
+
+    tb = SimpleNamespace(
+        Window=_FallbackWindow,
+        Frame=_FallbackFrame,
+        Label=_FallbackLabel,
+        Button=_FallbackButton,
+        Checkbutton=_FallbackCheckbutton,
+        Progressbar=_FallbackProgressbar,
+        Panedwindow=_FallbackPanedwindow,
+        Notebook=_FallbackNotebook,
+        Scrollbar=_FallbackScrollbar,
+        Entry=_FallbackEntry,
+        Labelframe=_FallbackLabelframe,
+        Radiobutton=_FallbackRadiobutton,
+        Separator=_FallbackSeparator,
+        Combobox=_FallbackCombobox,
+        DateEntry=_FallbackDateEntry,
+    )
 
 import tempfile
 import traceback
@@ -266,6 +380,8 @@ class OfficeGUI(tb.Window):
 
     def __init__(self, config_path=None):
         super().__init__(themename="cosmo")
+        if not HAS_TTKBOOTSTRAP:
+            print("[GUI] ttkbootstrap not found, using tkinter compatibility mode.")
         self.current_lang = "zh"  # Default language
         self.title(f"{self.tr('title')} v{__version__}")
         self.geometry("1100x760")
@@ -547,7 +663,40 @@ class OfficeGUI(tb.Window):
         def on_canvas_configure(e):
             canvas.itemconfig(win_id, width=e.width)
 
+        def _calc_wheel_step(event):
+            # Windows uses delta in multiples of 120; macOS often uses small deltas.
+            if hasattr(event, "delta") and event.delta:
+                if sys.platform == "darwin":
+                    return -1 if event.delta > 0 else 1
+                return int(-event.delta / 120) or (-1 if event.delta > 0 else 1)
+            if getattr(event, "num", None) == 4:
+                return -1
+            if getattr(event, "num", None) == 5:
+                return 1
+            return 0
+
+        def _on_mousewheel(event):
+            step = _calc_wheel_step(event)
+            if step:
+                canvas.yview_scroll(step, "units")
+                return "break"
+            return None
+
+        def _bind_mousewheel(_event=None):
+            canvas.bind_all("<MouseWheel>", _on_mousewheel, add="+")
+            canvas.bind_all("<Button-4>", _on_mousewheel, add="+")
+            canvas.bind_all("<Button-5>", _on_mousewheel, add="+")
+
+        def _unbind_mousewheel(_event=None):
+            canvas.unbind_all("<MouseWheel>")
+            canvas.unbind_all("<Button-4>")
+            canvas.unbind_all("<Button-5>")
+
         canvas.bind("<Configure>", on_canvas_configure)
+        canvas.bind("<Enter>", _bind_mousewheel, add="+")
+        canvas.bind("<Leave>", _unbind_mousewheel, add="+")
+        content.bind("<Enter>", _bind_mousewheel, add="+")
+        content.bind("<Leave>", _unbind_mousewheel, add="+")
         canvas.configure(yscrollcommand=scrollbar.set)
         canvas.pack(side=LEFT, fill=BOTH, expand=YES)
         scrollbar.pack(side=RIGHT, fill=Y)
@@ -614,7 +763,23 @@ class OfficeGUI(tb.Window):
         grid_frame.columnconfigure(0, weight=1)
         grid_frame.columnconfigure(1, weight=1)
 
-        self.frm_collect_opts = tb.Frame(lf_mode, padding=(10, 5))
+        self.run_cfg_tabs = tb.Notebook(parent)
+        self.run_cfg_tabs.pack(fill=X, pady=5)
+        self.tab_run_shared = tb.Frame(self.run_cfg_tabs)
+        self.tab_run_convert = tb.Frame(self.run_cfg_tabs)
+        self.tab_run_merge = tb.Frame(self.run_cfg_tabs)
+        self.tab_run_collect = tb.Frame(self.run_cfg_tabs)
+        self.tab_run_locator = tb.Frame(self.run_cfg_tabs)
+        self.run_cfg_tabs.add(self.tab_run_shared, text=self.tr("grp_shared_runtime"))
+        self.run_cfg_tabs.add(self.tab_run_convert, text=self.tr("grp_convert_runtime"))
+        self.run_cfg_tabs.add(self.tab_run_merge, text=self.tr("grp_merge_runtime"))
+        self.run_cfg_tabs.add(self.tab_run_collect, text=self.tr("grp_collect_runtime"))
+        self.run_cfg_tabs.add(self.tab_run_locator, text=self.tr("grp_locator_tools"))
+
+        lf_collect = tb.Labelframe(self.tab_run_collect, text=self.tr("grp_collect_runtime"), padding=10)
+        lf_collect.pack(fill=X, pady=5)
+        tb.Label(lf_collect, text=self.tr("lbl_collect_mode"), font=("System", 9, "bold")).pack(anchor="w")
+        self.frm_collect_opts = tb.Frame(lf_collect, padding=(10, 5))
         self.frm_collect_opts.pack(fill=X)
         self.var_collect_mode = tk.StringVar(value=COLLECT_MODE_COPY_AND_INDEX)
         tb.Radiobutton(
@@ -627,7 +792,7 @@ class OfficeGUI(tb.Window):
         ).pack(anchor="w")
 
         # Section 2: paths (runtime only)
-        lf_paths = tb.Labelframe(parent, text=self.tr("sec_paths"), padding=10)
+        lf_paths = tb.Labelframe(self.tab_run_shared, text=self.tr("grp_shared_runtime"), padding=10)
         lf_paths.pack(fill=X, pady=5)
         self._add_section_help(lf_paths, "tip_section_run_paths")
 
@@ -668,11 +833,13 @@ class OfficeGUI(tb.Window):
         self.var_target_folder = tk.StringVar()
         self._create_path_row(lf_paths, "lbl_target", self.var_target_folder, self.browse_target, self.open_target_folder)
 
-        # Section 3: execution options
-        lf_settings = tb.Labelframe(parent, text=self.tr("sec_advanced"), padding=10)
+        # Section 3: feature-specific runtime options
+        lf_settings = tb.Labelframe(self.tab_run_convert, text=self.tr("grp_convert_runtime"), padding=10)
         lf_settings.pack(fill=X, pady=5)
         self._add_section_help(lf_settings, "tip_section_run_advanced")
-        self.group_exec = tb.Frame(lf_settings)
+        lf_convert_runtime = tb.Labelframe(lf_settings, text=self.tr("grp_convert_runtime"), padding=8)
+        lf_convert_runtime.pack(fill=X, pady=(2, 6))
+        self.group_exec = tb.Frame(lf_convert_runtime)
         self.group_exec.pack(fill=X, pady=5)
         tb.Label(self.group_exec, text=self.tr("lbl_engine"), bootstyle="primary").pack(anchor="w")
         self.var_engine = tk.StringVar(value=ENGINE_WPS)
@@ -695,13 +862,16 @@ class OfficeGUI(tb.Window):
         self.btn_temp_sandbox_root.pack(side=LEFT, padx=2)
         self._attach_tooltip(self.btn_temp_sandbox_root, "tip_choose_temp")
 
-        tb.Separator(lf_settings).pack(fill=X, pady=10)
-        self.lbl_merge = tb.Label(lf_settings, text=self.tr("lbl_merge_logic"), bootstyle="primary")
+        lf_merge_runtime = tb.Labelframe(self.tab_run_merge, text=self.tr("grp_merge_runtime"), padding=8)
+        lf_merge_runtime.pack(fill=X, pady=(2, 0))
+        self.lbl_merge = tb.Label(lf_merge_runtime, text=self.tr("lbl_merge_logic"), bootstyle="primary")
         self.lbl_merge.pack(anchor="w")
         self.var_enable_merge = tk.IntVar(value=1)
-        self.chk_enable_merge = tb.Checkbutton(lf_settings, text="Enable Merge", variable=self.var_enable_merge, bootstyle="square-toggle")
+        self.chk_enable_merge = tb.Checkbutton(
+            lf_merge_runtime, text="Enable Merge", variable=self.var_enable_merge, bootstyle="square-toggle"
+        )
         self.chk_enable_merge.pack(anchor="w")
-        self.frm_merge_opts = tb.Frame(lf_settings, padding=(20, 0))
+        self.frm_merge_opts = tb.Frame(lf_merge_runtime, padding=(20, 0))
         self.frm_merge_opts.pack(fill=X)
         self.var_merge_mode = tk.StringVar(value=MERGE_MODE_CATEGORY)
         tb.Radiobutton(self.frm_merge_opts, text=self.tr("rad_category"), variable=self.var_merge_mode, value=MERGE_MODE_CATEGORY).pack(anchor="w")
@@ -722,15 +892,17 @@ class OfficeGUI(tb.Window):
         tb.Radiobutton(frm_m_src, text=self.tr("rad_src_dir"), variable=self.var_merge_source, value="source").pack(side=LEFT)
         tb.Radiobutton(frm_m_src, text=self.tr("rad_tgt_dir"), variable=self.var_merge_source, value="target").pack(side=LEFT, padx=10)
 
-        # Section 4: strategy + date filter
-        lf_extra = tb.Labelframe(parent, text=self.tr("sec_filters"), padding=10)
+        # Section 4: conversion strategy + date filter
+        lf_extra = tb.Labelframe(lf_convert_runtime, text=self.tr("sec_filters"), padding=10)
         lf_extra.pack(fill=X, pady=5)
         self._add_section_help(lf_extra, "tip_section_run_filters")
         self.lbl_strategy = tb.Label(lf_extra, text=self.tr("lbl_strategy"))
         self.lbl_strategy.pack(anchor="w")
         self.var_strategy = tk.StringVar(value="standard")
-        cb_strat = tb.Combobox(lf_extra, textvariable=self.var_strategy, values=["standard", "smart_tag", "price_only"], state="readonly")
-        cb_strat.pack(fill=X, pady=(0, 5))
+        self.cb_strat = tb.Combobox(
+            lf_extra, textvariable=self.var_strategy, values=["standard", "smart_tag", "price_only"], state="readonly"
+        )
+        self.cb_strat.pack(fill=X, pady=(0, 5))
         self.var_enable_date_filter = tk.IntVar(value=0)
         self.chk_date_filter = tb.Checkbutton(lf_extra, text=self.tr("lbl_filter_date"), variable=self.var_enable_date_filter, command=self._on_toggle_date_filter)
         self.chk_date_filter.pack(anchor="w", pady=(5, 0))
@@ -754,7 +926,7 @@ class OfficeGUI(tb.Window):
         self.rb_filter_before.pack(side=LEFT, padx=10)
 
         # Section 5: NotebookLM locator (runtime)
-        lf_locator = tb.Labelframe(parent, text=self.tr("sec_locator"), padding=10)
+        lf_locator = tb.Labelframe(self.tab_run_locator, text=self.tr("sec_locator"), padding=10)
         lf_locator.pack(fill=X, pady=5)
         self._add_section_help(lf_locator, "tip_section_run_locator")
         tb.Label(lf_locator, text=self.tr("lbl_locator_merged")).pack(anchor="w")
@@ -801,12 +973,13 @@ class OfficeGUI(tb.Window):
         self.last_locate_record = None
         self._set_locator_action_state(False)
         self._auto_attach_action_tooltips(lf_mode)
+        self._auto_attach_action_tooltips(lf_collect)
         self._auto_attach_action_tooltips(lf_paths)
         self._auto_attach_action_tooltips(lf_settings)
         self._auto_attach_action_tooltips(lf_extra)
         self._auto_attach_action_tooltips(lf_locator)
         self._attach_tooltip(self.entry_temp_sandbox_root, "tip_input_sandbox_root")
-        self._attach_tooltip(cb_strat, "tip_input_strategy")
+        self._attach_tooltip(self.cb_strat, "tip_input_strategy")
         self._attach_tooltip(self.ent_date, "tip_input_date")
         self._bind_var_validation(self.var_locator_page, lambda: self._normalize_then_validate(self.var_locator_page, self._normalize_numeric_var, "locator"))
         self._bind_var_validation(self.var_locator_short_id, lambda: self._normalize_then_validate(self.var_locator_short_id, self._normalize_short_id_var, "locator"))
@@ -814,26 +987,39 @@ class OfficeGUI(tb.Window):
         self._bind_var_validation(self.var_enable_date_filter, lambda: self.validate_runtime_inputs(silent=False, scope="run"))
 
     def _build_config_tab_content(self, parent):
+        self.cfg_tabs = tb.Notebook(parent)
+        self.cfg_tabs.pack(fill=X, pady=5)
+        self.tab_cfg_shared = tb.Frame(self.cfg_tabs)
+        self.tab_cfg_convert = tb.Frame(self.cfg_tabs)
+        self.tab_cfg_merge = tb.Frame(self.cfg_tabs)
+        self.tab_cfg_ui = tb.Frame(self.cfg_tabs)
+        self.tab_cfg_rules = tb.Frame(self.cfg_tabs)
+        self.cfg_tabs.add(self.tab_cfg_shared, text=self.tr("grp_cfg_shared"))
+        self.cfg_tabs.add(self.tab_cfg_convert, text=self.tr("grp_cfg_convert"))
+        self.cfg_tabs.add(self.tab_cfg_merge, text=self.tr("grp_cfg_merge"))
+        self.cfg_tabs.add(self.tab_cfg_ui, text=self.tr("grp_cfg_ui"))
+        self.cfg_tabs.add(self.tab_cfg_rules, text=self.tr("grp_cfg_rules"))
+
         # Config path and log path
-        lf_cfg_path = tb.Labelframe(parent, text=self.tr("sec_paths"), padding=10)
+        lf_cfg_path = tb.Labelframe(self.tab_cfg_shared, text=self.tr("sec_paths"), padding=10)
         lf_cfg_path.pack(fill=X, pady=5)
         self._add_section_help(lf_cfg_path, "tip_section_cfg_paths")
         self.var_config_path = tk.StringVar(value=self.config_path)
         self._create_path_row(lf_cfg_path, "lbl_config", self.var_config_path, self.open_config_folder, None)
 
         # Process & limits (persistent defaults)
-        lf_proc = tb.Labelframe(parent, text=self.tr("sec_process"), padding=10)
-        lf_proc.pack(fill=X, pady=5)
-        self._add_section_help(lf_proc, "tip_section_cfg_process")
-        tb.Label(lf_proc, text=self.tr("lbl_kill_mode"), font=("System", 9)).pack(anchor="w")
+        lf_proc_shared = tb.Labelframe(self.tab_cfg_shared, text=self.tr("grp_cfg_shared"), padding=10)
+        lf_proc_shared.pack(fill=X, pady=5)
+        self._add_section_help(lf_proc_shared, "tip_section_cfg_process")
+        tb.Label(lf_proc_shared, text=self.tr("lbl_kill_mode"), font=("System", 9)).pack(anchor="w")
         self.var_kill_mode = tk.StringVar(value=KILL_MODE_AUTO)
-        frm_kill = tb.Frame(lf_proc)
+        frm_kill = tb.Frame(lf_proc_shared)
         frm_kill.pack(fill=X)
         tb.Radiobutton(frm_kill, text=self.tr("rad_auto_kill"), variable=self.var_kill_mode, value=KILL_MODE_AUTO).pack(side=LEFT)
         tb.Radiobutton(frm_kill, text=self.tr("rad_keep_running"), variable=self.var_kill_mode, value=KILL_MODE_KEEP).pack(side=LEFT, padx=10)
 
-        tb.Label(lf_proc, text=self.tr("lbl_log_folder"), font=("System", 9)).pack(anchor="w", pady=(5, 0))
-        frm_log = tb.Frame(lf_proc)
+        tb.Label(lf_proc_shared, text=self.tr("lbl_log_folder"), font=("System", 9)).pack(anchor="w", pady=(5, 0))
+        frm_log = tb.Frame(lf_proc_shared)
         frm_log.pack(fill=X)
         self.var_log_folder = tk.StringVar(value="./logs")
         self.ent_log_folder = tb.Entry(frm_log, textvariable=self.var_log_folder)
@@ -843,7 +1029,10 @@ class OfficeGUI(tb.Window):
         self.btn_log_folder.pack(side=LEFT, padx=2)
         self._attach_tooltip(self.btn_log_folder, "tip_choose_log")
 
-        frm_time = tb.Frame(lf_proc)
+        lf_proc_convert = tb.Labelframe(self.tab_cfg_convert, text=self.tr("grp_cfg_convert"), padding=10)
+        lf_proc_convert.pack(fill=X, pady=5)
+        self._add_section_help(lf_proc_convert, "tip_section_cfg_process")
+        frm_time = tb.Frame(lf_proc_convert)
         frm_time.pack(fill=X, pady=5)
         self.var_timeout_seconds = tk.StringVar(value="60")
         tb.Label(frm_time, text=self.tr("lbl_gen_timeout")).grid(row=0, column=0, sticky="e")
@@ -865,15 +1054,23 @@ class OfficeGUI(tb.Window):
         self.ent_ppt_pdf_wait_seconds = tb.Entry(frm_time, textvariable=self.var_ppt_pdf_wait_seconds, width=5)
         self.ent_ppt_pdf_wait_seconds.grid(row=1, column=3, sticky="w", padx=5)
         self._attach_tooltip(self.ent_ppt_pdf_wait_seconds, "tip_input_ppt_pdf_wait_seconds")
+
+        lf_proc_merge = tb.Labelframe(self.tab_cfg_merge, text=self.tr("grp_cfg_merge"), padding=10)
+        lf_proc_merge.pack(fill=X, pady=5)
+        self._add_section_help(lf_proc_merge, "tip_section_cfg_process")
         self.var_max_merge_size_mb = tk.StringVar(value="80")
-        tb.Label(frm_time, text=self.tr("lbl_max_mb")).grid(row=2, column=0, sticky="e")
-        self.ent_max_merge_size_mb = tb.Entry(frm_time, textvariable=self.var_max_merge_size_mb, width=5)
-        self.ent_max_merge_size_mb.grid(row=2, column=1, sticky="w", padx=5)
+        frm_merge_cfg = tb.Frame(lf_proc_merge)
+        frm_merge_cfg.pack(fill=X, pady=(4, 0))
+        tb.Label(frm_merge_cfg, text=self.tr("lbl_max_mb")).pack(side=LEFT)
+        self.ent_max_merge_size_mb = tb.Entry(frm_merge_cfg, textvariable=self.var_max_merge_size_mb, width=5)
+        self.ent_max_merge_size_mb.pack(side=LEFT, padx=(5, 0))
         self._attach_tooltip(self.ent_max_merge_size_mb, "tip_input_max_merge_size_mb")
 
-        tb.Separator(lf_proc).pack(fill=X, pady=6)
-        tb.Label(lf_proc, text=self.tr("lbl_tooltip_cfg"), font=("System", 9, "bold")).pack(anchor="w")
-        frm_tip = tb.Frame(lf_proc)
+        lf_proc_ui = tb.Labelframe(self.tab_cfg_ui, text=self.tr("grp_cfg_ui"), padding=10)
+        lf_proc_ui.pack(fill=X, pady=5)
+        self._add_section_help(lf_proc_ui, "tip_section_cfg_process")
+        tb.Label(lf_proc_ui, text=self.tr("lbl_tooltip_cfg"), font=("System", 9, "bold")).pack(anchor="w")
+        frm_tip = tb.Frame(lf_proc_ui)
         frm_tip.pack(fill=X, pady=(4, 0))
         self.var_tooltip_auto_theme = tk.IntVar(value=1)
         self.chk_tooltip_auto_theme = tb.Checkbutton(frm_tip, text=self.tr("chk_tooltip_auto_theme"), variable=self.var_tooltip_auto_theme)
@@ -916,7 +1113,7 @@ class OfficeGUI(tb.Window):
             v.trace_add("write", lambda *_: self.validate_tooltip_inputs(silent=True))
 
         # Exclude/keyword defaults
-        lf_lists = tb.Labelframe(parent, text=self.tr("sec_lists"), padding=10)
+        lf_lists = tb.Labelframe(self.tab_cfg_rules, text=self.tr("grp_cfg_rules"), padding=10)
         lf_lists.pack(fill=X, pady=5)
         self._add_section_help(lf_lists, "tip_section_cfg_lists")
         tb.Label(lf_lists, text=self.tr("lbl_excluded")).pack(anchor="w")
@@ -929,17 +1126,29 @@ class OfficeGUI(tb.Window):
         # Emphasized save in config tab
         cfg_actions = tb.Frame(parent)
         cfg_actions.pack(fill=X, pady=(8, 12))
+        self.btn_save_cfg_mode_tab = tb.Button(
+            cfg_actions,
+            text=self.tr("btn_save_cfg_mode"),
+            command=lambda: self._save_settings_to_file(scope="mode"),
+            bootstyle="success-outline",
+            width=16,
+        )
+        self.btn_save_cfg_mode_tab.pack(side=LEFT)
+        self._attach_tooltip(self.btn_save_cfg_mode_tab, "tip_save_config_mode")
         self.btn_save_cfg_tab = tb.Button(
             cfg_actions,
-            text=self.tr("btn_save_cfg"),
+            text=self.tr("btn_save_cfg_all"),
             command=self._save_settings_to_file,
             bootstyle="success",
-            width=20,
+            width=14,
         )
-        self.btn_save_cfg_tab.pack(side=LEFT)
-        self._attach_tooltip(self.btn_save_cfg_tab, "tip_save_config")
+        self.btn_save_cfg_tab.pack(side=LEFT, padx=(8, 0))
+        self._attach_tooltip(self.btn_save_cfg_tab, "tip_save_config_all")
         self._auto_attach_action_tooltips(lf_cfg_path)
-        self._auto_attach_action_tooltips(lf_proc)
+        self._auto_attach_action_tooltips(lf_proc_shared)
+        self._auto_attach_action_tooltips(lf_proc_convert)
+        self._auto_attach_action_tooltips(lf_proc_merge)
+        self._auto_attach_action_tooltips(lf_proc_ui)
         self._auto_attach_action_tooltips(lf_lists)
         self._auto_attach_action_tooltips(cfg_actions)
         self._attach_tooltip(self.txt_excluded_folders, "tip_input_excluded_folders")
@@ -966,19 +1175,33 @@ class OfficeGUI(tb.Window):
         self.btn_toggle_logs.grid(row=0, column=2, padx=5)
         self._attach_tooltip(self.btn_toggle_logs, "tip_toggle_logs")
 
-        # Save
-        self.btn_save_cfg = tb.Button(parent, text=self.tr("btn_save_cfg"), command=self._save_settings_to_file, bootstyle="secondary-outline")
-        self.btn_save_cfg.grid(row=0, column=3, padx=5)
-        self._attach_tooltip(self.btn_save_cfg, "tip_save_config")
-        
+        # Save (mode scoped + all)
+        self.btn_save_cfg_mode = tb.Button(
+            parent,
+            text=self.tr("btn_save_cfg_mode"),
+            command=lambda: self._save_settings_to_file(scope="mode"),
+            bootstyle="secondary-outline",
+        )
+        self.btn_save_cfg_mode.grid(row=0, column=3, padx=5)
+        self._attach_tooltip(self.btn_save_cfg_mode, "tip_save_config_mode")
+
+        self.btn_save_cfg = tb.Button(
+            parent,
+            text=self.tr("btn_save_cfg_all"),
+            command=self._save_settings_to_file,
+            bootstyle="secondary-outline",
+        )
+        self.btn_save_cfg.grid(row=0, column=4, padx=5)
+        self._attach_tooltip(self.btn_save_cfg, "tip_save_config_all")
+
         # Start
         self.btn_start = tb.Button(parent, text=self.tr("btn_start"), command=self._on_click_start, bootstyle="success", width=20)
-        self.btn_start.grid(row=0, column=4, padx=5)
+        self.btn_start.grid(row=0, column=5, padx=5)
         self._attach_tooltip(self.btn_start, "tip_start_task")
-        
+
         # Stop
         self.btn_stop = tb.Button(parent, text=self.tr("btn_stop"), command=self._on_click_stop, bootstyle="danger-outline", state="disabled")
-        self.btn_stop.grid(row=0, column=5, padx=5)
+        self.btn_stop.grid(row=0, column=6, padx=5)
         self._attach_tooltip(self.btn_stop, "tip_stop_task")
         self._auto_attach_action_tooltips(parent)
 
@@ -991,34 +1214,111 @@ class OfficeGUI(tb.Window):
 
     # ===================== UI 联动更新 (Adapt for new structure) =====================
 
+    def _set_widget_tree_state(self, root, state):
+        for child in root.winfo_children():
+            try:
+                child.configure(state=state)
+            except Exception:
+                pass
+            self._set_widget_tree_state(child, state)
+
+    def _set_run_tab_state(self, tab, state):
+        try:
+            self.run_cfg_tabs.tab(tab, state=state)
+        except Exception:
+            pass
+
+    def _set_cfg_tab_state(self, tab, state):
+        try:
+            self.cfg_tabs.tab(tab, state=state)
+        except Exception:
+            pass
+
     def _on_run_mode_change(self):
         mode = self.var_run_mode.get()
         is_collect = mode == MODE_COLLECT_ONLY
         is_convert = mode in (MODE_CONVERT_ONLY, MODE_CONVERT_THEN_MERGE)
         is_merge_related = mode in (MODE_CONVERT_THEN_MERGE, MODE_MERGE_ONLY)
+        is_rules_related = is_convert or is_collect
+
+        # Enable only tabs relevant to the current mode.
+        self._set_run_tab_state(self.tab_run_shared, "normal")
+        self._set_run_tab_state(self.tab_run_locator, "normal")
+        self._set_run_tab_state(self.tab_run_convert, "normal" if is_convert else "disabled")
+        self._set_run_tab_state(self.tab_run_merge, "normal" if is_merge_related else "disabled")
+        self._set_run_tab_state(self.tab_run_collect, "normal" if is_collect else "disabled")
+
+        # Config tabs follow the same mode focus to reduce confusion.
+        self._set_cfg_tab_state(self.tab_cfg_shared, "normal")
+        self._set_cfg_tab_state(self.tab_cfg_ui, "normal")
+        self._set_cfg_tab_state(self.tab_cfg_convert, "normal" if is_convert else "disabled")
+        self._set_cfg_tab_state(self.tab_cfg_merge, "normal" if is_merge_related else "disabled")
+        self._set_cfg_tab_state(self.tab_cfg_rules, "normal" if is_rules_related else "disabled")
 
         # Collect options
         if is_collect:
-             for child in self.frm_collect_opts.winfo_children(): child.configure(state="normal")
+             self._set_widget_tree_state(self.frm_collect_opts, "normal")
         else:
-             for child in self.frm_collect_opts.winfo_children(): child.configure(state="disabled")
+             self._set_widget_tree_state(self.frm_collect_opts, "disabled")
+
+        # Focus corresponding runtime tab by selected mode.
+        try:
+            if is_collect:
+                self.run_cfg_tabs.select(self.tab_run_collect)
+            elif mode == MODE_MERGE_ONLY:
+                self.run_cfg_tabs.select(self.tab_run_merge)
+            else:
+                self.run_cfg_tabs.select(self.tab_run_convert)
+        except Exception:
+            pass
+
+        try:
+            if is_collect:
+                self.cfg_tabs.select(self.tab_cfg_rules)
+            elif mode == MODE_MERGE_ONLY:
+                self.cfg_tabs.select(self.tab_cfg_merge)
+            else:
+                self.cfg_tabs.select(self.tab_cfg_convert)
+        except Exception:
+            pass
 
         # Engine & Sandbox (Enable only if converting)
-        state_exec = "normal" if not (is_collect or mode == MODE_MERGE_ONLY) else "disabled"
-        for child in self.group_exec.winfo_children():
-            try: child.configure(state=state_exec)
-            except: pass
-        
+        state_exec = "normal" if is_convert else "disabled"
+        self._set_widget_tree_state(self.group_exec, state_exec)
+
+        # Convert-only strategy controls
+        try:
+            self.lbl_strategy.configure(state=state_exec)
+        except Exception:
+            pass
+        try:
+            self.cb_strat.configure(state="readonly" if is_convert else "disabled")
+        except Exception:
+            pass
+        try:
+            self.chk_date_filter.configure(state=state_exec)
+        except Exception:
+            pass
+
         # Trigger sandbox toggle to refresh sub-widgets
         self._on_toggle_sandbox()
+
+        if not is_convert:
+            for child in self.frm_date.winfo_children():
+                try: child.configure(state="disabled")
+                except: pass
+            try:
+                self.ent_date.configure(state="disabled")
+            except Exception:
+                pass
+        else:
+            self._on_toggle_date_filter()
 
         # Merge Options
         state_merge = "normal" if is_merge_related else "disabled"
         self.lbl_merge.configure(state=state_merge)
         self.chk_enable_merge.configure(state=state_merge)
-        for child in self.frm_merge_opts.winfo_children():
-             try: child.configure(state=state_merge)
-             except: pass
+        self._set_widget_tree_state(self.frm_merge_opts, state_merge)
 
     def _on_toggle_date_filter(self):
         enabled = bool(self.var_enable_date_filter.get())
@@ -1647,13 +1947,36 @@ class OfficeGUI(tb.Window):
         self.validate_tooltip_inputs(silent=True)
 
         # 运行参数
-        # 运行参数
-        src_list = cfg.get("source_folders", [])
-        if not src_list:
-             # Backward compatibility
-             single = cfg.get("source_folder", "")
-             if single:
-                 src_list = [single]
+        
+        is_win = (sys.platform == "win32")
+        is_mac = (sys.platform == "darwin")
+        
+        def _get_os_path(key_base):
+            if is_win:
+                val = cfg.get(f"{key_base}_win")
+            elif is_mac:
+                val = cfg.get(f"{key_base}_mac")
+            else:
+                val = None
+            if not val:
+                 val = cfg.get(key_base)
+            return val
+            
+        src_val = _get_os_path("source_folder")
+        src_list_raw = _get_os_path("source_folders") # Assume list if present
+        
+        src_list = []
+        if src_list_raw and isinstance(src_list_raw, list):
+             src_list = src_list_raw
+        elif src_val:
+             src_list = [src_val]
+        else:
+             # Fallback to generic if OS specific failed
+             src_list = cfg.get("source_folders", [])
+             if not src_list:
+                  single = cfg.get("source_folder", "")
+                  if single:
+                      src_list = [single]
         
         self.source_folders_list = src_list
         self.lst_source_folders.delete(0, END)
@@ -1664,9 +1987,10 @@ class OfficeGUI(tb.Window):
             self.var_source_folder.set(self.source_folders_list[0])
         else:
             self.var_source_folder.set("")
-        self.var_target_folder.set(cfg.get("target_folder", ""))
+            
+        self.var_target_folder.set(_get_os_path("target_folder") or "")
         self.var_enable_sandbox.set(1 if cfg.get("enable_sandbox", True) else 0)
-        self.var_temp_sandbox_root.set(cfg.get("temp_sandbox_root", ""))
+        self.var_temp_sandbox_root.set(_get_os_path("temp_sandbox_root") or "")
 
         self.var_enable_merge.set(1 if cfg.get("enable_merge", True) else 0)
         self.var_merge_mode.set(cfg.get("merge_mode", MERGE_MODE_CATEGORY))
@@ -1722,7 +2046,7 @@ class OfficeGUI(tb.Window):
         self._normalize_date_var(self.var_date_str)
         self.validate_runtime_inputs(silent=True, scope="all")
 
-    def _save_settings_to_file(self, show_msg=True):
+    def _save_settings_to_file(self, show_msg=True, scope="all"):
         """保存当前 UI 参数到 config.json（作为默认值）"""
         cfg = {}
         if os.path.exists(self.config_path):
@@ -1732,38 +2056,72 @@ class OfficeGUI(tb.Window):
             except Exception:
                 cfg = {}
 
+        scope = "mode" if str(scope).lower() == "mode" else "all"
+        mode = self.var_run_mode.get()
+        write_convert = scope == "all" or mode in (MODE_CONVERT_ONLY, MODE_CONVERT_THEN_MERGE)
+        write_merge = scope == "all" or mode in (MODE_CONVERT_THEN_MERGE, MODE_MERGE_ONLY)
+        write_collect = scope == "all" or mode == MODE_COLLECT_ONLY
+        write_rules = scope == "all" or mode in (
+            MODE_CONVERT_ONLY,
+            MODE_CONVERT_THEN_MERGE,
+            MODE_COLLECT_ONLY,
+        )
+
         # 运行参数
+        # 运行参数
+        is_win = (sys.platform == "win32")
+        is_mac = (sys.platform == "darwin")
+
+        # Preserve existing keys for other OS
+        if is_win:
+             cfg["source_folders_win"] = self.source_folders_list
+             cfg["source_folder_win"] = self.source_folders_list[0] if self.source_folders_list else ""
+             cfg["target_folder_win"] = self.var_target_folder.get().strip()
+             cfg["temp_sandbox_root_win"] = self.var_temp_sandbox_root.get().strip()
+        elif is_mac:
+             cfg["source_folders_mac"] = self.source_folders_list
+             cfg["source_folder_mac"] = self.source_folders_list[0] if self.source_folders_list else ""
+             cfg["target_folder_mac"] = self.var_target_folder.get().strip()
+             cfg["temp_sandbox_root_mac"] = self.var_temp_sandbox_root.get().strip()
+             
+        # Also update generic keys as fallback/current
         cfg["source_folders"] = self.source_folders_list
         cfg["source_folder"] = self.source_folders_list[0] if self.source_folders_list else ""
         cfg["target_folder"] = self.var_target_folder.get().strip()
-        cfg["enable_sandbox"] = bool(self.var_enable_sandbox.get())
-        cfg["temp_sandbox_root"] = self.var_temp_sandbox_root.get().strip()
+        if write_convert:
+            cfg["enable_sandbox"] = bool(self.var_enable_sandbox.get())
+            cfg["temp_sandbox_root"] = self.var_temp_sandbox_root.get().strip()
 
-        cfg["enable_merge"] = bool(self.var_enable_merge.get())
-        cfg["merge_mode"] = self.var_merge_mode.get()
-        cfg["merge_source"] = self.var_merge_source.get()
-        cfg["enable_merge_index"] = bool(self.var_enable_merge_index.get())
-        cfg["enable_merge_excel"] = bool(self.var_enable_merge_excel.get())
+        if write_merge:
+            cfg["enable_merge"] = bool(self.var_enable_merge.get())
+            cfg["merge_mode"] = self.var_merge_mode.get()
+            cfg["merge_source"] = self.var_merge_source.get()
+            cfg["enable_merge_index"] = bool(self.var_enable_merge_index.get())
+            cfg["enable_merge_excel"] = bool(self.var_enable_merge_excel.get())
 
         cfg["run_mode"] = self.var_run_mode.get()
-        cfg["collect_mode"] = self.var_collect_mode.get()
-        cfg["content_strategy"] = self.var_strategy.get()
+        if write_collect:
+            cfg["collect_mode"] = self.var_collect_mode.get()
+        if write_convert:
+            cfg["content_strategy"] = self.var_strategy.get()
 
-        cfg["default_engine"] = self.var_engine.get()
+        if write_convert:
+            cfg["default_engine"] = self.var_engine.get()
         cfg["kill_process_mode"] = self.var_kill_mode.get()
 
         # 配置管理页
         cfg["log_folder"] = self.var_log_folder.get().strip() or "./logs"
 
-        excluded_text = self.txt_excluded_folders.get("1.0", "end").strip()
-        excluded_list = [
-            line.strip() for line in excluded_text.splitlines() if line.strip()
-        ]
-        cfg["excluded_folders"] = excluded_list
+        if write_rules:
+            excluded_text = self.txt_excluded_folders.get("1.0", "end").strip()
+            excluded_list = [
+                line.strip() for line in excluded_text.splitlines() if line.strip()
+            ]
+            cfg["excluded_folders"] = excluded_list
 
-        kw_text = self.txt_price_keywords.get("1.0", "end").strip()
-        kw_list = [line.strip() for line in kw_text.splitlines() if line.strip()]
-        cfg["price_keywords"] = kw_list
+            kw_text = self.txt_price_keywords.get("1.0", "end").strip()
+            kw_list = [line.strip() for line in kw_text.splitlines() if line.strip()]
+            cfg["price_keywords"] = kw_list
 
         def _to_int(var, default):
             try:
@@ -1772,11 +2130,13 @@ class OfficeGUI(tb.Window):
             except Exception:
                 return default
 
-        cfg["timeout_seconds"] = _to_int(self.var_timeout_seconds, 60)
-        cfg["pdf_wait_seconds"] = _to_int(self.var_pdf_wait_seconds, 15)
-        cfg["ppt_timeout_seconds"] = _to_int(self.var_ppt_timeout_seconds, 180)
-        cfg["ppt_pdf_wait_seconds"] = _to_int(self.var_ppt_pdf_wait_seconds, 30)
-        cfg["max_merge_size_mb"] = _to_int(self.var_max_merge_size_mb, 80)
+        if write_convert:
+            cfg["timeout_seconds"] = _to_int(self.var_timeout_seconds, 60)
+            cfg["pdf_wait_seconds"] = _to_int(self.var_pdf_wait_seconds, 15)
+            cfg["ppt_timeout_seconds"] = _to_int(self.var_ppt_timeout_seconds, 180)
+            cfg["ppt_pdf_wait_seconds"] = _to_int(self.var_ppt_pdf_wait_seconds, 30)
+        if write_merge:
+            cfg["max_merge_size_mb"] = _to_int(self.var_max_merge_size_mb, 80)
         cfg["enable_merge_map"] = cfg.get("enable_merge_map", True)
         cfg["bookmark_with_short_id"] = cfg.get("bookmark_with_short_id", True)
         cfg["everything"] = cfg.get(
@@ -1810,10 +2170,12 @@ class OfficeGUI(tb.Window):
             with open(self.config_path, "w", encoding="utf-8") as f:
                 json.dump(cfg, f, indent=4, ensure_ascii=False)
             if show_msg:
-                messagebox.showinfo(self.tr("btn_save_cfg"), self.tr("msg_save_ok"))
+                title_key = "btn_save_cfg_mode" if scope == "mode" else "btn_save_cfg_all"
+                messagebox.showinfo(self.tr(title_key), self.tr("msg_save_ok"))
         except Exception as e:
             if show_msg:
-                messagebox.showerror(self.tr("btn_save_cfg"), self.tr("msg_save_fail").format(e))
+                title_key = "btn_save_cfg_mode" if scope == "mode" else "btn_save_cfg_all"
+                messagebox.showerror(self.tr(title_key), self.tr("msg_save_fail").format(e))
 
     # ===================== 日志 & 状态 =====================
 
@@ -1832,7 +2194,9 @@ class OfficeGUI(tb.Window):
             if hasattr(self, "btn_start"): self.btn_start.configure(state="disabled")
             if hasattr(self, "btn_stop"): self.btn_stop.configure(state="normal")
             if hasattr(self, "btn_save_cfg"): self.btn_save_cfg.configure(state="disabled")
+            if hasattr(self, "btn_save_cfg_mode"): self.btn_save_cfg_mode.configure(state="disabled")
             if hasattr(self, "btn_save_cfg_tab"): self.btn_save_cfg_tab.configure(state="disabled")
+            if hasattr(self, "btn_save_cfg_mode_tab"): self.btn_save_cfg_mode_tab.configure(state="disabled")
             self.progress["mode"] = "determinate"
             self.progress["value"] = 0
             self.var_status.set(self.tr("status_init") if hasattr(self, "tr") else "Initializing...")
@@ -1840,7 +2204,9 @@ class OfficeGUI(tb.Window):
             if hasattr(self, "btn_start"): self.btn_start.configure(state="normal")
             if hasattr(self, "btn_stop"): self.btn_stop.configure(state="disabled")
             if hasattr(self, "btn_save_cfg"): self.btn_save_cfg.configure(state="normal")
+            if hasattr(self, "btn_save_cfg_mode"): self.btn_save_cfg_mode.configure(state="normal")
             if hasattr(self, "btn_save_cfg_tab"): self.btn_save_cfg_tab.configure(state="normal")
+            if hasattr(self, "btn_save_cfg_mode_tab"): self.btn_save_cfg_mode_tab.configure(state="normal")
             self.progress.stop()
             self.progress["value"] = 100
             self.var_status.set(self.tr("status_ready") if hasattr(self, "tr") else "Ready")

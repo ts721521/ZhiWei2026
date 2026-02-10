@@ -1,4 +1,4 @@
-# -*- coding: utf-8 -*-
+﻿# -*- coding: utf-8 -*-
 
 TRANSLATIONS = {
     "en": {
@@ -17,6 +17,18 @@ TRANSLATIONS = {
         "sec_process": "5. Process & Limits",
         "sec_lists": "6. Excludes & Keywords",
         "sec_locator": "7. NotebookLM Locator",
+        "grp_shared_runtime": "Shared Settings",
+        "grp_function_runtime": "Feature-Specific Settings",
+        "grp_convert_runtime": "Convert Settings",
+        "grp_merge_runtime": "Merge Settings",
+        "grp_collect_runtime": "Collect Settings",
+        "grp_locator_tools": "Locator Tools",
+        "lbl_collect_mode": "Collect Mode:",
+        "grp_cfg_shared": "Shared Defaults",
+        "grp_cfg_convert": "Convert Defaults",
+        "grp_cfg_merge": "Merge Defaults",
+        "grp_cfg_ui": "UI Defaults",
+        "grp_cfg_rules": "Rules & Keywords",
         "tab_run_center": "Run Center",
         "tab_config_center": "Config Center",
         
@@ -121,6 +133,8 @@ TRANSLATIONS = {
         
         # Footer Actions
         "btn_save_cfg": "Save Config",
+        "btn_save_cfg_mode": "Save Current Mode",
+        "btn_save_cfg_all": "Save All",
         "btn_start": "Start",
         "btn_stop": "Stop",
         
@@ -148,6 +162,8 @@ TRANSLATIONS = {
         "tip_choose_log": "Choose where runtime logs are written.",
         "tip_toggle_logs": "Show or hide the runtime log panel.",
         "tip_save_config": "Save current UI settings into config.json.",
+        "tip_save_config_mode": "Save shared settings and current-mode settings only.",
+        "tip_save_config_all": "Save all settings from every configuration section.",
         "tip_start_task": "Start conversion/merge task using current UI parameters.",
         "tip_stop_task": "Request graceful stop for the running task.",
         "tip_locator_refresh": "Reload *.map.json files from _MERGED folder.",
@@ -215,6 +231,18 @@ TRANSLATIONS = {
         "sec_process": "5. 进程与限制",
         "sec_lists": "6. 排除与关键字",
         "sec_locator": "7. NotebookLM 快速定位",
+        "grp_shared_runtime": "共用配置",
+        "grp_function_runtime": "功能专用配置",
+        "grp_convert_runtime": "转换配置",
+        "grp_merge_runtime": "合并配置",
+        "grp_collect_runtime": "归集配置",
+        "grp_locator_tools": "定位工具",
+        "lbl_collect_mode": "归集模式:",
+        "grp_cfg_shared": "共用默认配置",
+        "grp_cfg_convert": "转换默认配置",
+        "grp_cfg_merge": "合并默认配置",
+        "grp_cfg_ui": "界面默认配置",
+        "grp_cfg_rules": "规则与关键字",
         "tab_run_center": "运行中心",
         "tab_config_center": "配置中心",
         
@@ -319,6 +347,8 @@ TRANSLATIONS = {
         
         # Footer Actions
         "btn_save_cfg": "保存配置",
+        "btn_save_cfg_mode": "保存当前模式",
+        "btn_save_cfg_all": "保存全部配置",
         "btn_start": "开始运行",
         "btn_stop": "停止任务",
         
@@ -346,6 +376,8 @@ TRANSLATIONS = {
         "tip_choose_log": "选择运行日志输出目录。",
         "tip_toggle_logs": "显示或隐藏运行日志面板。",
         "tip_save_config": "将当前界面参数保存到 config.json。",
+        "tip_save_config_mode": "仅保存共用配置和当前运行模式相关配置。",
+        "tip_save_config_all": "保存所有配置分区的参数。",
         "tip_start_task": "按当前界面参数启动转换/合并任务。",
         "tip_stop_task": "向运行中的任务发送优雅停止请求。",
         "tip_locator_refresh": "从 _MERGED 目录重新加载 *.map.json 映射文件。",
@@ -398,3 +430,4 @@ TRANSLATIONS = {
         "tip_clear_source_folders": "清空所有源文件夹。",
     }
 }
+
