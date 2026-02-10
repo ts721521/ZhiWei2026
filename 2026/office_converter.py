@@ -11,6 +11,7 @@ import os
 import sys
 import time
 import json
+import csv
 import shutil
 import logging
 import argparse
@@ -123,6 +124,7 @@ STRATEGY_SMART_TAG = "smart_tag"  # 文件名/内容命中报价关键字则 Pri
 STRATEGY_PRICE_ONLY = "price_only"  # 仅处理包含关键字的文件
 
 ERR_RPC_SERVER_BUSY = -2147417846
+DEFAULT_SHORT_ID_LEN = 8
 
 
 def get_app_path():
@@ -496,6 +498,24 @@ class OfficeConverter:
 
         if "merge_mode" not in self.config:
             self.config["merge_mode"] = MERGE_MODE_CATEGORY
+        if "enable_merge_map" not in self.config:
+            self.config["enable_merge_map"] = True
+        if "bookmark_with_short_id" not in self.config:
+            self.config["bookmark_with_short_id"] = True
+        if "privacy" not in self.config or not isinstance(self.config["privacy"], dict):
+            self.config["privacy"] = {}
+        if "mask_md5_in_logs" not in self.config["privacy"]:
+            self.config["privacy"]["mask_md5_in_logs"] = True
+        if "everything" not in self.config or not isinstance(self.config["everything"], dict):
+            self.config["everything"] = {}
+        self.config["everything"].setdefault("enabled", True)
+        self.config["everything"].setdefault("es_path", "")
+        self.config["everything"].setdefault("prefer_path_exact", True)
+        self.config["everything"].setdefault("timeout_ms", 1500)
+        if "listary" not in self.config or not isinstance(self.config["listary"], dict):
+            self.config["listary"] = {}
+        self.config["listary"].setdefault("enabled", True)
+        self.config["listary"].setdefault("copy_query_on_locate", True)
 
         # 关键字 & 排除目录
         if "price_keywords" not in self.config:
@@ -1620,6 +1640,76 @@ class OfficeConverter:
         
         return merge_tasks
 
+    @staticmethod
+    def _compute_md5(path, block_size=1024 * 1024):
+        h = hashlib.md5()
+        with open(path, "rb") as f:
+            while True:
+                chunk = f.read(block_size)
+                if not chunk:
+                    break
+                h.update(chunk)
+        return h.hexdigest()
+
+    @staticmethod
+    def _mask_md5(md5_value):
+        if not md5_value or len(md5_value) < 12:
+            return md5_value
+        return f"{md5_value[:8]}...{md5_value[-4:]}"
+
+    def _build_short_id(self, md5_value, taken_ids):
+        length = DEFAULT_SHORT_ID_LEN
+        while length <= len(md5_value):
+            candidate = md5_value[:length].upper()
+            if candidate not in taken_ids:
+                taken_ids.add(candidate)
+                return candidate
+            length += 2
+        candidate = md5_value.upper()
+        taken_ids.add(candidate)
+        return candidate
+
+    def _write_merge_map(self, output_path, records):
+        if not records:
+            return None, None
+
+        base_no_ext, _ = os.path.splitext(output_path)
+        csv_path = f"{base_no_ext}.map.csv"
+        json_path = f"{base_no_ext}.map.json"
+        fields = [
+            "merge_batch_id",
+            "merged_pdf_name",
+            "merged_pdf_path",
+            "source_index",
+            "source_filename",
+            "source_abspath",
+            "source_relpath",
+            "source_md5",
+            "source_short_id",
+            "start_page_1based",
+            "end_page_1based",
+            "page_count",
+            "bookmark_title",
+        ]
+
+        with open(csv_path, "w", newline="", encoding="utf-8-sig") as f:
+            writer = csv.DictWriter(f, fieldnames=fields)
+            writer.writeheader()
+            writer.writerows(records)
+
+        with open(json_path, "w", encoding="utf-8") as f:
+            json.dump(
+                {
+                    "version": 1,
+                    "record_count": len(records),
+                    "records": records,
+                },
+                f,
+                ensure_ascii=False,
+                indent=2,
+            )
+        return csv_path, json_path
+
     def merge_pdfs(self):
         if not self.config.get("enable_merge", True):
             return []
@@ -1687,6 +1777,8 @@ class OfficeConverter:
                 word_app = None
 
         generated_outputs = []
+        generated_map_outputs = []
+        merge_batch_id = datetime.now().strftime("%Y%m%d_%H%M%S")
 
         for idx, (output_filename, group) in enumerate(merge_tasks, 1):
             print(f"  Processing [{idx}/{total_tasks}]: {output_filename}")
@@ -1701,6 +1793,8 @@ class OfficeConverter:
             try:
                 merger = PdfWriter()
                 current_page_index = 0
+                map_records = []
+                short_id_taken = set()
                 
                 # 1. 生成并添加索引页
                 index_pdf_path = None
@@ -1726,20 +1820,65 @@ class OfficeConverter:
                     index_page_count = 0
 
                 # 2. 添加内容文件并记录页码
-                for pdf_file in group:
+                for source_idx, pdf_file in enumerate(group, 1):
                     fname = os.path.basename(pdf_file)
                     
                     # 记录该文件的起始页码 (绝对页码)
                     file_start_pages.append(current_page_index)
                     
-                    # 添加书签
-                    merger.add_outline_item(fname, current_page_index)
-                    
                     try:
                         reader = PdfReader(pdf_file)
+                        source_page_count = len(reader.pages)
+                        source_md5 = self._compute_md5(pdf_file)
+                        source_short_id = self._build_short_id(source_md5, short_id_taken)
+                        bookmark_title = fname
+                        if self.config.get("bookmark_with_short_id", True):
+                            bookmark_title = f"[ID:{source_short_id}] {fname}"
+
+                        # 添加书签
+                        merger.add_outline_item(bookmark_title, current_page_index)
+
+                        start_page_1based = current_page_index + 1
+                        end_page_1based = current_page_index + source_page_count
+
                         for page in reader.pages:
                             merger.add_page(page)
-                        current_page_index += len(reader.pages)
+                        current_page_index += source_page_count
+
+                        source_abs_path = os.path.abspath(pdf_file)
+                        source_rel_path = source_abs_path
+                        try:
+                            source_rel_path = os.path.relpath(
+                                source_abs_path, self.config["source_folder"]
+                            )
+                        except Exception:
+                            pass
+
+                        map_records.append(
+                            {
+                                "merge_batch_id": merge_batch_id,
+                                "merged_pdf_name": os.path.basename(output_path),
+                                "merged_pdf_path": output_path,
+                                "source_index": source_idx,
+                                "source_filename": fname,
+                                "source_abspath": source_abs_path,
+                                "source_relpath": source_rel_path,
+                                "source_md5": source_md5,
+                                "source_short_id": source_short_id,
+                                "start_page_1based": start_page_1based,
+                                "end_page_1based": end_page_1based,
+                                "page_count": source_page_count,
+                                "bookmark_title": bookmark_title,
+                            }
+                        )
+
+                        if self.config.get("privacy", {}).get("mask_md5_in_logs", True):
+                            md5_log = self._mask_md5(source_md5)
+                        else:
+                            md5_log = source_md5
+                        logging.info(
+                            f"合并映射记录: {fname} | 页码 {start_page_1based}-{end_page_1based} | ID={source_short_id} | MD5={md5_log}"
+                        )
                     except Exception as e:
                         logging.error(f"合并读取失败 {pdf_file}: {e}")
 
@@ -1823,6 +1962,15 @@ class OfficeConverter:
                     pass
 
                 generated_outputs.append(output_path)
+                if self.config.get("enable_merge_map", True):
+                    try:
+                        csv_path, json_path = self._write_merge_map(output_path, map_records)
+                        if csv_path and json_path:
+                            generated_map_outputs.extend([csv_path, json_path])
+                            logging.info(f"映射文件已生成: {csv_path}")
+                            logging.info(f"映射文件已生成: {json_path}")
+                    except Exception as e:
+                        logging.error(f"写入映射文件失败 {output_path}: {e}")
                 
                 if index_pdf_path and os.path.exists(index_pdf_path):
                     os.remove(index_pdf_path)
@@ -1854,6 +2002,10 @@ class OfficeConverter:
             print("\n  合并输出文件：")
             for p in generated_outputs:
                 print(f"  - {p}")
+            if generated_map_outputs:
+                print("\n  映射文件：")
+                for p in generated_map_outputs:
+                    print(f"  - {p}")
 
         return generated_outputs
 
@@ -2379,6 +2531,29 @@ def create_default_config(config_path):
             "merge_mode": MERGE_MODE_CATEGORY,
             "merge_source": "source",
             "temp_sandbox_root": "",
+            "enable_merge_map": True,
+            "bookmark_with_short_id": True,
+            "everything": {
+                "enabled": True,
+                "es_path": "",
+                "prefer_path_exact": True,
+                "timeout_ms": 1500
+            },
+            "listary": {
+                "enabled": True,
+                "copy_query_on_locate": True
+            },
+            "privacy": {
+                "mask_md5_in_logs": True
+            },
+            "ui": {
+                "tooltip_delay_ms": 500,
+                "tooltip_bg": "#FFF7D6",
+                "tooltip_fg": "#202124",
+                "tooltip_font_family": "System",
+                "tooltip_font_size": 9,
+                "tooltip_auto_theme": True
+            }
         }
         with open(config_path, "w", encoding="utf-8") as f:
             json.dump(default_config, f, indent=4, ensure_ascii=False)
