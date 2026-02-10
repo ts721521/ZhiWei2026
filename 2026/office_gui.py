@@ -14,6 +14,8 @@ office_gui.py - Office 文档批量转换 & 梳理工具 GUI 版
 
 import os
 import sys
+import subprocess
+
 import json
 import threading
 import queue
@@ -742,18 +744,29 @@ class OfficeGUI(tk.Tk):
 
     def open_source_folder(self):
         path = self.var_source_folder.get().strip()
-        if path and os.path.isdir(path):
-            os.startfile(path)
+        self._open_path(path)
 
     def open_target_folder(self):
         path = self.var_target_folder.get().strip()
-        if path and os.path.isdir(path):
-            os.startfile(path)
+        self._open_path(path)
 
     def open_config_folder(self):
         folder = os.path.dirname(self.config_path)
-        if folder and os.path.isdir(folder):
-            os.startfile(folder)
+        self._open_path(folder)
+
+    def _open_path(self, path):
+        if not path or not os.path.exists(path):
+            return
+        if sys.platform == "win32":
+            os.startfile(path)
+        elif sys.platform == "darwin":
+            subprocess.run(["open", path])
+        else:
+            try:
+                subprocess.run(["xdg-open", path])
+            except Exception:
+                pass
+
 
     def browse_temp_sandbox_root(self):
         path = filedialog.askdirectory(title="选择临时转换根目录")
