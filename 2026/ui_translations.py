@@ -195,6 +195,9 @@ TRANSLATIONS = {
         "tip_input_price_keywords": "Keywords used by price-related content strategy (one per line).",
         "tip_auto_button_action": "Click to run: {}",
         "tip_auto_option_action": "Click to select option: {}",
+        "tip_add_source_folder": "Add a source folder to the list.",
+        "tip_remove_source_folder": "Remove the selected source folder.",
+        "tip_clear_source_folders": "Clear all source folders.",
     },
     "zh": {
         "title": "Office 批量转换 & 梳理工具",
@@ -390,5 +393,8 @@ TRANSLATIONS = {
         "tip_input_price_keywords": "价格类策略使用的关键字（每行一个）。",
         "tip_auto_button_action": "点击后执行：{}",
         "tip_auto_option_action": "点击后选择该选项：{}",
+        "tip_add_source_folder": "添加一个源文件夹到列表。",
+        "tip_remove_source_folder": "移除选中的源文件夹。",
+        "tip_clear_source_folders": "清空所有源文件夹。",
     }
 }
