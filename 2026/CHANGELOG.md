@@ -38,3 +38,13 @@ All notable changes to this project will be documented in this file.
 - Date-based file filtering (before/after specific date).
 - Merge options: Index page generation and Excel file listing.
 - UI controls for new features.
+# v5.16.0
+
+- **GUI 双 Tab 拆分**: 主界面重构为“运行中心 / 配置中心”，将高频运行操作与低频配置管理解耦，默认进入运行中心。
+- **定位模块归位**: NotebookLM 快速定位模块固定在“运行中心”，保留 Everything/Listary 联动。
+- **配置页强调保存**: 在“配置中心”增加显式保存入口，同时保留原保存逻辑与配置兼容性。
+- **NotebookLM 溯源定位**: 合并输出新增 `*.map.csv`/`*.map.json`，包含页码范围、源文件路径、MD5、短ID。
+- **短ID书签**: 合并书签可写入 `[ID:XXXXXXXX] 文件名`，便于 NotebookLM/人工引用时快速回查。
+- **定位 CLI**: 新增 `locate_source.py`，支持 `merged+page` 与 `short_id` 双路径反查，并支持 `--json` 输出。
+- **检索增强**: 新增 `search_adapter.py`，支持 Everything（`es.exe`）查询联动与 Listary 查询词生成。
+- **GUI 快速定位面板**: 新增 NotebookLM 定位区（刷新 map、定位、打开文件/目录、Everything 搜索、复制 Listary 查询）。
