@@ -62,11 +62,28 @@
 - `Global MD5` 建议先用于“同类型输出去重”（例如 PDF 对 PDF），不跨类型（Office 原件 vs PDF）直接判重。
 - `Update_Package` 不建议只输出单一合并 PDF，应至少包含：增量 PDF、增量索引、增量 manifest。
 
+### 2.5 新增主功能：MSHelp API 文档整编（2026-02-11）
+- 场景：处理 Hexagon Smart 系列软件安装目录中的微软帮助文档（MSHelp/CAB），用于 NotebookLM 上传与检索。
+- 目标：把分散的 CAB 帮助包转为可读性更高、可追溯、可分卷上传的产物，避免“单文件过碎或上传数量超限”。
+- 运行方式：作为独立主模式 `mshelp_only`，不依赖 Office 转 PDF 主流程。
+- 扫描规则：在 `source_folder` 下递归查找目录名 `MSHelpViewer`（可配置 `mshelpviewer_folder_name`），仅处理 `.cab`。
+- 输出目标：
+  - 单 CAB 转换：`Markdown`（保留主题标题与正文结构，弱化噪声标签）。
+  - 索引输出：`MSHelp_Index_*.json/.csv`（记录 CAB 来源、相对路径、MSHelpViewer 目录、输出路径、主题数）。
+  - 合并输出：`MSHelp_API_Merged_*.md`（按文档数/字符数分包），可选 `DOCX/PDF`。
+- 关键约束：
+  - 分包阈值：`mshelp_merge_max_docs`、`mshelp_merge_max_chars`。
+  - 可选产物：`enable_mshelp_output_docx`、`enable_mshelp_output_pdf`（依赖库缺失时降级跳过，不阻断主流程）。
+  - 合并开关：`enable_mshelp_merge_output`。
+- 可追溯性要求：
+  - 每个合并包内必须包含 `Source Map`，可从条目回溯到原始 CAB 与安装目录位置。
+  - `corpus.json` 需记录 MSHelp 索引与合并产物，便于后续自动投喂/增量处理。
+
 ## 3. 与当前程序匹配性评估
 ### 3.1 已匹配（当前已有）
 - 合并映射与定位链路：`*.map.json` + `locate_source.py`（按页码/短 ID）。
 - 合并索引导出：支持 Excel 索引与定位辅助。
-- 多模式运行：转换、合并、转换后合并、归集索引。
+- 多模式运行：转换、合并、转换后合并、归集索引、MSHelp API 文档整编。
 
 ### 3.2 部分匹配（建议先补）
 - AI 数据导出开关：已具备 `Markdown` / `Excel JSON` / `Records JSON` 开关。
@@ -138,6 +155,31 @@
   - `chromadb_chunk_overlap`
   - `chromadb_write_jsonl_fallback`
 
+## 4.4 数据契约（MSHelp API 文档整编）
+- 输出目录：
+  - 索引：`<target_folder>/_AI/MSHelp/`
+  - 合并：`<target_folder>/_AI/MSHelp/Merged/`
+- 关键文件：
+  - `MSHelp_Index_YYYYMMDD_HHMMSS.json`
+  - `MSHelp_Index_YYYYMMDD_HHMMSS.csv`
+  - `MSHelp_API_Merged_YYYYMMDD_HHMMSS_XXX.md`
+  - 可选：同名 `.docx` / `.pdf`
+- 索引记录字段：
+  - `source_cab`
+  - `source_cab_relpath`
+  - `mshelpviewer_dir`
+  - `markdown_path`
+  - `topic_count`
+  - `status`
+- 运行配置：
+  - `run_mode = "mshelp_only"`
+  - `mshelpviewer_folder_name`
+  - `enable_mshelp_merge_output`
+  - `mshelp_merge_max_docs`
+  - `mshelp_merge_max_chars`
+  - `enable_mshelp_output_docx`
+  - `enable_mshelp_output_pdf`
+
 ## 5. 实施策略（当前阶段）
 1. 已完成 `corpus.json`，先保持稳定运行（作为所有后续能力的数据基座）。
 2. 先落地“AI 导出基础版”：配置开关 + GUI 开关 + 基础 Markdown + 索引 Records JSON。
@@ -177,3 +219,43 @@
   - 修复跨页面滚动区在 Windows 下鼠标滚轮易失效的问题。
 - `ui_translations.py`
   - 新增中英文文案（开关、提示词、产物摘要文案）。
+
+## 8. V1.1 新增需求（待下阶段实现）
+### 8.1 需求 A：LLM 上传产物集中目录
+- 用户问题：当前 AI 相关产物分散在多个子目录，NotebookLM/LLM 上传时操作成本高。
+- 目标：提供单一入口目录，集中放置“可直接上传给 LLM 的文件”。
+- 建议方案：
+  - 新增配置：`llm_delivery_root`（默认 `<target_folder>/_LLM_UPLOAD`）。
+  - 新增开关：`enable_llm_delivery_hub`（默认 `true`）。
+  - 统一归集内容（按运行模式自动拣选）：
+    - Markdown（含 MSHelp merged markdown）
+    - Excel JSON / Records JSON
+    - 可选 PDF / DOCX（根据模式和开关）
+    - `corpus.json`、关键索引（含 MSHelp index）
+  - 新增 `llm_upload_manifest.json`，记录归集清单、来源路径、时间戳、hash。
+- 验收标准：
+  - 用户仅打开一个目录即可完成上传操作。
+  - 归集内容具备可追溯关系（可从归集文件定位源产物）。
+  - 不影响现有 `_AI/*` 原始产物结构与兼容性。
+
+### 8.2 需求 B：沙盒位置可调与磁盘空间保护
+- 用户问题：大批量（例如 10,000 文件）运行时，默认盘符可能空间不足。
+- 当前状态：已支持 `temp_sandbox_root` 配置与 GUI 输入。
+- 下阶段增强目标：
+  - 在 GUI 显示“沙盒目标盘可用空间”。
+  - 新增运行前预检查：
+    - `sandbox_min_free_gb`（最小可用空间阈值）
+    - 低于阈值时：阻止运行或二次确认（可配置）。
+  - 可选策略：`sandbox_auto_cleanup_on_step_end`（每步结束清理中间临时文件）。
+- 验收标准：
+  - 用户可显式将沙盒切换到大容量盘。
+  - 低空间场景在运行前可被拦截并给出清晰提示。
+  - 超大批量任务中不再因默认盘空间不足导致中途失败。
+
+### 8.3 开发优先级建议
+1. 先实现“LLM 上传集中目录（A）”，直接解决上传效率问题。  
+2. 再实现“沙盒空间保护（B）”，降低大批量任务失败风险。  
+3. 两项均建议放在 V1.1（稳定性与可用性增强），再进入 V2/V3 性能迭代。  
+
+### 8.4 交接文档
+- 下个 AI 的完整接续说明见：`docs/AI_HANDOVER_20260211.md`。

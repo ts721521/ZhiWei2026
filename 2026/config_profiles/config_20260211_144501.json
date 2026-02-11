@@ -45,7 +45,7 @@
     "temp_sandbox_root": "",
     "run_mode": "convert_then_merge",
     "collect_mode": "copy_and_index",
-    "content_strategy": "standard",
+    "content_strategy": "smart_tag",
     "enable_merge_map": true,
     "bookmark_with_short_id": true,
     "everything": {

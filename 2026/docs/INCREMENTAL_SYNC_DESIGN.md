@@ -153,3 +153,23 @@
 - 重命名可在扫描统计中体现为 `renamed`，并写入 `renamed_from`。
 - 每次运行结束后账本可落盘并可被下次运行复用。
 - 开启增量包时，目录结构和索引文件完整可追溯。
+
+---
+
+## 10. Addendum (2026-02-11): LLM Delivery Hub + Sandbox Capacity Guard
+This addendum defines two required enhancements for the next iteration:
+
+### A) LLM Delivery Hub
+- Build one consolidated upload folder per run.
+- Keep source mapping via `llm_upload_manifest.json`.
+- Do not replace existing `_AI/*` outputs; hub is an additional convenience layer.
+
+### B) Sandbox Capacity Guard
+- Before long conversion starts, check free disk space for sandbox root.
+- Enforce configurable policy:
+  - `block`: stop run
+  - `confirm`: ask user
+  - `warn`: continue with warning
+
+### Incremental-specific note
+For large incremental updates (10k+ files), guard should run before scan->convert stage to avoid mid-run disk exhaustion.

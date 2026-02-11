@@ -24,6 +24,7 @@ import signal
 import random
 import hashlib
 import re
+import zipfile
 from datetime import datetime, date as dt_date, time as dt_time
 from pathlib import Path
 
@@ -99,6 +100,28 @@ try:
 except Exception:
     HAS_CHROMADB = False
 
+try:
+    from bs4 import BeautifulSoup
+
+    HAS_BS4 = True
+except Exception:
+    HAS_BS4 = False
+
+try:
+    from docx import Document
+
+    HAS_PYDOCX = True
+except Exception:
+    HAS_PYDOCX = False
+
+try:
+    from reportlab.lib.pagesizes import A4
+    from reportlab.pdfgen import canvas
+
+    HAS_REPORTLAB = True
+except Exception:
+    HAS_REPORTLAB = False
+
 __version__ = "5.15.6"
 
 # Office constants
@@ -124,6 +147,7 @@ MODE_CONVERT_ONLY = "convert_only"
 MODE_MERGE_ONLY = "merge_only"
 MODE_CONVERT_THEN_MERGE = "convert_then_merge"
 MODE_COLLECT_ONLY = "collect_only"  # collect and deduplicate mode
+MODE_MSHELP_ONLY = "mshelp_only"  # dedicated mode for MSHelpViewer API docs
 
 # collect_only sub-modes
 COLLECT_MODE_COPY_AND_INDEX = "copy_and_index"  # dedup + copy + Excel
@@ -316,9 +340,11 @@ class OfficeConverter:
         self.generated_records_json_outputs = []
         self.generated_chromadb_outputs = []
         self.generated_update_package_outputs = []
+        self.generated_mshelp_outputs = []
         self.markdown_quality_records = []
         self.conversion_index_records = []
         self.merge_index_records = []
+        self.mshelp_records = []
         self.collect_index_path = None
         self.convert_index_path = None
         self.merge_excel_path = None
@@ -328,6 +354,18 @@ class OfficeConverter:
         self.chromadb_export_manifest_path = None
         self.incremental_registry_path = ""
         self._incremental_context = None
+        self._office_file_counter = 0
+        self.perf_metrics = {
+            "scan_seconds": 0.0,
+            "batch_seconds": 0.0,
+            "merge_seconds": 0.0,
+            "postprocess_seconds": 0.0,
+            "total_seconds": 0.0,
+            "convert_core_seconds": 0.0,
+            "pdf_wait_seconds": 0.0,
+            "markdown_seconds": 0.0,
+            "mshelp_merge_seconds": 0.0,
+        }
 
         # Register signals only in main thread (GUI worker threads should not register).
         if threading.current_thread() is threading.main_thread():
@@ -352,6 +390,30 @@ class OfficeConverter:
             "skipped": 0,
         }
         self.error_records = []
+
+    def _reset_perf_metrics(self):
+        self.perf_metrics = {
+            "scan_seconds": 0.0,
+            "batch_seconds": 0.0,
+            "merge_seconds": 0.0,
+            "postprocess_seconds": 0.0,
+            "total_seconds": 0.0,
+            "convert_core_seconds": 0.0,
+            "pdf_wait_seconds": 0.0,
+            "markdown_seconds": 0.0,
+            "mshelp_merge_seconds": 0.0,
+        }
+
+    def _add_perf_seconds(self, key, seconds):
+        if key not in self.perf_metrics:
+            return
+        try:
+            value = float(seconds)
+        except Exception:
+            return
+        if value < 0:
+            return
+        self.perf_metrics[key] += value
 
     # =============== Base initialization ===============
 
@@ -397,6 +459,7 @@ class OfficeConverter:
             MODE_MERGE_ONLY: "merge_only",
             MODE_CONVERT_THEN_MERGE: "convert_then_merge",
             MODE_COLLECT_ONLY: "collect_only",
+            MODE_MSHELP_ONLY: "mshelp_only",
         }
         return m.get(self.run_mode, self.run_mode)
 
@@ -439,6 +502,8 @@ class OfficeConverter:
         print(f"  run_mode      : {self.run_mode}")
         print(f"  merge_mode    : {self.merge_mode}")
         print(f"  strategy      : {self.content_strategy}")
+        print(f"  reuse_office  : {self._should_reuse_office_app()}")
+        print(f"  restart_every : {self._get_office_restart_every()}")
         print("=" * 60)
 
     def cleanup_all_processes(self):
@@ -505,6 +570,8 @@ class OfficeConverter:
         cfg.setdefault("default_engine", ENGINE_ASK)
         cfg.setdefault("kill_process_mode", KILL_MODE_ASK)
         cfg.setdefault("auto_retry_failed", False)
+        cfg.setdefault("office_reuse_app", True)
+        cfg.setdefault("office_restart_every_n_files", 25)
         cfg.setdefault("pdf_wait_seconds", 15)
         cfg.setdefault("ppt_timeout_seconds", cfg.get("timeout_seconds", 60))
         cfg.setdefault("ppt_pdf_wait_seconds", cfg.get("pdf_wait_seconds", 15))
@@ -525,6 +592,13 @@ class OfficeConverter:
         cfg.setdefault("global_md5_dedup", False)
         cfg.setdefault("enable_update_package", True)
         cfg.setdefault("update_package_root", "")
+        cfg.setdefault("cab_7z_path", "")
+        cfg.setdefault("mshelpviewer_folder_name", "MSHelpViewer")
+        cfg.setdefault("enable_mshelp_merge_output", True)
+        cfg.setdefault("mshelp_merge_max_docs", 120)
+        cfg.setdefault("mshelp_merge_max_chars", 1200000)
+        cfg.setdefault("enable_mshelp_output_docx", False)
+        cfg.setdefault("enable_mshelp_output_pdf", False)
 
         if "privacy" not in cfg or not isinstance(cfg["privacy"], dict):
             cfg["privacy"] = {}
@@ -555,6 +629,7 @@ class OfficeConverter:
         exts.setdefault("excel", [".xls", ".xlsx"])
         exts.setdefault("powerpoint", [".ppt", ".pptx"])
         exts.setdefault("pdf", [".pdf"])
+        exts.setdefault("cab", [".cab"])
 
         self.merge_mode = cfg.get("merge_mode", MERGE_MODE_CATEGORY)
         self.run_mode = cfg.get("run_mode", self.run_mode)
@@ -562,6 +637,49 @@ class OfficeConverter:
         self.content_strategy = cfg.get("content_strategy", self.content_strategy)
         self.enable_merge_index = bool(cfg.get("enable_merge_index", self.enable_merge_index))
         self.enable_merge_excel = bool(cfg.get("enable_merge_excel", self.enable_merge_excel))
+
+    def _should_reuse_office_app(self):
+        if not HAS_WIN32 or is_mac():
+            return False
+        return bool(self.config.get("office_reuse_app", True))
+
+    def _get_office_restart_every(self):
+        try:
+            value = int(self.config.get("office_restart_every_n_files", 25))
+        except Exception:
+            value = 25
+        return value if value > 0 else 0
+
+    def _get_app_type_for_ext(self, ext):
+        ext_lower = (ext or "").lower()
+        if ext_lower in self.config.get("allowed_extensions", {}).get("word", []):
+            return "word"
+        if ext_lower in self.config.get("allowed_extensions", {}).get("excel", []):
+            return "excel"
+        if ext_lower in self.config.get("allowed_extensions", {}).get("powerpoint", []):
+            return "ppt"
+        return ""
+
+    def _on_office_file_processed(self, ext):
+        if not self._should_reuse_office_app():
+            return
+        if self.reuse_process:
+            return
+        restart_every = self._get_office_restart_every()
+        if restart_every <= 0:
+            return
+        app_type = self._get_app_type_for_ext(ext)
+        if not app_type:
+            return
+
+        self._office_file_counter += 1
+        if self._office_file_counter % restart_every != 0:
+            return
+
+        logging.info(
+            f"[perf] periodic office restart ({app_type}) at file #{self._office_file_counter}"
+        )
+        self._kill_current_app(app_type, force=True)
 
     def _get_path_from_config(self, key_base):
         val = None
@@ -595,13 +713,13 @@ class OfficeConverter:
             self.select_content_strategy()
         if self.run_mode in (MODE_CONVERT_THEN_MERGE, MODE_MERGE_ONLY) and self.config.get("enable_merge", True):
             self.select_merge_mode()
-        if self.run_mode not in (MODE_MERGE_ONLY, MODE_COLLECT_ONLY):
+        if self.run_mode not in (MODE_MERGE_ONLY, MODE_COLLECT_ONLY, MODE_MSHELP_ONLY):
             self.select_engine_mode()
             self.check_and_handle_running_processes()
         self._init_paths_from_config()
 
     def check_and_handle_running_processes(self):
-        if self.run_mode in (MODE_MERGE_ONLY, MODE_COLLECT_ONLY):
+        if self.run_mode in (MODE_MERGE_ONLY, MODE_COLLECT_ONLY, MODE_MSHELP_ONLY):
             return
         mode = self.config.get("kill_process_mode", KILL_MODE_ASK)
         if mode == KILL_MODE_KEEP:
@@ -678,14 +796,17 @@ class OfficeConverter:
         print("  [2] Merge only")
         print("  [3] Convert then merge (recommended)")
         print("  [4] Collect / deduplicate only")
+        print("  [5] MSHelp API docs (CAB->MD, merged package)")
         print("-" * 60)
-        choice = input("Choose (1/2/3/4, default 3): ").strip()
+        choice = input("Choose (1/2/3/4/5, default 3): ").strip()
         if choice == "1":
             self.run_mode = MODE_CONVERT_ONLY
         elif choice == "2":
             self.run_mode = MODE_MERGE_ONLY
         elif choice == "4":
             self.run_mode = MODE_COLLECT_ONLY
+        elif choice == "5":
+            self.run_mode = MODE_MSHELP_ONLY
         else:
             self.run_mode = MODE_CONVERT_THEN_MERGE
         print(f"--> Run mode: {self.get_readable_run_mode()} ({self.run_mode})")
@@ -807,6 +928,8 @@ class OfficeConverter:
             f.write(f"engine: {engine_label}\n")
             f.write(f"source_folder: {self.config['source_folder']}\n")
             f.write(f"target_folder: {self.config['target_folder']}\n")
+            f.write(f"office_reuse_app: {self._should_reuse_office_app()}\n")
+            f.write(f"office_restart_every_n_files: {self._get_office_restart_every()}\n")
             if self.config.get("enable_sandbox", True):
                 f.write(f"sandbox: enabled | temp: {self.temp_sandbox}\n")
             else:
@@ -815,8 +938,8 @@ class OfficeConverter:
                 f.write(f"merge_output_dir: {self.merge_output_dir}\n")
             f.write("=" * 60 + "\n")
 
-    def _kill_current_app(self, app_type):
-        if self.reuse_process:
+    def _kill_current_app(self, app_type, force=False):
+        if self.reuse_process and not force:
             return
         name_map = {
             ENGINE_WPS: {"word": "wps", "excel": "et", "ppt": "wpp"},
@@ -1206,7 +1329,8 @@ class OfficeConverter:
         finally:
             if app:
                 try:
-                    app.Quit()
+                    if not self._should_reuse_office_app():
+                        app.Quit()
                 except Exception:
                     pass
             pythoncom.CoUninitialize()
@@ -1232,6 +1356,719 @@ class OfficeConverter:
         except Exception:
             pass
 
+    @staticmethod
+    def _find_files_recursive(root_dir, exts):
+        results = []
+        if not root_dir or not os.path.isdir(root_dir):
+            return results
+        ext_set = tuple(str(e).lower() for e in (exts or []))
+        for current_root, _, files in os.walk(root_dir):
+            for name in files:
+                if str(name).lower().endswith(ext_set):
+                    results.append(os.path.join(current_root, name))
+        return results
+
+    def _extract_cab_with_fallback(self, cab_path, extract_dir):
+        cab_abs = os.path.abspath(cab_path)
+        extract_abs = os.path.abspath(extract_dir)
+        os.makedirs(extract_abs, exist_ok=True)
+
+        expand_ok = False
+        if is_win():
+            try:
+                cmd_expand = ["expand", cab_abs, "-F:*", extract_abs]
+                subprocess.run(
+                    cmd_expand,
+                    capture_output=True,
+                    text=True,
+                    encoding="gbk",
+                    errors="ignore",
+                    check=True,
+                )
+                expand_ok = True
+            except Exception:
+                expand_ok = False
+
+        if expand_ok and self._find_files_recursive(
+            extract_abs, (".mshc", ".htm", ".html")
+        ):
+            return
+
+        seven_zip = str(self.config.get("cab_7z_path", "") or "").strip()
+        if seven_zip:
+            if not os.path.isabs(seven_zip):
+                seven_zip = os.path.abspath(os.path.join(get_app_path(), seven_zip))
+            if not os.path.isfile(seven_zip):
+                seven_zip = ""
+        if not seven_zip:
+            seven_zip = shutil.which("7z") or shutil.which("7za") or ""
+        if not seven_zip:
+            raise RuntimeError(
+                "CAB extraction fallback requires 7z. Please install 7-Zip or set cab_7z_path."
+            )
+
+        cmd_7z = [seven_zip, "x", cab_abs, f"-o{extract_abs}", "-y"]
+        subprocess.run(
+            cmd_7z,
+            capture_output=True,
+            text=True,
+            encoding="utf-8",
+            errors="ignore",
+            check=True,
+        )
+
+        if not self._find_files_recursive(extract_abs, (".mshc", ".htm", ".html")):
+            raise RuntimeError(f"CAB extraction produced no MSHC/HTML payload: {cab_path}")
+
+    @staticmethod
+    def _extract_mshc_payload(mshc_path, content_dir):
+        os.makedirs(content_dir, exist_ok=True)
+        with zipfile.ZipFile(mshc_path, "r") as zf:
+            zf.extractall(content_dir)
+
+    @staticmethod
+    def _meta_content_by_names(soup, names):
+        if not soup:
+            return ""
+        name_set = {str(n).strip().lower() for n in names}
+        for meta in soup.find_all("meta"):
+            meta_name = str(meta.get("name", "")).strip().lower()
+            if meta_name in name_set:
+                return str(meta.get("content", "") or "").strip()
+        return ""
+
+    def _parse_mshelp_topics(self, html_root):
+        html_files = self._find_files_recursive(html_root, (".htm", ".html"))
+        if not html_files:
+            return []
+
+        topics = {}
+        for fpath in html_files:
+            rel_path = os.path.relpath(fpath, html_root).replace("\\", "/")
+            topic_id = rel_path
+            parent_id = ""
+            title = os.path.splitext(os.path.basename(fpath))[0]
+
+            if HAS_BS4:
+                try:
+                    with open(fpath, "rb") as f:
+                        raw = f.read()
+                    soup = BeautifulSoup(raw, "html.parser")
+                    meta_id = self._meta_content_by_names(soup, ["Microsoft.Help.Id"])
+                    meta_parent = self._meta_content_by_names(
+                        soup, ["Microsoft.Help.TocParent"]
+                    )
+                    meta_title = self._meta_content_by_names(soup, ["Title"])
+                    title_tag = soup.find("title")
+                    if meta_id:
+                        topic_id = meta_id
+                    if meta_parent:
+                        parent_id = meta_parent
+                    if meta_title:
+                        title = meta_title
+                    elif title_tag and title_tag.get_text(strip=True):
+                        title = title_tag.get_text(strip=True)
+                except Exception:
+                    pass
+
+            topics[topic_id] = {
+                "id": topic_id,
+                "parent": parent_id,
+                "title": title or os.path.basename(fpath),
+                "file": fpath,
+                "children": [],
+            }
+
+        if not topics:
+            return []
+
+        roots = []
+        for tid, topic in topics.items():
+            pid = str(topic.get("parent", "") or "").strip()
+            if not pid or pid in ("-1", tid) or pid not in topics:
+                roots.append(tid)
+            else:
+                topics[pid]["children"].append(tid)
+
+        for topic in topics.values():
+            topic["children"].sort(
+                key=lambda cid: (topics[cid].get("title", ""), topics[cid].get("file", ""))
+            )
+        roots.sort(key=lambda rid: (topics[rid].get("title", ""), topics[rid].get("file", "")))
+
+        ordered = []
+        visited = set()
+
+        def walk(topic_id):
+            if topic_id in visited or topic_id not in topics:
+                return
+            visited.add(topic_id)
+            ordered.append(topics[topic_id])
+            for child_id in topics[topic_id].get("children", []):
+                walk(child_id)
+
+        for rid in roots:
+            walk(rid)
+        for tid in sorted(topics.keys()):
+            walk(tid)
+
+        return ordered
+
+    @staticmethod
+    def _normalize_md_line(text):
+        return re.sub(r"\s+", " ", str(text or "")).strip()
+
+    def _table_to_markdown_lines(self, table_tag):
+        rows = []
+        for tr in table_tag.find_all("tr"):
+            cells = tr.find_all(["th", "td"])
+            if not cells:
+                continue
+            row = [self._normalize_md_line(c.get_text(" ", strip=True)) for c in cells]
+            rows.append(row)
+        if not rows:
+            return []
+
+        width = max(len(r) for r in rows)
+        norm_rows = []
+        for r in rows:
+            norm_rows.append(r + [""] * (width - len(r)))
+
+        header = [c.replace("|", "\\|") for c in norm_rows[0]]
+        lines = [
+            "| " + " | ".join(header) + " |",
+            "| " + " | ".join(["---"] * width) + " |",
+        ]
+        for r in norm_rows[1:]:
+            escaped = [c.replace("|", "\\|") for c in r]
+            lines.append("| " + " | ".join(escaped) + " |")
+        return lines
+
+    def _render_html_to_markdown(self, html_path):
+        if not HAS_BS4:
+            with open(html_path, "r", encoding="utf-8", errors="ignore") as f:
+                raw = f.read()
+            text = re.sub(r"<[^>]+>", " ", raw)
+            text = re.sub(r"\s+", " ", text).strip()
+            return text
+
+        with open(html_path, "rb") as f:
+            soup = BeautifulSoup(f.read(), "html.parser")
+
+        for tag in soup(["script", "style", "noscript", "svg"]):
+            tag.decompose()
+
+        body = soup.body if soup.body else soup
+        lines = []
+
+        def append_para(text):
+            t = self._normalize_md_line(text)
+            if t:
+                lines.append(t)
+                lines.append("")
+
+        def render(node):
+            name = getattr(node, "name", None)
+            if not name:
+                return
+            name = str(name).lower()
+            if name in ("script", "style", "noscript", "svg"):
+                return
+
+            if name in ("h1", "h2", "h3", "h4", "h5", "h6"):
+                level = int(name[1])
+                title = self._normalize_md_line(node.get_text(" ", strip=True))
+                if title:
+                    lines.append("#" * level + " " + title)
+                    lines.append("")
+                return
+
+            if name == "pre":
+                code = node.get_text("\n", strip=False).strip("\n")
+                if code:
+                    lines.append("```text")
+                    lines.append(code)
+                    lines.append("```")
+                    lines.append("")
+                return
+
+            if name in ("ul", "ol"):
+                lis = node.find_all("li", recursive=False)
+                if lis:
+                    for idx, li in enumerate(lis, 1):
+                        item_text = self._normalize_md_line(li.get_text(" ", strip=True))
+                        if not item_text:
+                            continue
+                        prefix = f"{idx}. " if name == "ol" else "- "
+                        lines.append(prefix + item_text)
+                    lines.append("")
+                return
+
+            if name == "table":
+                table_lines = self._table_to_markdown_lines(node)
+                if table_lines:
+                    lines.extend(table_lines)
+                    lines.append("")
+                return
+
+            if name in ("p", "blockquote"):
+                append_para(node.get_text(" ", strip=True))
+                return
+
+            if name in (
+                "article",
+                "section",
+                "main",
+                "body",
+                "div",
+                "header",
+                "footer",
+                "aside",
+                "nav",
+            ):
+                for child in node.children:
+                    if getattr(child, "name", None):
+                        render(child)
+                return
+
+            child_tags = [c for c in node.children if getattr(c, "name", None)]
+            if child_tags:
+                for child in child_tags:
+                    render(child)
+                return
+            append_para(node.get_text(" ", strip=True))
+
+        for child in body.children:
+            if getattr(child, "name", None):
+                render(child)
+
+        compact = []
+        blank = False
+        for line in lines:
+            if str(line).strip():
+                compact.append(line.rstrip())
+                blank = False
+            else:
+                if not blank:
+                    compact.append("")
+                blank = True
+        return "\n".join(compact).strip()
+
+    def _convert_cab_to_markdown(self, cab_path, source_path_for_output):
+        if not os.path.exists(cab_path):
+            raise RuntimeError(f"CAB file not found: {cab_path}")
+
+        if not HAS_BS4:
+            logging.warning(
+                "beautifulsoup4 is not installed; CAB markdown quality may be limited."
+            )
+
+        temp_root = os.path.join(self.temp_sandbox, f"cab_{uuid.uuid4().hex}")
+        extract_dir = os.path.join(temp_root, "cab_extract")
+        content_dir = os.path.join(temp_root, "mshc_content")
+
+        try:
+            self._extract_cab_with_fallback(cab_path, extract_dir)
+
+            mshc_files = self._find_files_recursive(extract_dir, (".mshc",))
+            html_root = extract_dir
+            if mshc_files:
+                self._extract_mshc_payload(mshc_files[0], content_dir)
+                html_root = content_dir
+
+            topics = self._parse_mshelp_topics(html_root)
+            if not topics:
+                raise RuntimeError(f"no parseable help topics in CAB: {cab_path}")
+
+            md_path = self._build_ai_output_path_from_source(
+                source_path_for_output, "Markdown", ".md"
+            )
+            if not md_path:
+                raise RuntimeError(f"failed to build markdown path for CAB: {cab_path}")
+
+            lines = [
+                f"# {os.path.basename(source_path_for_output)}",
+                "",
+                f"- source_cab: {os.path.abspath(source_path_for_output)}",
+                f"- topic_count: {len(topics)}",
+                f"- generated_at: {datetime.now().isoformat(timespec='seconds')}",
+                "",
+                "## 目录",
+                "",
+            ]
+            for idx, topic in enumerate(topics, 1):
+                title = self._normalize_md_line(topic.get("title", "") or topic.get("id", ""))
+                lines.append(f"{idx}. {title or 'Untitled'}")
+            lines.append("")
+
+            rendered_count = 0
+            for idx, topic in enumerate(topics, 1):
+                title = self._normalize_md_line(topic.get("title", "") or topic.get("id", ""))
+                html_file = topic.get("file", "")
+                if not html_file or not os.path.exists(html_file):
+                    continue
+                body_md = self._render_html_to_markdown(html_file)
+                if not body_md:
+                    continue
+                lines.extend([f"## {idx}. {title or 'Untitled'}", "", body_md, ""])
+                rendered_count += 1
+
+            if rendered_count <= 0:
+                raise RuntimeError(f"CAB topics parsed but no readable content rendered: {cab_path}")
+
+            with open(md_path, "w", encoding="utf-8") as f:
+                f.write("\n".join(lines).rstrip() + "\n")
+
+            self.generated_markdown_outputs.append(md_path)
+            self._append_mshelp_record(source_path_for_output, md_path, rendered_count)
+            return md_path, rendered_count
+        finally:
+            try:
+                if os.path.exists(temp_root):
+                    shutil.rmtree(temp_root, ignore_errors=True)
+            except Exception:
+                pass
+
+    def _append_mshelp_record(self, source_cab_path, markdown_path, topic_count):
+        src_abs = os.path.abspath(source_cab_path)
+        md_abs = os.path.abspath(markdown_path)
+        folder_name = str(self.config.get("mshelpviewer_folder_name", "MSHelpViewer"))
+        folder_name = folder_name.strip() or "MSHelpViewer"
+        folder_name_lower = folder_name.lower()
+
+        mshelp_dir = ""
+        try:
+            p = Path(src_abs)
+            for parent in [p.parent, *p.parents]:
+                if parent.name.lower() == folder_name_lower:
+                    mshelp_dir = str(parent)
+                    break
+        except Exception:
+            mshelp_dir = ""
+
+        try:
+            src_rel = os.path.relpath(src_abs, self.config.get("source_folder", ""))
+        except Exception:
+            src_rel = src_abs
+
+        self.mshelp_records.append(
+            {
+                "source_cab": src_abs,
+                "source_cab_relpath": src_rel,
+                "mshelpviewer_dir": mshelp_dir,
+                "markdown_path": md_abs,
+                "topic_count": int(topic_count or 0),
+                "status": "success",
+            }
+        )
+
+    def _find_mshelpviewer_dirs(self, root_dir):
+        result = []
+        if not root_dir or not os.path.isdir(root_dir):
+            return result
+        folder_name = str(self.config.get("mshelpviewer_folder_name", "MSHelpViewer"))
+        folder_name = folder_name.strip() or "MSHelpViewer"
+        folder_name_lower = folder_name.lower()
+
+        for current_root, dirs, _ in os.walk(root_dir):
+            if os.path.basename(current_root).lower() == folder_name_lower:
+                result.append(current_root)
+                dirs[:] = []
+                continue
+            matches = [d for d in dirs if d.lower() == folder_name_lower]
+            for d in matches:
+                result.append(os.path.join(current_root, d))
+        # de-dup keep stable order
+        seen = set()
+        unique = []
+        for d in result:
+            ad = os.path.abspath(d)
+            key = ad.lower() if is_win() else ad
+            if key in seen:
+                continue
+            seen.add(key)
+            unique.append(ad)
+        return unique
+
+    def _scan_mshelp_cab_candidates(self):
+        source_root = self.config.get("source_folder", "")
+        dirs = self._find_mshelpviewer_dirs(source_root)
+        cab_exts = tuple(
+            e.lower() for e in self.config.get("allowed_extensions", {}).get("cab", [".cab"])
+        )
+        if not cab_exts:
+            cab_exts = (".cab",)
+
+        files = []
+        seen = set()
+        for d in dirs:
+            for cab_path in self._find_files_recursive(d, cab_exts):
+                abs_cab = os.path.abspath(cab_path)
+                key = abs_cab.lower() if is_win() else abs_cab
+                if key in seen:
+                    continue
+                seen.add(key)
+                files.append(abs_cab)
+        files.sort()
+        return dirs, files
+
+    def _write_mshelp_index_files(self):
+        if not self.mshelp_records:
+            return []
+        target_root = self.config.get("target_folder", "")
+        if not target_root:
+            return []
+
+        out_dir = os.path.join(target_root, "_AI", "MSHelp")
+        os.makedirs(out_dir, exist_ok=True)
+        ts = datetime.now().strftime("%Y%m%d_%H%M%S")
+        json_path = os.path.join(out_dir, f"MSHelp_Index_{ts}.json")
+        csv_path = os.path.join(out_dir, f"MSHelp_Index_{ts}.csv")
+
+        records = sorted(
+            self.mshelp_records,
+            key=lambda x: (x.get("mshelpviewer_dir", ""), x.get("source_cab", "")),
+        )
+        payload = {
+            "version": 1,
+            "generated_at": datetime.now().isoformat(timespec="seconds"),
+            "record_count": len(records),
+            "records": records,
+        }
+        with open(json_path, "w", encoding="utf-8") as f:
+            json.dump(payload, f, ensure_ascii=False, indent=2)
+
+        fields = [
+            "source_cab",
+            "source_cab_relpath",
+            "mshelpviewer_dir",
+            "markdown_path",
+            "topic_count",
+            "status",
+        ]
+        with open(csv_path, "w", newline="", encoding="utf-8-sig") as f:
+            writer = csv.DictWriter(f, fieldnames=fields)
+            writer.writeheader()
+            writer.writerows(records)
+
+        outputs = [json_path, csv_path]
+        self.generated_mshelp_outputs.extend(outputs)
+        logging.info(f"MSHelp index generated: {json_path}")
+        logging.info(f"MSHelp index generated: {csv_path}")
+        return outputs
+
+    @staticmethod
+    def _wrap_plain_text_for_pdf(text, width=100):
+        words = str(text or "").split()
+        if not words:
+            return [""]
+        lines = []
+        current = []
+        current_len = 0
+        for w in words:
+            if current_len + len(w) + (1 if current else 0) > width:
+                lines.append(" ".join(current))
+                current = [w]
+                current_len = len(w)
+            else:
+                current.append(w)
+                current_len += len(w) + (1 if current_len > 0 else 0)
+        if current:
+            lines.append(" ".join(current))
+        return lines or [""]
+
+    def _export_markdown_to_docx(self, md_path, out_docx):
+        if not HAS_PYDOCX:
+            raise RuntimeError("python-docx is not installed.")
+        with open(md_path, "r", encoding="utf-8", errors="ignore") as f:
+            lines = f.read().splitlines()
+
+        doc = Document()
+        in_code = False
+        for raw in lines:
+            line = str(raw or "")
+            if line.strip().startswith("```"):
+                in_code = not in_code
+                continue
+            if in_code:
+                doc.add_paragraph(line)
+                continue
+            s = line.strip()
+            if not s:
+                doc.add_paragraph("")
+                continue
+            if s.startswith("### "):
+                doc.add_heading(s[4:], level=3)
+            elif s.startswith("## "):
+                doc.add_heading(s[3:], level=2)
+            elif s.startswith("# "):
+                doc.add_heading(s[2:], level=1)
+            elif s.startswith("- "):
+                doc.add_paragraph(s[2:], style="List Bullet")
+            elif re.match(r"^\d+\.\s+", s):
+                text = re.sub(r"^\d+\.\s+", "", s)
+                doc.add_paragraph(text, style="List Number")
+            else:
+                doc.add_paragraph(s)
+        doc.save(out_docx)
+
+    def _export_markdown_to_pdf(self, md_path, out_pdf):
+        if not HAS_REPORTLAB:
+            raise RuntimeError("reportlab is not installed.")
+        with open(md_path, "r", encoding="utf-8", errors="ignore") as f:
+            lines = f.read().splitlines()
+
+        c = canvas.Canvas(out_pdf, pagesize=A4)
+        page_w, page_h = A4
+        x = 36
+        y = page_h - 36
+        line_h = 12
+
+        for raw in lines:
+            text = str(raw or "")
+            wrapped = self._wrap_plain_text_for_pdf(text, width=100)
+            for w in wrapped:
+                if y <= 36:
+                    c.showPage()
+                    y = page_h - 36
+                c.drawString(x, y, w)
+                y -= line_h
+        c.save()
+
+    def _merge_mshelp_markdowns(self):
+        if not self.mshelp_records:
+            return []
+        if not bool(self.config.get("enable_mshelp_merge_output", True)):
+            return []
+
+        merge_start = time.perf_counter()
+        target_root = self.config.get("target_folder", "")
+        if not target_root:
+            return []
+        out_dir = os.path.join(target_root, "_AI", "MSHelp", "Merged")
+        os.makedirs(out_dir, exist_ok=True)
+
+        try:
+            max_docs = int(self.config.get("mshelp_merge_max_docs", 120) or 120)
+        except Exception:
+            max_docs = 120
+        try:
+            max_chars = int(self.config.get("mshelp_merge_max_chars", 1200000) or 1200000)
+        except Exception:
+            max_chars = 1200000
+        max_docs = max(1, max_docs)
+        max_chars = max(200000, max_chars)
+
+        valid = []
+        for rec in self.mshelp_records:
+            mdp = rec.get("markdown_path", "")
+            if not mdp or not os.path.exists(mdp):
+                continue
+            try:
+                with open(mdp, "r", encoding="utf-8", errors="ignore") as f:
+                    content = f.read()
+            except Exception:
+                continue
+            item = dict(rec)
+            item["_content"] = content
+            item["_chars"] = len(content)
+            valid.append(item)
+
+        if not valid:
+            return []
+
+        chunks = []
+        current = []
+        current_chars = 0
+        for rec in valid:
+            rec_chars = int(rec.get("_chars", 0) or 0)
+            if current and (len(current) >= max_docs or current_chars + rec_chars > max_chars):
+                chunks.append(current)
+                current = []
+                current_chars = 0
+            current.append(rec)
+            current_chars += rec_chars
+        if current:
+            chunks.append(current)
+
+        ts = datetime.now().strftime("%Y%m%d_%H%M%S")
+        outputs = []
+        export_docx = bool(self.config.get("enable_mshelp_output_docx", False))
+        export_pdf = bool(self.config.get("enable_mshelp_output_pdf", False))
+
+        for idx, chunk in enumerate(chunks, 1):
+            md_path = os.path.join(out_dir, f"MSHelp_API_Merged_{ts}_{idx:03d}.md")
+            lines = [
+                f"# MSHelp API Merged Package {idx}/{len(chunks)}",
+                "",
+                f"- generated_at: {datetime.now().isoformat(timespec='seconds')}",
+                f"- source_root: {self.config.get('source_folder', '')}",
+                f"- document_count: {len(chunk)}",
+                "",
+                "## Source Map",
+                "",
+                "| No. | CAB Source | MSHelpViewer Dir | Markdown Path | Topic Count |",
+                "| --- | --- | --- | --- | ---: |",
+            ]
+            for j, rec in enumerate(chunk, 1):
+                lines.append(
+                    "| {0} | {1} | {2} | {3} | {4} |".format(
+                        j,
+                        str(rec.get("source_cab", "")).replace("|", "\\|"),
+                        str(rec.get("mshelpviewer_dir", "")).replace("|", "\\|"),
+                        str(rec.get("markdown_path", "")).replace("|", "\\|"),
+                        int(rec.get("topic_count", 0) or 0),
+                    )
+                )
+            lines.append("")
+            lines.append("## Documents")
+            lines.append("")
+
+            for j, rec in enumerate(chunk, 1):
+                title = os.path.basename(str(rec.get("source_cab", "") or f"doc_{j}"))
+                lines.extend(
+                    [
+                        f"### [{j}] {title}",
+                        "",
+                        f"- source_cab: {rec.get('source_cab', '')}",
+                        f"- source_markdown: {rec.get('markdown_path', '')}",
+                        "",
+                        "---",
+                        "",
+                        rec.get("_content", ""),
+                        "",
+                    ]
+                )
+
+            with open(md_path, "w", encoding="utf-8") as f:
+                f.write("\n".join(lines).rstrip() + "\n")
+            outputs.append(md_path)
+            self.generated_mshelp_outputs.append(md_path)
+            logging.info(f"MSHelp merged markdown generated: {md_path}")
+
+            if export_docx:
+                docx_path = os.path.splitext(md_path)[0] + ".docx"
+                try:
+                    self._export_markdown_to_docx(md_path, docx_path)
+                    outputs.append(docx_path)
+                    self.generated_mshelp_outputs.append(docx_path)
+                    logging.info(f"MSHelp merged DOCX generated: {docx_path}")
+                except Exception as e:
+                    logging.warning(f"MSHelp merged DOCX skipped: {e}")
+
+            if export_pdf:
+                pdf_path = os.path.splitext(md_path)[0] + ".pdf"
+                try:
+                    self._export_markdown_to_pdf(md_path, pdf_path)
+                    outputs.append(pdf_path)
+                    self.generated_mshelp_outputs.append(pdf_path)
+                    logging.info(f"MSHelp merged PDF generated: {pdf_path}")
+                except Exception as e:
+                    logging.warning(f"MSHelp merged PDF skipped: {e}")
+
+        self._add_perf_seconds("mshelp_merge_seconds", time.perf_counter() - merge_start)
+        return outputs
+
     def process_single_file(
         self, file_path, target_path_initial, ext, progress_str, is_retry=False
     ):
@@ -1244,6 +2081,8 @@ class OfficeConverter:
         is_excel = ext in self.config["allowed_extensions"].get("excel", [])
         is_ppt = ext in self.config["allowed_extensions"].get("powerpoint", [])
         is_pdf = ext == ".pdf"
+        is_cab = ext in self.config["allowed_extensions"].get("cab", [])
+        is_office = is_word or is_excel or is_ppt
 
         filename = os.path.basename(file_path)
 
@@ -1288,6 +2127,7 @@ class OfficeConverter:
         current_pdf_wait = ppt_wait if is_ppt else base_wait
 
         try:
+            convert_core_start = time.perf_counter()
             if use_sandbox:
                 sandbox_src_path = os.path.join(
                     self.temp_sandbox, f"{uuid.uuid4()}{ext}"
@@ -1295,6 +2135,15 @@ class OfficeConverter:
                 shutil.copy2(file_path, sandbox_src_path)
                 self._unblock_file(sandbox_src_path)
                 working_src = sandbox_src_path
+
+            if is_cab:
+                md_path, rendered_count = self._convert_cab_to_markdown(
+                    working_src, file_path
+                )
+                self._add_perf_seconds(
+                    "convert_core_seconds", time.perf_counter() - convert_core_start
+                )
+                return f"success_cab_md[{rendered_count}]", md_path
 
             if is_pdf:
                 if not is_filename_match and self.content_strategy != STRATEGY_STANDARD:
@@ -1306,6 +2155,9 @@ class OfficeConverter:
                         return "skip_content", target_path_initial
 
                 self.copy_pdf_direct(working_src, sandbox_pdf)
+                self._add_perf_seconds(
+                    "convert_core_seconds", time.perf_counter() - convert_core_start
+                )
 
             else:
                 convert_thread = threading.Thread(
@@ -1330,16 +2182,22 @@ class OfficeConverter:
                 convert_thread.join(timeout=0.1)
 
                 if convert_thread.is_alive():
+                    self._add_perf_seconds(
+                        "convert_core_seconds",
+                        time.perf_counter() - convert_core_start,
+                    )
                     self.stats["timeout"] += 1
                     logging.error(f"timeout skip (>{current_timeout}s)")
-                    if not self.reuse_process:
-                        if is_word:
-                            self._kill_current_app("word")
-                        elif is_excel:
-                            self._kill_current_app("excel")
-                        elif is_ppt:
-                            self._kill_current_app("ppt")
+                    if is_word:
+                        self._kill_current_app("word", force=True)
+                    elif is_excel:
+                        self._kill_current_app("excel", force=True)
+                    elif is_ppt:
+                        self._kill_current_app("ppt", force=True)
                     raise Exception("timeout")
+                self._add_perf_seconds(
+                    "convert_core_seconds", time.perf_counter() - convert_core_start
+                )
 
             if result_context["scan_aborted"]:
                 self.stats["skipped"] += 1
@@ -1350,10 +2208,13 @@ class OfficeConverter:
                     file_path, ext, prefix_override="Price_"
                 )
 
-            wait_pdf_start = time.time()
-            while time.time() - wait_pdf_start < current_pdf_wait:
+            wait_pdf_start = time.perf_counter()
+            while time.perf_counter() - wait_pdf_start < current_pdf_wait:
                 if os.path.exists(sandbox_pdf):
                     time.sleep(0.5)
+                    self._add_perf_seconds(
+                        "pdf_wait_seconds", time.perf_counter() - wait_pdf_start
+                    )
                     result_status, final_path_res = self.handle_file_conflict(
                         sandbox_pdf, final_target_path
                     )
@@ -1368,11 +2229,16 @@ class OfficeConverter:
                     return f"{result_status}{tag_info}", final_path_res
                 time.sleep(0.5)
 
+            self._add_perf_seconds(
+                "pdf_wait_seconds", time.perf_counter() - wait_pdf_start
+            )
             raise Exception(
                 f"conversion command sent but PDF not generated ({current_pdf_wait}s)"
             )
 
         finally:
+            if is_office:
+                self._on_office_file_processed(ext)
             try:
                 if sandbox_src_path and os.path.exists(sandbox_src_path):
                     os.remove(sandbox_src_path)
@@ -1441,12 +2307,21 @@ class OfficeConverter:
                         f"\r{progress_prefix} {status}: {fname} (耗时: {elapsed:.2f}s)    "
                     )
                     logging.info(f"{status}: {logical_source} -> {final_path}")
-                    self._append_conversion_index_record(logical_source, final_path, status)
-                    self._export_pdf_markdown(final_path)
+                    is_pdf_output = str(final_path).lower().endswith(".pdf")
+                    result_status = "success" if is_pdf_output else "success_non_pdf"
+                    if is_pdf_output:
+                        self._append_conversion_index_record(
+                            logical_source, final_path, status
+                        )
+                        markdown_start = time.perf_counter()
+                        self._export_pdf_markdown(final_path)
+                        self._add_perf_seconds(
+                            "markdown_seconds", time.perf_counter() - markdown_start
+                        )
                     results.append(
                         {
                             "source_path": os.path.abspath(logical_source),
-                            "status": "success",
+                            "status": result_status,
                             "detail": status,
                             "final_path": final_path,
                             "elapsed": elapsed,
@@ -3672,6 +4547,20 @@ class OfficeConverter:
                 _append("update_package_index_json", p)
             else:
                 _append("update_package_file", p)
+        for p in self.generated_mshelp_outputs:
+            p_low = str(p).lower()
+            if p_low.endswith(".json") and "mshelp_index_" in p_low:
+                _append("mshelp_index_json", p)
+            elif p_low.endswith(".csv") and "mshelp_index_" in p_low:
+                _append("mshelp_index_csv", p)
+            elif p_low.endswith(".docx"):
+                _append("mshelp_merged_docx", p)
+            elif p_low.endswith(".pdf"):
+                _append("mshelp_merged_pdf", p)
+            elif p_low.endswith(".md"):
+                _append("mshelp_merged_markdown", p)
+            else:
+                _append("mshelp_output_file", p)
 
         _append("convert_index_excel", self.convert_index_path)
         _append("collect_index_excel", self.collect_index_path)
@@ -3701,6 +4590,7 @@ class OfficeConverter:
                 "records_json_count": len(self.generated_records_json_outputs),
                 "chromadb_export_file_count": len(self.generated_chromadb_outputs),
                 "update_package_file_count": len(self.generated_update_package_outputs),
+                "mshelp_output_file_count": len(self.generated_mshelp_outputs),
                 "conversion_record_count": len(self.conversion_index_records),
                 "merge_record_count": len(self.merge_index_records),
                 "artifact_count": len(artifacts),
@@ -4753,9 +5643,61 @@ class OfficeConverter:
         self.update_package_manifest_path = package_manifest
         logging.info(f"[update_package] update package generated: {package_dir}")
         return package_manifest
+
+    def _build_perf_summary(self):
+        m = self.perf_metrics or {}
+        lines = [
+            "",
+            "=== 性能统计 ===",
+            f"扫描耗时: {m.get('scan_seconds', 0.0):.2f}s",
+            f"转换主流程耗时: {m.get('batch_seconds', 0.0):.2f}s",
+            f"  - Office/PDF核心耗时: {m.get('convert_core_seconds', 0.0):.2f}s",
+            f"  - 等待PDF落盘耗时: {m.get('pdf_wait_seconds', 0.0):.2f}s",
+            f"  - Markdown导出耗时: {m.get('markdown_seconds', 0.0):.2f}s",
+            f"  - MSHelp合并耗时: {m.get('mshelp_merge_seconds', 0.0):.2f}s",
+            f"合并耗时: {m.get('merge_seconds', 0.0):.2f}s",
+            f"后处理耗时: {m.get('postprocess_seconds', 0.0):.2f}s",
+            f"总耗时: {m.get('total_seconds', 0.0):.2f}s",
+        ]
+        success_count = self.stats.get("success", 0) or 0
+        if success_count > 0:
+            avg = m.get("total_seconds", 0.0) / success_count
+            lines.append(f"平均每成功文件耗时: {avg:.2f}s")
+            if m.get("total_seconds", 0.0) > 0:
+                lines.append(
+                    f"吞吐率(成功文件/分钟): {success_count / m.get('total_seconds', 1.0) * 60:.2f}"
+                )
+        return "\n".join(lines) + "\n"
+
+    def _run_mshelp_only(self):
+        logging.info("scanning MSHelpViewer folders...")
+        scan_start = time.perf_counter()
+        mshelp_dirs, cab_files = self._scan_mshelp_cab_candidates()
+        self._add_perf_seconds("scan_seconds", time.perf_counter() - scan_start)
+
+        logging.info("MSHelpViewer folder count: %s", len(mshelp_dirs))
+        logging.info("MSHelp CAB candidate count: %s", len(cab_files))
+
+        self.stats["total"] = len(cab_files)
+        results = []
+        if cab_files:
+            logging.info("start processing MSHelp CAB files: %s", len(cab_files))
+            batch_start = time.perf_counter()
+            results.extend(self.run_batch(cab_files))
+            self._add_perf_seconds("batch_seconds", time.perf_counter() - batch_start)
+        else:
+            print("\n[INFO] No MSHelp CAB files found under source folder.")
+
+        mshelp_index_outputs = self._write_mshelp_index_files()
+        mshelp_merged_outputs = self._merge_mshelp_markdowns()
+        return results, mshelp_dirs, mshelp_index_outputs, mshelp_merged_outputs
+
     def run(self):
         self.setup_logging()
         self.print_runtime_summary()
+        self._reset_perf_metrics()
+        self._office_file_counter = 0
+        total_start = time.perf_counter()
 
         merge_outputs = []
         batch_results = []
@@ -4768,9 +5710,11 @@ class OfficeConverter:
         self.generated_records_json_outputs = []
         self.generated_chromadb_outputs = []
         self.generated_update_package_outputs = []
+        self.generated_mshelp_outputs = []
         self.markdown_quality_records = []
         self.conversion_index_records = []
         self.merge_index_records = []
+        self.mshelp_records = []
         self.collect_index_path = None
         self.convert_index_path = None
         self.merge_excel_path = None
@@ -4783,9 +5727,30 @@ class OfficeConverter:
 
         if self.run_mode == MODE_COLLECT_ONLY:
             self.collect_office_files_and_build_excel()
+        elif self.run_mode == MODE_MSHELP_ONLY:
+            (
+                batch_results,
+                mshelp_dirs,
+                mshelp_index_outputs,
+                mshelp_merged_outputs,
+            ) = self._run_mshelp_only()
+            summary = (
+                f"\n=== MSHelp 最终统计(v{__version__}) ===\n"
+                f"MSHelpViewer目录: {len(mshelp_dirs)}\n"
+                f"总处理(CAB): {self.stats['total']}\n"
+                f"成功: {self.stats['success']}\n"
+                f"失败: {self.stats['failed']}\n"
+                f"超时: {self.stats['timeout']}\n"
+                f"跳过: {self.stats['skipped']}\n"
+                f"索引输出: {len(mshelp_index_outputs)}\n"
+                f"合并输出: {len(mshelp_merged_outputs)}\n"
+            )
+            logging.info(summary)
+            print(summary)
         else:
             incremental_ctx = {}
             if self.run_mode in (MODE_CONVERT_ONLY, MODE_CONVERT_THEN_MERGE):
+                scan_start = time.perf_counter()
                 logging.info("scanning files...")
                 files = self._scan_convert_candidates()
                 logging.info("scan candidate file count: %s", len(files))
@@ -4818,11 +5783,16 @@ class OfficeConverter:
                 if dedup_skips:
                     self.stats["skipped"] += len(dedup_skips)
                     batch_results.extend(dedup_skips)
+                self._add_perf_seconds("scan_seconds", time.perf_counter() - scan_start)
 
                 self.stats["total"] = len(files)
                 if files:
                     logging.info("start processing %s files", len(files))
+                    batch_start = time.perf_counter()
                     batch_results.extend(self.run_batch(files))
+                    self._add_perf_seconds(
+                        "batch_seconds", time.perf_counter() - batch_start
+                    )
                 else:
                     if incremental_ctx.get("enabled"):
                         print("\n[INFO] Incremental mode: no added/modified files found.")
@@ -4875,12 +5845,16 @@ class OfficeConverter:
                                 retry_alias_map[retry_path] = name_map[name].pop(0)
 
                     if retry_files:
+                        retry_start = time.perf_counter()
                         batch_results.extend(
                             self.run_batch(
                                 retry_files,
                                 is_retry=True,
                                 source_alias_map=retry_alias_map,
                             )
+                        )
+                        self._add_perf_seconds(
+                            "batch_seconds", time.perf_counter() - retry_start
                         )
                     else:
                         print("No retryable files found in failed directory.")
@@ -4906,7 +5880,9 @@ class OfficeConverter:
                 print("Current mode is merge_only. Conversion step skipped.")
 
             if self.run_mode in (MODE_CONVERT_THEN_MERGE, MODE_MERGE_ONLY) and self.config.get("enable_merge", True):
+                merge_start = time.perf_counter()
                 merge_outputs = self.merge_pdfs() or []
+                self._add_perf_seconds("merge_seconds", time.perf_counter() - merge_start)
 
             summary = (
                 f"\n=== 最终统计(v{__version__}) ===\n"
@@ -4935,6 +5911,7 @@ class OfficeConverter:
             logging.info(summary)
             print(summary)
 
+        postprocess_start = time.perf_counter()
         try:
             self._write_excel_structured_json_exports()
         except Exception as e:
@@ -4959,6 +5936,13 @@ class OfficeConverter:
             self._write_corpus_manifest(merge_outputs=merge_outputs)
         except Exception as e:
             logging.error(f"failed to write corpus manifest: {e}")
+        self._add_perf_seconds(
+            "postprocess_seconds", time.perf_counter() - postprocess_start
+        )
+        self.perf_metrics["total_seconds"] = time.perf_counter() - total_start
+        perf_summary = self._build_perf_summary()
+        logging.info(perf_summary)
+        print(perf_summary)
 
         try:
             open_dir = self.config["target_folder"]
@@ -4984,6 +5968,8 @@ def create_default_config(config_path):
             "default_engine": "ask",
             "kill_process_mode": "ask",
             "auto_retry_failed": False,
+            "office_reuse_app": True,
+            "office_restart_every_n_files": 25,
             "timeout_seconds": 60,
             "pdf_wait_seconds": 15,
             "ppt_timeout_seconds": 180,
@@ -5010,6 +5996,13 @@ def create_default_config(config_path):
             "global_md5_dedup": False,
             "enable_update_package": True,
             "update_package_root": "",
+            "cab_7z_path": "",
+            "mshelpviewer_folder_name": "MSHelpViewer",
+            "enable_mshelp_merge_output": True,
+            "mshelp_merge_max_docs": 120,
+            "mshelp_merge_max_chars": 1200000,
+            "enable_mshelp_output_docx": False,
+            "enable_mshelp_output_pdf": False,
             "excel_json_max_rows": 2000,
             "excel_json_max_cols": 80,
             "excel_json_records_preview": 200,
@@ -5027,6 +6020,7 @@ def create_default_config(config_path):
                 "excel": [".xls", ".xlsx"],
                 "powerpoint": [".ppt", ".pptx"],
                 "pdf": [".pdf"],
+                "cab": [".cab"],
             },
             "overwrite_same_size": True,
             "merge_mode": MERGE_MODE_CATEGORY,
