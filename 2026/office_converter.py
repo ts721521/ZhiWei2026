@@ -1,4 +1,4 @@
-﻿# -*- coding: utf-8 -*-
+# -*- coding: utf-8 -*-
 """
 Office batch conversion and file organizing tool - core logic
 
@@ -528,6 +528,64 @@ class OfficeConverter:
         except Exception:
             pass
 
+    def _check_sandbox_free_space_or_raise(self):
+        if not self.config.get("enable_sandbox", True):
+            return
+
+        threshold_gb = self.config.get("sandbox_min_free_gb", 10)
+        try:
+            threshold_gb = float(threshold_gb)
+        except Exception:
+            threshold_gb = 0
+        if threshold_gb <= 0:
+            return
+
+        sandbox_root = self.config.get("temp_sandbox_root") or self.config.get(
+            "target_folder", ""
+        )
+        if not sandbox_root:
+            return
+
+        probe_path = sandbox_root
+        if not os.path.exists(probe_path):
+            drive, _ = os.path.splitdrive(probe_path)
+            if drive:
+                probe_path = drive + os.sep
+            else:
+                probe_path = os.getcwd()
+
+        try:
+            usage = shutil.disk_usage(probe_path)
+        except Exception as e:
+            logging.warning(f"disk usage check failed for {probe_path}: {e}")
+            return
+
+        free_gb = usage.free / (1024 * 1024 * 1024)
+        policy = (self.config.get("sandbox_low_space_policy") or "block").lower()
+
+        msg = (
+            f"Sandbox free space check: path={probe_path}, "
+            f"free={free_gb:.2f} GB, threshold={threshold_gb:.2f} GB, policy={policy}"
+        )
+        logging.info(msg)
+
+        if free_gb >= threshold_gb:
+            return
+
+        warn_text = (
+            f"[WARN] Sandbox free space is below threshold: "
+            f"{free_gb:.2f} GB < {threshold_gb:.2f} GB (policy={policy})"
+        )
+        print("\n" + warn_text)
+        logging.warning(warn_text)
+
+        if policy == "block":
+            raise RuntimeError(
+                "Sandbox free space below configured minimum; run blocked by policy."
+            )
+        # For now, 'confirm' is treated as 'warn' at converter layer;
+        # GUI can add higher-level confirmation based on logs if needed.
+
     def load_config(self, path):
         try:
             with open(path, "r", encoding="utf-8") as f:
@@ -578,6 +636,12 @@ class OfficeConverter:
         cfg.setdefault("enable_merge", True)
         cfg.setdefault("max_merge_size_mb", 80)
         cfg.setdefault("temp_sandbox_root", "")
+        cfg.setdefault("sandbox_min_free_gb", 10)
+        cfg.setdefault("sandbox_low_space_policy", "block")
+        cfg.setdefault("enable_llm_delivery_hub", True)
+        cfg.setdefault("llm_delivery_root", "")
+        cfg.setdefault("llm_delivery_flatten", True)
+        cfg.setdefault("llm_delivery_include_pdf", False)
         cfg.setdefault("overwrite_same_size", True)
         cfg.setdefault("merge_mode", MERGE_MODE_CATEGORY)
         cfg.setdefault("enable_merge_index", False)
@@ -595,8 +659,6 @@ class OfficeConverter:
         cfg.setdefault("cab_7z_path", "")
         cfg.setdefault("mshelpviewer_folder_name", "MSHelpViewer")
         cfg.setdefault("enable_mshelp_merge_output", True)
-        cfg.setdefault("mshelp_merge_max_docs", 120)
-        cfg.setdefault("mshelp_merge_max_chars", 1200000)
         cfg.setdefault("enable_mshelp_output_docx", False)
         cfg.setdefault("enable_mshelp_output_pdf", False)
 
@@ -1948,16 +2010,12 @@ class OfficeConverter:
         out_dir = os.path.join(target_root, "_AI", "MSHelp", "Merged")
         os.makedirs(out_dir, exist_ok=True)
 
+        # Reuse unified max_merge_size_mb (same parameter as regular PDF merge)
         try:
-            max_docs = int(self.config.get("mshelp_merge_max_docs", 120) or 120)
+            max_size_mb = int(self.config.get("max_merge_size_mb", 80) or 80)
         except Exception:
-            max_docs = 120
-        try:
-            max_chars = int(self.config.get("mshelp_merge_max_chars", 1200000) or 1200000)
-        except Exception:
-            max_chars = 1200000
-        max_docs = max(1, max_docs)
-        max_chars = max(200000, max_chars)
+            max_size_mb = 80
+        max_size_bytes = max(1, max_size_mb) * 1024 * 1024
 
         valid = []
         for rec in self.mshelp_records:
@@ -1971,7 +2029,7 @@ class OfficeConverter:
                 continue
             item = dict(rec)
             item["_content"] = content
-            item["_chars"] = len(content)
+            item["_bytes"] = len(content.encode("utf-8"))
             valid.append(item)
 
         if not valid:
@@ -1979,15 +2037,15 @@ class OfficeConverter:
 
         chunks = []
         current = []
-        current_chars = 0
+        current_bytes = 0
         for rec in valid:
-            rec_chars = int(rec.get("_chars", 0) or 0)
-            if current and (len(current) >= max_docs or current_chars + rec_chars > max_chars):
+            rec_bytes = int(rec.get("_bytes", 0) or 0)
+            if current and (current_bytes + rec_bytes > max_size_bytes):
                 chunks.append(current)
                 current = []
-                current_chars = 0
+                current_bytes = 0
             current.append(rec)
-            current_chars += rec_chars
+            current_bytes += rec_bytes
         if current:
             chunks.append(current)
 
@@ -2459,7 +2517,7 @@ class OfficeConverter:
             write_header()
             
             # Coordinate estimation parameters for index link placement.
-            # A4楂樺害 ~842pt. TopMargin 72. 
+            # A4高度 ~842pt. TopMargin 72. 
             # Title line (16pt) + spacing; this is an approximation.
             # In Word, 16pt lines are typically around 20-22pt high.
             # Simplified model:
@@ -2849,10 +2907,10 @@ class OfficeConverter:
                     # Coordinate conversion notes:
                     # Word origin is top-left; PDF origin is bottom-left.
                     # Word TopMargin 72 -> PDF Y = 842 - 72 = 770.
-                    # Title 琛屽崰鐢ㄧ害 30pt -> Y = 740.
+                    # Title 行占用约 30pt -> Y = 740.
                     # Empty line ~20pt -> Y ~= 720.
                     # First text line baseline is around 700-710.
-                    # 琛岃窛 20pt.
+                    # 行距 20pt.
                     
                     start_y = 715
                     line_height = 20
@@ -4486,6 +4544,216 @@ class OfficeConverter:
         item.update(meta)
         artifacts.append(item)
 
+    def _maybe_build_llm_delivery_hub(self, target_folder, artifacts):
+        if not self.config.get("enable_llm_delivery_hub", True):
+            return None
+
+        if not artifacts:
+            return None
+
+        llm_root = self.config.get("llm_delivery_root") or os.path.join(
+            target_folder, "_LLM_UPLOAD"
+        )
+        try:
+            os.makedirs(llm_root, exist_ok=True)
+        except Exception as e:
+            logging.error(f"failed to create LLM hub root {llm_root}: {e}")
+            return None
+
+        include_pdf = self.config.get("llm_delivery_include_pdf", False)
+        flatten = self.config.get("llm_delivery_flatten", False)
+
+        hub_items = []
+        counts = {
+            "markdown": 0,
+            "json": 0,
+            "pdf": 0,
+            "other": 0,
+        }
+
+        # Kind whitelist: only include content files useful for LLM ingestion
+        _LLM_CONTENT_KINDS = {
+            "markdown_export",        # Converted Markdown from Office/PDF
+            "mshelp_merged_markdown", # MSHelp merged documentation
+            "excel_structured_json",  # Structured Excel data (JSON)
+        }
+        _LLM_PDF_KINDS = {
+            "merged_pdf",             # Merged PDF volumes
+            "converted_pdf",          # Individual converted PDFs
+            "mshelp_merged_pdf",      # MSHelp merged PDF
+        }
+
+        # ---- Merge dedup: if merged docs exist, skip individual sources ----
+        has_merged_pdf = any(a.get("kind") == "merged_pdf" for a in artifacts)
+        has_mshelp_merged = any(a.get("kind") == "mshelp_merged_markdown" for a in artifacts)
+
+        # Collect paths of individual MSHelp markdowns (they are in _AI/MSHelp/ but NOT in Merged/)
+        _mshelp_source_paths = set()
+        if has_mshelp_merged:
+            for rec in getattr(self, "mshelp_records", []) or []:
+                mdp = rec.get("markdown_path", "")
+                if mdp:
+                    _mshelp_source_paths.add(os.path.normcase(os.path.abspath(mdp)))
+
+        for art in artifacts:
+            kind = art.get("kind", "")
+            rel = art.get("path_rel_to_target") or ""
+            abs_path = art.get("path_abs") or ""
+            if not rel or not abs_path:
+                continue
+
+            is_content = kind in _LLM_CONTENT_KINDS
+            is_pdf = kind in _LLM_PDF_KINDS
+
+            if not (is_content or (include_pdf and is_pdf)):
+                continue
+
+            # Skip individual converted PDFs when merged PDFs exist
+            if has_merged_pdf and kind == "converted_pdf":
+                continue
+
+            # Skip individual MSHelp markdown sources when merged packages exist
+            if has_mshelp_merged and kind == "markdown_export":
+                norm = os.path.normcase(os.path.abspath(abs_path))
+                if norm in _mshelp_source_paths:
+                    continue
+
+            ext = os.path.splitext(rel.lower())[1]
+            if ext == ".md":
+                counts["markdown"] += 1
+                category = "Markdown"
+            elif ext in (".json", ".jsonl"):
+                counts["json"] += 1
+                category = "JSON"
+            elif ext == ".pdf":
+                counts["pdf"] += 1
+                category = "PDF"
+            else:
+                counts["other"] += 1
+                category = "Files"
+
+            if flatten:
+                # Flat: use clean original basename, collision-safe
+                base_name = os.path.basename(rel)
+                hub_rel = base_name
+                hub_rel_base, hub_rel_ext = os.path.splitext(hub_rel)
+                candidate = os.path.join(llm_root, hub_rel)
+                collision_idx = 1
+                while os.path.exists(candidate):
+                    hub_rel = f"{hub_rel_base}_{collision_idx}{hub_rel_ext}"
+                    candidate = os.path.join(llm_root, hub_rel)
+                    collision_idx += 1
+            else:
+                hub_rel = os.path.join(category, rel)
+
+            hub_abs = os.path.join(llm_root, hub_rel)
+            hub_dir = os.path.dirname(hub_abs)
+            try:
+                os.makedirs(hub_dir, exist_ok=True)
+            except Exception as e:
+                logging.error(f"failed to create LLM hub subdir {hub_dir}: {e}")
+                continue
+
+            try:
+                shutil.copy2(abs_path, hub_abs)
+            except Exception as e:
+                logging.error(f"failed to copy to LLM hub {hub_abs}: {e}")
+                continue
+
+            try:
+                size_bytes = os.path.getsize(hub_abs)
+            except Exception:
+                size_bytes = 0
+
+            hub_items.append(
+                {
+                    "kind": kind,
+                    "source_abs_path": abs_path,
+                    "delivery_rel_path": hub_rel.replace("\\", "/"),
+                    "size_bytes": int(size_bytes),
+                    "md5": art.get("md5", ""),
+                    "sha256": art.get("sha256", ""),
+                }
+            )
+
+        if not hub_items:
+            return None
+
+        manifest = {
+            "version": 1,
+            "generated_at": datetime.now().isoformat(timespec="seconds"),
+            "run_mode": self.run_mode,
+            "source_folder": self.config.get("source_folder", ""),
+            "target_folder": target_folder,
+            "hub_root": llm_root,
+            "items": hub_items,
+            "summary": counts,
+        }
+
+        manifest_path = os.path.join(llm_root, "llm_upload_manifest.json")
+        try:
+            with open(manifest_path, "w", encoding="utf-8") as f:
+                json.dump(manifest, f, ensure_ascii=False, indent=2)
+        except Exception as e:
+            logging.error(f"failed to write LLM hub manifest {manifest_path}: {e}")
+
+        # ---- Generate readable text manifest (清单, gated by config) ----
+        if self.config.get("enable_upload_readme", True):
+            readme_path = os.path.join(llm_root, "README_UPLOAD_LIST.txt")
+            try:
+                total_size = sum(it["size_bytes"] for it in hub_items)
+                readme_lines = [
+                    "=== LLM Upload File List / 上传文件清单 ===",
+                    f"Generated: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}",
+                    f"Total files: {len(hub_items)}",
+                    f"Total size: {total_size / 1024 / 1024:.1f} MB",
+                    f"  Markdown: {counts['markdown']}  |  JSON: {counts['json']}  |  PDF: {counts['pdf']}",
+                    "",
+                    "--- File List ---",
+                ]
+                for idx, it in enumerate(hub_items, 1):
+                    size_mb = it["size_bytes"] / 1024 / 1024
+                    readme_lines.append(
+                        f"  {idx:3d}. [{it['kind']}] {it['delivery_rel_path']}  ({size_mb:.2f} MB)"
+                    )
+                readme_lines.append("")
+                readme_lines.append("--- Notes ---")
+                if has_merged_pdf:
+                    readme_lines.append("* Individual converted PDFs are excluded (already in merged volumes).")
+                if has_mshelp_merged:
+                    readme_lines.append("* Individual MSHelp markdowns are excluded (already in merged packages).")
+                readme_lines.append("* Metadata files (manifests, quality reports, index) are excluded.")
+                readme_lines.append("")
+                with open(readme_path, "w", encoding="utf-8") as f:
+                    f.write("\n".join(readme_lines))
+            except Exception as e:
+                logging.warning(f"failed to write upload readme: {e}")
+
+        logging.info(
+            "LLM hub built at %s | files: %s (md=%s, json=%s, pdf=%s)",
+            llm_root,
+            len(hub_items),
+            counts["markdown"],
+            counts["json"],
+            counts["pdf"],
+        )
+
+        # expose for GUI summary
+        self.llm_hub_root = llm_root
+
+        return {
+            "kind": "llm_delivery_hub",
+            "path_abs": llm_root,
+            "path_rel_to_target": os.path.relpath(llm_root, target_folder).replace(
+                "\\", "/"
+            ),
+            "size_bytes": 0,
+            "mtime": datetime.now().isoformat(timespec="seconds"),
+            "md5": "",
+            "sha256": "",
+            "manifest_path": manifest_path,
+        }
+
     def _write_corpus_manifest(self, merge_outputs=None):
         if not self.config.get("enable_corpus_manifest", True):
             return None
@@ -4596,6 +4864,15 @@ class OfficeConverter:
                 "artifact_count": len(artifacts),
             },
         }
+
+        # Optional: build LLM delivery hub on top of collected artifacts
+        try:
+            llm_hub_meta = self._maybe_build_llm_delivery_hub(target_folder, artifacts)
+            if llm_hub_meta:
+                artifacts.append(llm_hub_meta)
+                manifest["summary"]["artifact_count"] = len(artifacts)
+        except Exception as e:
+            logging.error(f"failed to build LLM delivery hub: {e}")
 
         manifest_path = os.path.join(target_folder, "corpus.json")
         with open(manifest_path, "w", encoding="utf-8") as f:
@@ -5722,8 +5999,15 @@ class OfficeConverter:
         self.update_package_manifest_path = None
         self.markdown_quality_report_path = None
         self.chromadb_export_manifest_path = None
+        self.llm_hub_root = ""
         self.incremental_registry_path = ""
         self._incremental_context = None
+
+        try:
+            self._check_sandbox_free_space_or_raise()
+        except Exception as e:
+            logging.error(f"sandbox free space precheck failed: {e}")
+            raise
 
         if self.run_mode == MODE_COLLECT_ONLY:
             self.collect_office_files_and_build_excel()
@@ -5999,8 +6283,6 @@ def create_default_config(config_path):
             "cab_7z_path": "",
             "mshelpviewer_folder_name": "MSHelpViewer",
             "enable_mshelp_merge_output": True,
-            "mshelp_merge_max_docs": 120,
-            "mshelp_merge_max_chars": 1200000,
             "enable_mshelp_output_docx": False,
             "enable_mshelp_output_pdf": False,
             "excel_json_max_rows": 2000,
@@ -6026,6 +6308,15 @@ def create_default_config(config_path):
             "merge_mode": MERGE_MODE_CATEGORY,
             "merge_source": "source",
             "temp_sandbox_root": "",
+            "sandbox_min_free_gb": 10,
+            "sandbox_low_space_policy": "block",
+            "enable_llm_delivery_hub": True,
+            "llm_delivery_root": "",
+            "llm_delivery_flatten": True,
+            "llm_delivery_include_pdf": False,
+            "enable_upload_readme": True,
+            "enable_upload_json_manifest": True,
+            "upload_dedup_merged": True,
             "enable_merge_index": False,
             "enable_merge_excel": False,
             "enable_merge_map": True,

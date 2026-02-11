@@ -1,9 +1,22 @@
-﻿# Changelog
+# Changelog
 
 All notable changes to this project are documented in this file.
 
 ## [Unreleased] - 2026-02-11
 ### Added
+- GUI: New independent tab `成果文件` (Output Files) for managing LLM upload hub, upload manifest, and dedup settings. Always visible regardless of run mode.
+- LLM Upload: Configurable upload manifest generation – text readme (`README_UPLOAD_LIST.txt`) and JSON manifest (`llm_upload_manifest.json`) can be independently toggled.
+- LLM Upload: Configurable merge dedup – when enabled (default), individual source files already contained in merged documents are excluded from upload.
+- LLM Upload: Flatten `_LLM_UPLOAD` by default (`llm_delivery_flatten = true`), all files go to root directory with clean original filenames instead of nested subdirectories.
+- LLM Upload: Content-only whitelist filter – only `markdown_export`, `mshelp_merged_markdown`, `excel_structured_json`, and optionally merged/converted PDFs are collected; metadata files (manifests, quality reports, records JSON, ChromaDB) are excluded.
+- MSHelp Merge: Unified merge size parameter – MSHelp merged markdown now uses `max_merge_size_mb` (default 80 MB) for package splitting, removing separate `mshelp_merge_max_docs` / `mshelp_merge_max_chars` parameters.
+- GUI: Single-level main Notebook with 6 tabs (`模式与路径` / `转换选项` / `合并 / 梳理` / `MSHelp` / `快速定位` / `高级设置`), replacing the previous 2-level "运行中心 / 配置管理" structure.
+- GUI: Merged sparse tabs so that merge + collect ("梳理") options share one page, reducing empty pages and tab switching.
+- GUI: NotebookLM Locator restored as an independent tab (`快速定位`), always enabled regardless of run mode, for convenient source tracing at any time.
+- GUI: Two-column layouts for `转换选项` and `高级设置` tabs to better utilize horizontal space on wide screens.
+- GUI: Global spacing compression (labelframe padding, section gaps, help-row spacing, sub-option indentation) to reduce vertical scrolling while keeping visual hierarchy.
+- GUI: Window size presets with screen-height-aware defaults (`1280x860` for standard displays, `1360x920` for ≥1080p) and stricter minimum size (`1000x700`).
+- GUI: Remember main window size/position and state; persist under `ui.window_geometry` / `ui.window_state` in `config.json` and restore on next launch.
 - Corpus manifest export: auto-generate `corpus.json` with artifact metadata, conversion records, merge records, and summary.
 - GUI artifact summary output after each step.
 - AI export toggles in GUI/runtime config: `enable_markdown`, `enable_excel_json`.
