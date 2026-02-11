@@ -1,0 +1,48 @@
+﻿# OS / editor
+.DS_Store
+Thumbs.db
+.vscode/
+.idea/
+
+# Python
+__pycache__/
+*.py[cod]
+*.pyo
+*.pyd
+*.so
+.pytest_cache/
+.mypy_cache/
+
+# Virtual env / local env
+.venv/
+venv/
+env/
+.env
+.env.*
+
+# Logs and runtime files
+logs/
+log/
+*.log
+
+# Common temp/backup files
+*.tmp
+*.temp
+*.bak
+*.swp
+*.swo
+
+# Office temp docs (lock files)
+~$*.docx
+~$*.xlsx
+~$*.pptx
+
+# Keep generated docs out of git (uncomment if needed)
+# *.pdf
+# *.docx
+# *.xlsx
+# *.pptx
+
+# Project-local noisy outputs
+2026/logs/
+2026/log/

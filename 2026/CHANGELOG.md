@@ -2,7 +2,7 @@
 
 All notable changes to this project are documented in this file.
 
-## [Unreleased] - 2026-02-10
+## [Unreleased] - 2026-02-11
 ### Added
 - Corpus manifest export: auto-generate `corpus.json` with artifact metadata, conversion records, merge records, and summary.
 - GUI artifact summary output after each step.
@@ -29,6 +29,14 @@ All notable changes to this project are documented in this file.
   - Markdown chunk collection and ChromaDB `PersistentClient` upsert flow.
   - JSONL fallback output plus export manifest under `_AI/ChromaDB/`.
   - GUI toggle and artifact-summary integration.
+- MSHelp API docs mode (`run_mode=mshelp_only`):
+  - Scan `MSHelpViewer` folders and process `.cab` help packages.
+  - CAB to Markdown conversion pipeline with source trace records.
+  - MSHelp index outputs (`MSHelp_Index_*.json/.csv`).
+  - Merged MSHelp package outputs (`MSHelp_API_Merged_*.md`, optional `.docx/.pdf`).
+- Project handover package for next AI:
+  - New technical handover document with architecture, state, risks, and next-step implementation guidance.
+  - Unified documentation updates for upcoming V1.1 requirements.
 
 ### Changed
 - Config defaults expanded and normalized in loader/default-config generation.
@@ -57,6 +65,9 @@ All notable changes to this project are documented in this file.
 - Added dynamic dirty-count labels for Config Center actions (`Save Unsaved Sections` / `Revert Unsaved Sections`).
 - Improved `Revert Unsaved Sections` safety: added confirmation dialog with section scope and refreshed baseline from `config.json` before rollback.
 - Added configurable revert-confirmation toggle in UI defaults (`confirm_revert_dirty`), persisted in `config.json`.
+- Updated project docs to align with the next requested user goals:
+  - Centralized LLM upload output folder (single ingestion path).
+  - Adjustable sandbox location and low-disk safety strategy for large incremental runs.
 
 ### Fixed
 - Repaired broken/mis-encoded string literals in `office_converter.py` that could cause runtime/compile failures.

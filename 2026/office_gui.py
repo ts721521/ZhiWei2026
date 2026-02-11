@@ -1,15 +1,15 @@
 # -*- coding: utf-8 -*-
 """
-office_gui.py - Office 文档批量转换 & 梳理工具 GUI 版
+office_gui.py - Office 鏂囨。鎵归噺杞崲 & 姊崇悊宸ュ叿 GUI 鐗?
 
-说明：
-- 依赖 office_converter.py 中的 OfficeConverter（你已经更新到 v5.15.6）
-- GUI 中：
-    * “运行参数”页：选择源/目标目录、运行模式、内容策略、合并模式、沙箱等
-    * “配置管理”页：直接编辑 config.json 的部分配置（日志目录、排除目录、关键字、超时参数等）
-- “保存配置”按钮：写入 config.json
-- “开始运行”按钮：用当前界面参数启动转换/梳理（不会自动改 config.json）
-- “停止”按钮：设置 converter.is_running=False，优雅停止
+璇存槑锛?
+- 渚濊禆 office_converter.py 涓殑 OfficeConverter锛堜綘宸茬粡鏇存柊鍒?v5.15.6锛?
+- GUI 涓細
+    * 鈥滆繍琛屽弬鏁扳€濋〉锛氶€夋嫨婧?鐩爣鐩綍銆佽繍琛屾ā寮忋€佸唴瀹圭瓥鐣ャ€佸悎骞舵ā寮忋€佹矙绠辩瓑
+    * 鈥滈厤缃鐞嗏€濋〉锛氱洿鎺ョ紪杈?config.json 鐨勯儴鍒嗛厤缃紙鏃ュ織鐩綍銆佹帓闄ょ洰褰曘€佸叧閿瓧銆佽秴鏃跺弬鏁扮瓑锛?
+- 鈥滀繚瀛橀厤缃€濇寜閽細鍐欏叆 config.json
+- 鈥滃紑濮嬭繍琛屸€濇寜閽細鐢ㄥ綋鍓嶇晫闈㈠弬鏁板惎鍔ㄨ浆鎹?姊崇悊锛堜笉浼氳嚜鍔ㄦ敼 config.json锛?
+- 鈥滃仠姝⑩€濇寜閽細璁剧疆 converter.is_running=False锛屼紭闆呭仠姝?
 """
 
 import os
@@ -23,7 +23,7 @@ import queue
 import re
 from types import SimpleNamespace
 import tkinter as tk
-from tkinter import filedialog, messagebox, ttk, colorchooser
+from tkinter import filedialog, messagebox, ttk, colorchooser, simpledialog
 from tkinter.constants import *  # Explicitly import standard constants
 
 # Avoid UnicodeEncodeError on Windows consoles with legacy code pages.
@@ -164,6 +164,7 @@ from office_converter import (
     MODE_MERGE_ONLY,
     MODE_CONVERT_THEN_MERGE,
     MODE_COLLECT_ONLY,
+    MODE_MSHELP_ONLY,
     COLLECT_MODE_COPY_AND_INDEX,
     COLLECT_MODE_INDEX_ONLY,
     MERGE_MODE_CATEGORY,
@@ -181,7 +182,7 @@ LOG_QUEUE = queue.Queue()
 
 
 class TkLogHandler:
-    """简单 handler：把 stdout/stderr 文本丢到队列，由 GUI 定时刷到 Text 里"""
+    """Simple handler that forwards stdout/stderr lines into the GUI log queue."""
 
     def write(self, msg: str):
         msg = msg.rstrip("\n")
@@ -328,53 +329,50 @@ class HoverTip:
             self.tipwindow = None
 
 
-# ========= GUI 专用 Converter 子类：屏蔽 CLI 输入 =========
+# ========= GUI 涓撶敤 Converter 瀛愮被锛氬睆钄?CLI 杈撳叆 =========
 
 
 class GUIOfficeConverter(OfficeConverter):
-    """
-    覆盖所有会在 __init__ 中调用 input() 的方法，使其在 GUI 环境下不弹出 CLI 交互。
-    run_mode / collect_mode / engine_type 等由 GUI 在实例化之后再覆盖。
-    """
+    """GUI-only converter: disable interactive CLI prompts."""
 
     def print_welcome(self):
-        # GUI 环境下不需要在控制台打印欢迎界面（日志里会有头部）
+        # GUI 鐜涓嬩笉闇€瑕佸湪鎺у埗鍙版墦鍗版杩庣晫闈紙鏃ュ織閲屼細鏈夊ご閮級
         pass
 
     def confirm_config_in_terminal(self):
-        # 不在 GUI 环境下再次询问源/目标目录
+        # 涓嶅湪 GUI 鐜涓嬪啀娆¤闂簮/鐩爣鐩綍
         pass
 
     def ask_for_subfolder(self):
-        # GUI 中不做“子目录”询问；如需子目录可直接在目标路径里体现
+        # GUI 涓笉鍋氣€滃瓙鐩綍鈥濊闂紱濡傞渶瀛愮洰褰曞彲鐩存帴鍦ㄧ洰鏍囪矾寰勯噷浣撶幇
         pass
 
     def select_run_mode(self):
-        # 运行模式由 GUI 设置
+        # 杩愯妯″紡鐢?GUI 璁剧疆
         pass
 
     def select_collect_mode(self):
-        # 梳理子模式由 GUI 设置
+        # 姊崇悊瀛愭ā寮忕敱 GUI 璁剧疆
         pass
 
     def select_merge_mode(self):
-        # 合并模式由 GUI 设置（配置或界面 Radio）
+        # 鍚堝苟妯″紡鐢?GUI 璁剧疆锛堥厤缃垨鐣岄潰 Radio锛?
         pass
 
     def select_content_strategy(self):
-        # 内容策略由 GUI 设置
+        # 鍐呭绛栫暐鐢?GUI 璁剧疆
         pass
 
     def select_engine_mode(self):
-        # 引擎类型由 GUI 设置
+        # 寮曟搸绫诲瀷鐢?GUI 璁剧疆
         pass
 
     def print_runtime_summary(self):
-        # 简化：GUI 环境下不打印 CLI 风格总览，日志由 GUI 捕获 print 即可
+        # 绠€鍖栵細GUI 鐜涓嬩笉鎵撳嵃 CLI 椋庢牸鎬昏锛屾棩蹇楃敱 GUI 鎹曡幏 print 鍗冲彲
         pass
 
 
-# ========= 主窗口 =========
+# ========= 涓荤獥鍙?=========
 
 
 class OfficeGUI(tb.Window):
@@ -402,8 +400,16 @@ class OfficeGUI(tb.Window):
 
         self.script_dir = get_app_path()
         self.config_path = config_path or os.path.join(self.script_dir, "config.json")
+        self.var_profile_active_path = tk.StringVar(value=self.config_path)
+        self.profile_manager_win = None
+        self.profile_tree = None
+        self._profile_tree_rows = {}
+        self.save_profile_dialog = None
+        self.load_profile_dialog = None
+        self.load_profile_tree = None
+        self._load_profile_tree_rows = {}
 
-        # 当前任务线程 & 转换器实例
+        # 褰撳墠浠诲姟绾跨▼ & 杞崲鍣ㄥ疄渚?
         self.worker_thread = None
         self.current_converter = None
         self.stop_requested = False
@@ -424,27 +430,27 @@ class OfficeGUI(tb.Window):
         self.tooltip_font_size = self.TOOLTIP_DEFAULTS["tooltip_font_size"]
         self.tooltip_auto_theme = self.TOOLTIP_DEFAULTS["tooltip_auto_theme"]
 
-        # 把 stdout/stderr 重定向到 GUI 日志窗口
+        # 鎶?stdout/stderr 閲嶅畾鍚戝埌 GUI 鏃ュ織绐楀彛
         # sys.stdout = TkLogHandler()
         # sys.stderr = TkLogHandler()
 
         if not os.path.exists(self.config_path):
             success = create_default_config(self.config_path)
             if success:
-                info_title = "Info" if self.current_lang == "en" else "提示"
+                info_title = "Info" if self.current_lang == "en" else "鎻愮ず"
                 messagebox.showinfo(info_title, self.tr("msg_no_config"))
 
         self._build_ui()
         self._load_config_to_ui()
         self.locator_short_id_index = {}
 
-        # 定时刷新日志
+        # 瀹氭椂鍒锋柊鏃ュ織
         self.after(200, self._poll_log_queue)
 
 
-    # ===================== UI 构建 =====================
+    # ===================== UI 鏋勫缓 =====================
 
-    # ===================== UI 构建 (Modern Layout) =====================
+    # ===================== UI 鏋勫缓 (Modern Layout) =====================
 
     def tr(self, key):
         """Translate key to current language"""
@@ -490,6 +496,7 @@ class OfficeGUI(tb.Window):
             self.tr("mode_merge"): "tip_mode_merge",
             self.tr("mode_convert_merge"): "tip_mode_convert_merge",
             self.tr("mode_collect"): "tip_mode_collect",
+            self.tr("mode_mshelp"): "tip_mode_mshelp",
             self.tr("lbl_sandbox"): "tip_toggle_sandbox",
             self.tr("chk_corpus_manifest"): "tip_toggle_corpus_manifest",
             self.tr("chk_export_markdown"): "tip_toggle_export_markdown",
@@ -590,6 +597,29 @@ class OfficeGUI(tb.Window):
             self._save_settings_to_file(show_msg=False)
         except Exception:
             pass
+
+        if self.profile_manager_win is not None and self.profile_manager_win.winfo_exists():
+            try:
+                self.profile_manager_win.destroy()
+            except Exception:
+                pass
+        self.profile_manager_win = None
+        self.profile_tree = None
+        self._profile_tree_rows = {}
+        if self.save_profile_dialog is not None and self.save_profile_dialog.winfo_exists():
+            try:
+                self.save_profile_dialog.destroy()
+            except Exception:
+                pass
+        if self.load_profile_dialog is not None and self.load_profile_dialog.winfo_exists():
+            try:
+                self.load_profile_dialog.destroy()
+            except Exception:
+                pass
+        self.save_profile_dialog = None
+        self.load_profile_dialog = None
+        self.load_profile_tree = None
+        self._load_profile_tree_rows = {}
         
         self.current_lang = "en" if self.current_lang == "zh" else "zh"
         self._tooltips = []
@@ -604,7 +634,7 @@ class OfficeGUI(tb.Window):
         self._build_ui()
         self._load_config_to_ui()
 
-    # ===================== UI 构建 =====================
+    # ===================== UI 鏋勫缓 =====================
 
     def _build_ui(self):
         self._tooltips = []
@@ -828,6 +858,10 @@ class OfficeGUI(tb.Window):
             grid_frame, text=self.tr("mode_collect"), variable=self.var_run_mode, value=MODE_COLLECT_ONLY,
             command=self._on_run_mode_change, bootstyle="toolbutton-outline"
         ).grid(row=1, column=1, sticky="ew", padx=2, pady=2)
+        tb.Radiobutton(
+            grid_frame, text=self.tr("mode_mshelp"), variable=self.var_run_mode, value=MODE_MSHELP_ONLY,
+            command=self._on_run_mode_change, bootstyle="toolbutton-outline"
+        ).grid(row=2, column=0, columnspan=2, sticky="ew", padx=2, pady=2)
         grid_frame.columnconfigure(0, weight=1)
         grid_frame.columnconfigure(1, weight=1)
 
@@ -837,11 +871,13 @@ class OfficeGUI(tb.Window):
         self.tab_run_convert = tb.Frame(self.run_cfg_tabs)
         self.tab_run_merge = tb.Frame(self.run_cfg_tabs)
         self.tab_run_collect = tb.Frame(self.run_cfg_tabs)
+        self.tab_run_mshelp = tb.Frame(self.run_cfg_tabs)
         self.tab_run_locator = tb.Frame(self.run_cfg_tabs)
         self.run_cfg_tabs.add(self.tab_run_shared, text=self.tr("grp_shared_runtime"))
         self.run_cfg_tabs.add(self.tab_run_convert, text=self.tr("grp_convert_runtime"))
         self.run_cfg_tabs.add(self.tab_run_merge, text=self.tr("grp_merge_runtime"))
         self.run_cfg_tabs.add(self.tab_run_collect, text=self.tr("grp_collect_runtime"))
+        self.run_cfg_tabs.add(self.tab_run_mshelp, text=self.tr("grp_mshelp_runtime"))
         self.run_cfg_tabs.add(self.tab_run_locator, text=self.tr("grp_locator_tools"))
 
         lf_collect = tb.Labelframe(self.tab_run_collect, text=self.tr("grp_collect_runtime"), padding=10)
@@ -858,6 +894,78 @@ class OfficeGUI(tb.Window):
             self.frm_collect_opts, text="Index Only",
             variable=self.var_collect_mode, value=COLLECT_MODE_INDEX_ONLY
         ).pack(anchor="w")
+
+        lf_mshelp_runtime = tb.Labelframe(
+            self.tab_run_mshelp, text=self.tr("grp_mshelp_runtime"), padding=10
+        )
+        lf_mshelp_runtime.pack(fill=X, pady=5)
+        tb.Label(
+            lf_mshelp_runtime,
+            text=self.tr("lbl_mshelp_folder_name"),
+            font=("System", 9, "bold"),
+        ).pack(anchor="w")
+        self.var_mshelpviewer_folder_name = tk.StringVar(value="MSHelpViewer")
+        self.ent_mshelpviewer_folder_name = tb.Entry(
+            lf_mshelp_runtime, textvariable=self.var_mshelpviewer_folder_name
+        )
+        self.ent_mshelpviewer_folder_name.pack(fill=X)
+        self._attach_tooltip(
+            self.ent_mshelpviewer_folder_name, "tip_input_mshelp_folder_name"
+        )
+        self.var_enable_mshelp_merge_output = tk.IntVar(value=1)
+        self.chk_enable_mshelp_merge_output = tb.Checkbutton(
+            lf_mshelp_runtime,
+            text=self.tr("chk_mshelp_merge_output"),
+            variable=self.var_enable_mshelp_merge_output,
+        )
+        self.chk_enable_mshelp_merge_output.pack(anchor="w", pady=(6, 0))
+        self._attach_tooltip(
+            self.chk_enable_mshelp_merge_output, "tip_toggle_mshelp_merge_output"
+        )
+        row_mshelp_limits = tb.Frame(lf_mshelp_runtime)
+        row_mshelp_limits.pack(fill=X, pady=(4, 0))
+        tb.Label(row_mshelp_limits, text=self.tr("lbl_mshelp_merge_max_docs")).grid(
+            row=0, column=0, sticky="e"
+        )
+        self.var_mshelp_merge_max_docs = tk.StringVar(value="120")
+        self.ent_mshelp_merge_max_docs = tb.Entry(
+            row_mshelp_limits, textvariable=self.var_mshelp_merge_max_docs, width=8
+        )
+        self.ent_mshelp_merge_max_docs.grid(row=0, column=1, sticky="w", padx=(6, 16))
+        self._attach_tooltip(
+            self.ent_mshelp_merge_max_docs, "tip_input_mshelp_merge_max_docs"
+        )
+        tb.Label(row_mshelp_limits, text=self.tr("lbl_mshelp_merge_max_chars")).grid(
+            row=0, column=2, sticky="e"
+        )
+        self.var_mshelp_merge_max_chars = tk.StringVar(value="1200000")
+        self.ent_mshelp_merge_max_chars = tb.Entry(
+            row_mshelp_limits, textvariable=self.var_mshelp_merge_max_chars, width=12
+        )
+        self.ent_mshelp_merge_max_chars.grid(row=0, column=3, sticky="w", padx=(6, 0))
+        self._attach_tooltip(
+            self.ent_mshelp_merge_max_chars, "tip_input_mshelp_merge_max_chars"
+        )
+        self.var_enable_mshelp_output_docx = tk.IntVar(value=0)
+        self.chk_enable_mshelp_output_docx = tb.Checkbutton(
+            lf_mshelp_runtime,
+            text=self.tr("chk_mshelp_output_docx"),
+            variable=self.var_enable_mshelp_output_docx,
+        )
+        self.chk_enable_mshelp_output_docx.pack(anchor="w", pady=(6, 0))
+        self._attach_tooltip(
+            self.chk_enable_mshelp_output_docx, "tip_toggle_mshelp_output_docx"
+        )
+        self.var_enable_mshelp_output_pdf = tk.IntVar(value=0)
+        self.chk_enable_mshelp_output_pdf = tb.Checkbutton(
+            lf_mshelp_runtime,
+            text=self.tr("chk_mshelp_output_pdf"),
+            variable=self.var_enable_mshelp_output_pdf,
+        )
+        self.chk_enable_mshelp_output_pdf.pack(anchor="w")
+        self._attach_tooltip(
+            self.chk_enable_mshelp_output_pdf, "tip_toggle_mshelp_output_pdf"
+        )
 
         # Section 2: paths (runtime only)
         lf_paths = tb.Labelframe(self.tab_run_shared, text=self.tr("grp_shared_runtime"), padding=10)
@@ -1199,6 +1307,7 @@ class OfficeGUI(tb.Window):
         self._set_locator_action_state(False)
         self._auto_attach_action_tooltips(lf_mode)
         self._auto_attach_action_tooltips(lf_collect)
+        self._auto_attach_action_tooltips(lf_mshelp_runtime)
         self._auto_attach_action_tooltips(lf_paths)
         self._auto_attach_action_tooltips(lf_settings)
         self._auto_attach_action_tooltips(lf_convert_content)
@@ -1212,6 +1321,8 @@ class OfficeGUI(tb.Window):
         self._bind_var_validation(self.var_locator_short_id, lambda: self._normalize_then_validate(self.var_locator_short_id, self._normalize_short_id_var, "locator"))
         self._bind_var_validation(self.var_date_str, lambda: self._normalize_then_validate(self.var_date_str, self._normalize_date_var, "run"))
         self._bind_var_validation(self.var_enable_date_filter, lambda: self.validate_runtime_inputs(silent=False, scope="run"))
+        self._bind_var_validation(self.var_mshelp_merge_max_docs, lambda: self._normalize_then_validate(self.var_mshelp_merge_max_docs, self._normalize_numeric_var, "config"))
+        self._bind_var_validation(self.var_mshelp_merge_max_chars, lambda: self._normalize_then_validate(self.var_mshelp_merge_max_chars, self._normalize_numeric_var, "config"))
 
     def _build_config_tab_content(self, parent):
         self.lbl_cfg_defaults_hint = tb.Label(
@@ -1361,6 +1472,28 @@ class OfficeGUI(tb.Window):
         self.ent_ppt_pdf_wait_seconds = tb.Entry(frm_time, textvariable=self.var_ppt_pdf_wait_seconds, width=5)
         self.ent_ppt_pdf_wait_seconds.grid(row=1, column=3, sticky="w", padx=5)
         self._attach_tooltip(self.ent_ppt_pdf_wait_seconds, "tip_input_ppt_pdf_wait_seconds")
+        self.var_office_reuse_app = tk.IntVar(value=1)
+        self.chk_office_reuse_app = tb.Checkbutton(
+            frm_time,
+            text=self.tr("chk_office_reuse_app"),
+            variable=self.var_office_reuse_app,
+        )
+        self.chk_office_reuse_app.grid(row=2, column=0, columnspan=2, sticky="w", pady=(4, 0))
+        self._attach_tooltip(self.chk_office_reuse_app, "tip_toggle_office_reuse_app")
+        self.var_office_restart_every_n_files = tk.StringVar(value="25")
+        tb.Label(frm_time, text=self.tr("lbl_office_restart_every")).grid(
+            row=2, column=2, sticky="e", pady=(4, 0)
+        )
+        self.ent_office_restart_every_n_files = tb.Entry(
+            frm_time, textvariable=self.var_office_restart_every_n_files, width=5
+        )
+        self.ent_office_restart_every_n_files.grid(
+            row=2, column=3, sticky="w", padx=5, pady=(4, 0)
+        )
+        self._attach_tooltip(
+            self.ent_office_restart_every_n_files,
+            "tip_input_office_restart_every_n_files",
+        )
         (
             frm_cfg_convert_actions,
             self.btn_save_cfg_convert,
@@ -1482,6 +1615,47 @@ class OfficeGUI(tb.Window):
             lf_cfg_ai_structured,
             text=self.tr("chk_chromadb_export"),
             variable=self.var_enable_chromadb_export,
+        ).pack(anchor="w")
+        lf_cfg_ai_mshelp = tb.Labelframe(
+            self.tab_cfg_ai, text=self.tr("grp_mshelp_runtime"), padding=10
+        )
+        lf_cfg_ai_mshelp.pack(fill=X, pady=5)
+        tb.Label(
+            lf_cfg_ai_mshelp,
+            text=self.tr("lbl_mshelp_folder_name"),
+            font=("System", 9),
+        ).pack(anchor="w")
+        tb.Entry(
+            lf_cfg_ai_mshelp, textvariable=self.var_mshelpviewer_folder_name
+        ).pack(fill=X)
+        tb.Checkbutton(
+            lf_cfg_ai_mshelp,
+            text=self.tr("chk_mshelp_merge_output"),
+            variable=self.var_enable_mshelp_merge_output,
+        ).pack(anchor="w", pady=(6, 0))
+        row_cfg_mshelp = tb.Frame(lf_cfg_ai_mshelp)
+        row_cfg_mshelp.pack(fill=X, pady=(4, 0))
+        tb.Label(row_cfg_mshelp, text=self.tr("lbl_mshelp_merge_max_docs")).grid(
+            row=0, column=0, sticky="e"
+        )
+        tb.Entry(
+            row_cfg_mshelp, textvariable=self.var_mshelp_merge_max_docs, width=8
+        ).grid(row=0, column=1, sticky="w", padx=(6, 16))
+        tb.Label(row_cfg_mshelp, text=self.tr("lbl_mshelp_merge_max_chars")).grid(
+            row=0, column=2, sticky="e"
+        )
+        tb.Entry(
+            row_cfg_mshelp, textvariable=self.var_mshelp_merge_max_chars, width=12
+        ).grid(row=0, column=3, sticky="w", padx=(6, 0))
+        tb.Checkbutton(
+            lf_cfg_ai_mshelp,
+            text=self.tr("chk_mshelp_output_docx"),
+            variable=self.var_enable_mshelp_output_docx,
+        ).pack(anchor="w", pady=(6, 0))
+        tb.Checkbutton(
+            lf_cfg_ai_mshelp,
+            text=self.tr("chk_mshelp_output_pdf"),
+            variable=self.var_enable_mshelp_output_pdf,
         ).pack(anchor="w")
         (
             frm_cfg_ai_actions,
@@ -1631,30 +1805,40 @@ class OfficeGUI(tb.Window):
         # Emphasized save in config tab
         cfg_actions = tb.Frame(parent)
         cfg_actions.pack(fill=X, pady=(8, 12))
-        self.btn_save_cfg_mode_tab = tb.Button(
-            cfg_actions,
-            text=self.tr("btn_save_cfg_mode"),
-            command=lambda: self._save_settings_to_file(scope="mode"),
-            bootstyle="success-outline",
-            width=16,
-        )
-        self.btn_save_cfg_mode_tab.pack(side=LEFT)
-        self._attach_tooltip(self.btn_save_cfg_mode_tab, "tip_save_config_mode")
         self.btn_save_cfg_tab = tb.Button(
             cfg_actions,
-            text=self.tr("btn_save_cfg_all"),
-            command=self._save_settings_to_file,
+            text=self.tr("btn_save_cfg"),
+            command=self.open_save_profile_dialog,
             bootstyle="success",
             width=14,
         )
-        self.btn_save_cfg_tab.pack(side=LEFT, padx=(8, 0))
-        self._attach_tooltip(self.btn_save_cfg_tab, "tip_save_config_all")
+        self.btn_save_cfg_tab.pack(side=LEFT)
+        self._attach_tooltip(self.btn_save_cfg_tab, "tip_save_config")
+        self.btn_load_cfg_tab = tb.Button(
+            cfg_actions,
+            text=self.tr("btn_load_cfg"),
+            command=self.open_load_profile_dialog,
+            bootstyle="secondary-outline",
+            width=14,
+        )
+        self.btn_load_cfg_tab.pack(side=LEFT, padx=(8, 0))
+        self._attach_tooltip(self.btn_load_cfg_tab, "tip_load_config")
+        self.btn_manage_profiles_tab = tb.Button(
+            cfg_actions,
+            text=self.tr("btn_manage_profiles"),
+            command=self.open_profile_manager_window,
+            bootstyle="info-outline",
+            width=16,
+        )
+        self.btn_manage_profiles_tab.pack(side=LEFT, padx=(8, 0))
+        self._attach_tooltip(self.btn_manage_profiles_tab, "tip_manage_profiles")
         self._auto_attach_action_tooltips(lf_cfg_path)
         self._auto_attach_action_tooltips(lf_proc_shared)
         self._auto_attach_action_tooltips(lf_cfg_log)
         self._auto_attach_action_tooltips(lf_proc_convert)
         self._auto_attach_action_tooltips(lf_cfg_ai_text)
         self._auto_attach_action_tooltips(lf_cfg_ai_structured)
+        self._auto_attach_action_tooltips(lf_cfg_ai_mshelp)
         self._auto_attach_action_tooltips(lf_cfg_incremental_scan)
         self._auto_attach_action_tooltips(lf_cfg_incremental_package)
         self._auto_attach_action_tooltips(lf_proc_merge_behavior)
@@ -1676,6 +1860,7 @@ class OfficeGUI(tb.Window):
         self._bind_var_validation(self.var_pdf_wait_seconds, lambda: self._normalize_then_validate(self.var_pdf_wait_seconds, self._normalize_numeric_var, "config"))
         self._bind_var_validation(self.var_ppt_timeout_seconds, lambda: self._normalize_then_validate(self.var_ppt_timeout_seconds, self._normalize_numeric_var, "config"))
         self._bind_var_validation(self.var_ppt_pdf_wait_seconds, lambda: self._normalize_then_validate(self.var_ppt_pdf_wait_seconds, self._normalize_numeric_var, "config"))
+        self._bind_var_validation(self.var_office_restart_every_n_files, lambda: self._normalize_then_validate(self.var_office_restart_every_n_files, self._normalize_numeric_var, "config"))
         self._bind_var_validation(self.var_max_merge_size_mb, lambda: self._normalize_then_validate(self.var_max_merge_size_mb, self._normalize_numeric_var, "config"))
         self._bind_config_dirty_text(self.txt_excluded_folders)
         self._bind_config_dirty_text(self.txt_price_keywords)
@@ -1686,6 +1871,8 @@ class OfficeGUI(tb.Window):
             self.var_pdf_wait_seconds,
             self.var_ppt_timeout_seconds,
             self.var_ppt_pdf_wait_seconds,
+            self.var_office_reuse_app,
+            self.var_office_restart_every_n_files,
             self.var_enable_merge,
             self.var_merge_mode,
             self.var_merge_source,
@@ -1699,6 +1886,12 @@ class OfficeGUI(tb.Window):
             self.var_enable_markdown_quality_report,
             self.var_enable_excel_json,
             self.var_enable_chromadb_export,
+            self.var_mshelpviewer_folder_name,
+            self.var_enable_mshelp_merge_output,
+            self.var_mshelp_merge_max_docs,
+            self.var_mshelp_merge_max_chars,
+            self.var_enable_mshelp_output_docx,
+            self.var_enable_mshelp_output_pdf,
             self.var_enable_incremental_mode,
             self.var_incremental_verify_hash,
             self.var_incremental_reprocess_renamed,
@@ -1730,33 +1923,42 @@ class OfficeGUI(tb.Window):
         self.btn_toggle_logs.grid(row=0, column=2, padx=5)
         self._attach_tooltip(self.btn_toggle_logs, "tip_toggle_logs")
 
-        # Save (mode scoped + all)
-        self.btn_save_cfg_mode = tb.Button(
-            parent,
-            text=self.tr("btn_save_cfg_mode"),
-            command=lambda: self._save_settings_to_file(scope="mode"),
-            bootstyle="secondary-outline",
-        )
-        self.btn_save_cfg_mode.grid(row=0, column=3, padx=5)
-        self._attach_tooltip(self.btn_save_cfg_mode, "tip_save_config_mode")
-
+        # Save / Load active config file
         self.btn_save_cfg = tb.Button(
             parent,
-            text=self.tr("btn_save_cfg_all"),
-            command=self._save_settings_to_file,
+            text=self.tr("btn_save_cfg"),
+            command=self.open_save_profile_dialog,
             bootstyle="secondary-outline",
         )
-        self.btn_save_cfg.grid(row=0, column=4, padx=5)
-        self._attach_tooltip(self.btn_save_cfg, "tip_save_config_all")
+        self.btn_save_cfg.grid(row=0, column=3, padx=5)
+        self._attach_tooltip(self.btn_save_cfg, "tip_save_config")
+
+        self.btn_load_cfg = tb.Button(
+            parent,
+            text=self.tr("btn_load_cfg"),
+            command=self.open_load_profile_dialog,
+            bootstyle="secondary-outline",
+        )
+        self.btn_load_cfg.grid(row=0, column=4, padx=5)
+        self._attach_tooltip(self.btn_load_cfg, "tip_load_config")
+
+        self.btn_manage_profiles = tb.Button(
+            parent,
+            text=self.tr("btn_manage_profiles"),
+            command=self.open_profile_manager_window,
+            bootstyle="info-outline",
+        )
+        self.btn_manage_profiles.grid(row=0, column=5, padx=5)
+        self._attach_tooltip(self.btn_manage_profiles, "tip_manage_profiles")
 
         # Start
         self.btn_start = tb.Button(parent, text=self.tr("btn_start"), command=self._on_click_start, bootstyle="success", width=20)
-        self.btn_start.grid(row=0, column=5, padx=5)
+        self.btn_start.grid(row=0, column=6, padx=5)
         self._attach_tooltip(self.btn_start, "tip_start_task")
 
         # Stop
         self.btn_stop = tb.Button(parent, text=self.tr("btn_stop"), command=self._on_click_stop, bootstyle="danger-outline", state="disabled")
-        self.btn_stop.grid(row=0, column=6, padx=5)
+        self.btn_stop.grid(row=0, column=7, padx=5)
         self._attach_tooltip(self.btn_stop, "tip_stop_task")
         self._auto_attach_action_tooltips(parent)
 
@@ -1792,6 +1994,7 @@ class OfficeGUI(tb.Window):
     def _on_run_mode_change(self):
         mode = self.var_run_mode.get()
         is_collect = mode == MODE_COLLECT_ONLY
+        is_mshelp = mode == MODE_MSHELP_ONLY
         is_convert = mode in (MODE_CONVERT_ONLY, MODE_CONVERT_THEN_MERGE)
         is_merge_related = mode in (MODE_CONVERT_THEN_MERGE, MODE_MERGE_ONLY)
         is_rules_related = is_convert or is_collect
@@ -1802,12 +2005,13 @@ class OfficeGUI(tb.Window):
         self._set_run_tab_state(self.tab_run_convert, "normal" if is_convert else "disabled")
         self._set_run_tab_state(self.tab_run_merge, "normal" if is_merge_related else "disabled")
         self._set_run_tab_state(self.tab_run_collect, "normal" if is_collect else "disabled")
+        self._set_run_tab_state(self.tab_run_mshelp, "normal" if is_mshelp else "disabled")
 
         # Config tabs follow the same mode focus to reduce confusion.
         self._set_cfg_tab_state(self.tab_cfg_shared, "normal")
         self._set_cfg_tab_state(self.tab_cfg_ui, "normal")
         self._set_cfg_tab_state(self.tab_cfg_convert, "normal" if is_convert else "disabled")
-        self._set_cfg_tab_state(self.tab_cfg_ai, "normal" if is_convert else "disabled")
+        self._set_cfg_tab_state(self.tab_cfg_ai, "normal" if (is_convert or is_mshelp) else "disabled")
         self._set_cfg_tab_state(
             self.tab_cfg_incremental, "normal" if is_convert else "disabled"
         )
@@ -1824,6 +2028,8 @@ class OfficeGUI(tb.Window):
         try:
             if is_collect:
                 self.run_cfg_tabs.select(self.tab_run_collect)
+            elif is_mshelp:
+                self.run_cfg_tabs.select(self.tab_run_mshelp)
             elif mode == MODE_MERGE_ONLY:
                 self.run_cfg_tabs.select(self.tab_run_merge)
             else:
@@ -1834,6 +2040,8 @@ class OfficeGUI(tb.Window):
         try:
             if is_collect:
                 self.cfg_tabs.select(self.tab_cfg_rules)
+            elif is_mshelp:
+                self.cfg_tabs.select(self.tab_cfg_ai)
             elif mode == MODE_MERGE_ONLY:
                 self.cfg_tabs.select(self.tab_cfg_merge)
             else:
@@ -1916,7 +2124,7 @@ class OfficeGUI(tb.Window):
 
     def _on_toggle_sandbox(self):
         mode = self.var_run_mode.get()
-        is_disabled_globally = mode == MODE_COLLECT_ONLY or mode == MODE_MERGE_ONLY
+        is_disabled_globally = mode in (MODE_COLLECT_ONLY, MODE_MERGE_ONLY, MODE_MSHELP_ONLY)
         
         # If group is disabled, sandbox should look disabled
         if is_disabled_globally:
@@ -1962,7 +2170,7 @@ class OfficeGUI(tb.Window):
 
 
 
-    # ===================== 目录/按钮动作 =====================
+    # ===================== 鐩綍/鎸夐挳鍔ㄤ綔 =====================
 
     def add_source_folder(self):
         path = filedialog.askdirectory(title=self.tr("tip_add_source_folder"))
@@ -2003,7 +2211,7 @@ class OfficeGUI(tb.Window):
         self.add_source_folder()
 
     def browse_target(self):
-        path = filedialog.askdirectory(title="选择目标目录")
+        path = filedialog.askdirectory(title="閫夋嫨鐩爣鐩綍")
         if path:
             self.var_target_folder.set(path)
             self.refresh_locator_maps()
@@ -2044,14 +2252,899 @@ class OfficeGUI(tb.Window):
 
 
     def browse_temp_sandbox_root(self):
-        path = filedialog.askdirectory(title="选择临时转换根目录")
+        path = filedialog.askdirectory(title="Select temp sandbox root")
         if path:
             self.var_temp_sandbox_root.set(path)
 
     def browse_log_folder(self):
-        path = filedialog.askdirectory(title="选择日志目录")
+        path = filedialog.askdirectory(title="閫夋嫨鏃ュ織鐩綍")
         if path:
             self.var_log_folder.set(path)
+
+    def _profiles_dir(self):
+        return os.path.join(self.script_dir, "config_profiles")
+
+    def _profiles_index_path(self):
+        return os.path.join(self._profiles_dir(), "profiles_index.json")
+
+    def _profile_abs_path(self, file_name):
+        safe_file = os.path.basename(str(file_name or "").strip())
+        return os.path.join(self._profiles_dir(), safe_file)
+
+    def _profile_timestamp(self):
+        return datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+
+    def _profile_file_mtime(self, file_path):
+        try:
+            dt = datetime.fromtimestamp(os.path.getmtime(file_path))
+            return dt.strftime("%Y-%m-%d %H:%M:%S")
+        except Exception:
+            return ""
+
+    def _sanitize_profile_stem(self, name):
+        stem = str(name or "").strip()
+        stem = re.sub(r'[\\/:*?"<>|]+', "_", stem)
+        stem = stem.strip().strip(".")
+        return stem[:80] or "profile"
+
+    def _next_profile_filename(self, name, records, exclude_file=None):
+        stem = self._sanitize_profile_stem(name)
+        existing = {
+            str(rec.get("file", "")).strip().lower()
+            for rec in (records or [])
+            if isinstance(rec, dict)
+        }
+        exclude_lower = str(exclude_file or "").strip().lower()
+        idx = 1
+        while True:
+            suffix = "" if idx == 1 else f"_{idx}"
+            candidate = f"{stem}{suffix}.json"
+            lower = candidate.lower()
+            if lower == exclude_lower or lower not in existing:
+                return candidate
+            idx += 1
+
+    def _load_profile_records(self):
+        os.makedirs(self._profiles_dir(), exist_ok=True)
+        index_path = self._profiles_index_path()
+        index_name = os.path.basename(index_path).lower()
+        records = []
+        payload = {}
+        if os.path.exists(index_path):
+            try:
+                with open(index_path, "r", encoding="utf-8") as f:
+                    payload = json.load(f)
+            except Exception:
+                payload = {}
+
+        raw_records = payload.get("profiles", []) if isinstance(payload, dict) else []
+        for rec in raw_records:
+            if not isinstance(rec, dict):
+                continue
+            file_name = os.path.basename(str(rec.get("file", "")).strip())
+            if not file_name or file_name.lower() == index_name:
+                continue
+            abs_path = self._profile_abs_path(file_name)
+            if not os.path.isfile(abs_path):
+                continue
+            name = str(rec.get("name", "")).strip() or os.path.splitext(file_name)[0]
+            note = str(rec.get("note", "")).strip()
+            updated_at = (
+                str(rec.get("updated_at", "")).strip()
+                or self._profile_file_mtime(abs_path)
+            )
+            records.append(
+                {
+                    "id": str(rec.get("id", "")).strip()
+                    or datetime.now().strftime("%Y%m%d%H%M%S%f"),
+                    "name": name,
+                    "file": file_name,
+                    "note": note,
+                    "updated_at": updated_at,
+                }
+            )
+
+        known_files = {str(rec.get("file", "")).strip().lower() for rec in records}
+        for entry in sorted(os.listdir(self._profiles_dir())):
+            lower = entry.lower()
+            if not lower.endswith(".json"):
+                continue
+            if lower == index_name or lower in known_files:
+                continue
+            abs_path = self._profile_abs_path(entry)
+            if not os.path.isfile(abs_path):
+                continue
+            records.append(
+                {
+                    "id": datetime.now().strftime("%Y%m%d%H%M%S%f"),
+                    "name": os.path.splitext(entry)[0],
+                    "file": entry,
+                    "note": "",
+                    "updated_at": self._profile_file_mtime(abs_path),
+                }
+            )
+        return records
+
+    def _save_profile_records(self, records):
+        os.makedirs(self._profiles_dir(), exist_ok=True)
+        index_path = self._profiles_index_path()
+        out_records = []
+        for rec in records or []:
+            if not isinstance(rec, dict):
+                continue
+            file_name = os.path.basename(str(rec.get("file", "")).strip())
+            if not file_name:
+                continue
+            out_records.append(
+                {
+                    "id": str(rec.get("id", "")).strip()
+                    or datetime.now().strftime("%Y%m%d%H%M%S%f"),
+                    "name": str(rec.get("name", "")).strip()
+                    or os.path.splitext(file_name)[0],
+                    "file": file_name,
+                    "note": str(rec.get("note", "")).strip(),
+                    "updated_at": str(rec.get("updated_at", "")).strip(),
+                }
+            )
+        with open(index_path, "w", encoding="utf-8") as f:
+            json.dump({"version": 1, "profiles": out_records}, f, indent=4, ensure_ascii=False)
+
+    def _get_selected_profile_record(self):
+        if self.profile_tree is None or not self.profile_tree.winfo_exists():
+            return None
+        selection = self.profile_tree.selection()
+        if not selection:
+            return None
+        return self._profile_tree_rows.get(selection[0])
+
+    def _update_profile_manager_controls(self):
+        if self.profile_manager_win is None or not self.profile_manager_win.winfo_exists():
+            return
+        has_selected = self._get_selected_profile_record() is not None
+        base_state = "disabled" if self._ui_running else "normal"
+        selected_state = "disabled" if (self._ui_running or not has_selected) else "normal"
+        for btn_name in ("btn_profile_new", "btn_profile_refresh", "btn_profile_open_dir"):
+            btn = getattr(self, btn_name, None)
+            if btn is not None and btn.winfo_exists():
+                btn.configure(state=base_state)
+        for btn_name in (
+            "btn_profile_load",
+            "btn_profile_save",
+            "btn_profile_rename",
+            "btn_profile_note",
+            "btn_profile_delete",
+        ):
+            btn = getattr(self, btn_name, None)
+            if btn is not None and btn.winfo_exists():
+                btn.configure(state=selected_state)
+
+    def _on_profile_tree_select(self, _event=None):
+        self._update_profile_manager_controls()
+
+    def _refresh_profile_tree(self, select_file=None):
+        if self.profile_tree is None or not self.profile_tree.winfo_exists():
+            return
+        records = self._load_profile_records()
+        self._profile_tree_rows = {}
+        self.profile_tree.delete(*self.profile_tree.get_children())
+        active_path = os.path.abspath(self.config_path)
+        target_file = str(select_file or "").strip()
+        target_iid = None
+        for rec in records:
+            abs_path = os.path.abspath(self._profile_abs_path(rec.get("file", "")))
+            iid = self.profile_tree.insert(
+                "",
+                "end",
+                values=(
+                    rec.get("name", ""),
+                    rec.get("file", ""),
+                    rec.get("note", ""),
+                    rec.get("updated_at", ""),
+                ),
+            )
+            row = dict(rec)
+            row["abs_path"] = abs_path
+            self._profile_tree_rows[iid] = row
+            if target_file and rec.get("file", "") == target_file:
+                target_iid = iid
+            elif not target_file and abs_path == active_path:
+                target_iid = iid
+        if target_iid is not None:
+            self.profile_tree.selection_set(target_iid)
+            self.profile_tree.focus(target_iid)
+            self.profile_tree.see(target_iid)
+        self.var_profile_active_path.set(self.config_path)
+        self._update_profile_manager_controls()
+
+    def _close_profile_manager_window(self):
+        if self.profile_manager_win is not None and self.profile_manager_win.winfo_exists():
+            try:
+                self.profile_manager_win.destroy()
+            except Exception:
+                pass
+        self.profile_manager_win = None
+        self.profile_tree = None
+        self._profile_tree_rows = {}
+
+    def open_profile_manager_window(self):
+        if self.profile_manager_win is not None and self.profile_manager_win.winfo_exists():
+            self.profile_manager_win.lift()
+            self.profile_manager_win.focus_force()
+            self._refresh_profile_tree()
+            return
+        os.makedirs(self._profiles_dir(), exist_ok=True)
+        self.profile_manager_win = tk.Toplevel(self)
+        self.profile_manager_win.title(self.tr("win_profile_manager"))
+        self.profile_manager_win.geometry("980x520")
+        self.profile_manager_win.minsize(840, 420)
+        self.profile_manager_win.protocol(
+            "WM_DELETE_WINDOW", self._close_profile_manager_window
+        )
+
+        root = tb.Frame(self.profile_manager_win, padding=10)
+        root.pack(fill=BOTH, expand=YES)
+
+        top_row = tb.Frame(root)
+        top_row.pack(fill=X, pady=(0, 8))
+        tb.Label(
+            top_row,
+            text=self.tr("lbl_profile_active_config"),
+            font=("System", 9, "bold"),
+        ).pack(side=LEFT)
+        tb.Label(
+            top_row,
+            textvariable=self.var_profile_active_path,
+            bootstyle="secondary",
+        ).pack(side=LEFT, fill=X, expand=YES, padx=(8, 0))
+
+        tree_frame = tb.Frame(root)
+        tree_frame.pack(fill=BOTH, expand=YES)
+        cols = ("name", "file", "note", "updated")
+        self.profile_tree = ttk.Treeview(
+            tree_frame, columns=cols, show="headings", selectmode="browse"
+        )
+        self.profile_tree.heading("name", text=self.tr("col_profile_name"))
+        self.profile_tree.heading("file", text=self.tr("col_profile_file"))
+        self.profile_tree.heading("note", text=self.tr("col_profile_note"))
+        self.profile_tree.heading("updated", text=self.tr("col_profile_updated"))
+        self.profile_tree.column("name", width=180, anchor="w")
+        self.profile_tree.column("file", width=220, anchor="w")
+        self.profile_tree.column("note", width=360, anchor="w")
+        self.profile_tree.column("updated", width=160, anchor="center")
+        scr_y = tb.Scrollbar(
+            tree_frame, orient=VERTICAL, command=self.profile_tree.yview
+        )
+        scr_x = tb.Scrollbar(
+            tree_frame, orient=HORIZONTAL, command=self.profile_tree.xview
+        )
+        self.profile_tree.configure(
+            yscrollcommand=scr_y.set, xscrollcommand=scr_x.set
+        )
+        self.profile_tree.pack(side=LEFT, fill=BOTH, expand=YES)
+        scr_y.pack(side=RIGHT, fill=Y)
+        scr_x.pack(side=BOTTOM, fill=X)
+        self.profile_tree.bind("<<TreeviewSelect>>", self._on_profile_tree_select)
+
+        btn_row = tb.Frame(root)
+        btn_row.pack(fill=X, pady=(8, 0))
+        self.btn_profile_new = tb.Button(
+            btn_row,
+            text=self.tr("btn_profile_new"),
+            command=self._create_profile_from_current,
+            bootstyle="success-outline",
+            width=14,
+        )
+        self.btn_profile_new.pack(side=LEFT)
+        self.btn_profile_load = tb.Button(
+            btn_row,
+            text=self.tr("btn_profile_load"),
+            command=self._load_selected_profile,
+            bootstyle="primary",
+            width=12,
+        )
+        self.btn_profile_load.pack(side=LEFT, padx=(6, 0))
+        self.btn_profile_save = tb.Button(
+            btn_row,
+            text=self.tr("btn_profile_save"),
+            command=self._save_current_to_selected_profile,
+            bootstyle="success",
+            width=14,
+        )
+        self.btn_profile_save.pack(side=LEFT, padx=(6, 0))
+        self.btn_profile_rename = tb.Button(
+            btn_row,
+            text=self.tr("btn_profile_rename"),
+            command=self._rename_selected_profile,
+            bootstyle="secondary-outline",
+            width=10,
+        )
+        self.btn_profile_rename.pack(side=LEFT, padx=(6, 0))
+        self.btn_profile_note = tb.Button(
+            btn_row,
+            text=self.tr("btn_profile_note"),
+            command=self._edit_selected_profile_note,
+            bootstyle="secondary-outline",
+            width=10,
+        )
+        self.btn_profile_note.pack(side=LEFT, padx=(6, 0))
+        self.btn_profile_delete = tb.Button(
+            btn_row,
+            text=self.tr("btn_profile_delete"),
+            command=self._delete_selected_profile,
+            bootstyle="danger-outline",
+            width=10,
+        )
+        self.btn_profile_delete.pack(side=LEFT, padx=(6, 0))
+        self.btn_profile_open_dir = tb.Button(
+            btn_row,
+            text=self.tr("btn_profile_open_dir"),
+            command=self._open_profiles_folder,
+            bootstyle="info-outline",
+            width=10,
+        )
+        self.btn_profile_open_dir.pack(side=RIGHT)
+        self.btn_profile_refresh = tb.Button(
+            btn_row,
+            text=self.tr("btn_profile_refresh"),
+            command=self._refresh_profile_tree,
+            bootstyle="info-outline",
+            width=10,
+        )
+        self.btn_profile_refresh.pack(side=RIGHT, padx=(0, 6))
+
+        self._refresh_profile_tree()
+        self._update_profile_manager_controls()
+
+    def _build_default_profile_name(self):
+        return datetime.now().strftime("config_%Y%m%d_%H%M%S")
+
+    def _save_profile_with_meta(self, name, note="", show_msg=True):
+        profile_name = str(name or "").strip()
+        if not profile_name:
+            if show_msg:
+                messagebox.showwarning(
+                    self.tr("btn_save_cfg"), self.tr("msg_profile_name_required")
+                )
+            return False
+        profile_note = str(note or "").strip()
+        records = self._load_profile_records()
+        file_name = self._next_profile_filename(profile_name, records)
+        payload = self._compose_config_from_ui(self._load_config_for_write(), scope="all")
+        profile_path = self._profile_abs_path(file_name)
+        try:
+            with open(profile_path, "w", encoding="utf-8") as f:
+                json.dump(payload, f, indent=4, ensure_ascii=False)
+            records.insert(
+                0,
+                {
+                    "id": datetime.now().strftime("%Y%m%d%H%M%S%f"),
+                    "name": profile_name,
+                    "file": file_name,
+                    "note": profile_note,
+                    "updated_at": self._profile_timestamp(),
+                },
+            )
+            self._save_profile_records(records)
+            if self.profile_manager_win is not None and self.profile_manager_win.winfo_exists():
+                self._refresh_profile_tree(select_file=file_name)
+            if self.load_profile_dialog is not None and self.load_profile_dialog.winfo_exists():
+                self._refresh_load_profile_tree(select_file=file_name)
+            msg = self.tr("msg_profile_create_ok").format(profile_name)
+            if show_msg:
+                messagebox.showinfo(self.tr("btn_save_cfg"), msg)
+            if hasattr(self, "var_status"):
+                self.var_status.set(msg)
+            if hasattr(self, "var_locator_result"):
+                self.var_locator_result.set(msg)
+            return True
+        except Exception as e:
+            if show_msg:
+                messagebox.showerror(self.tr("btn_save_cfg"), self.tr("msg_save_fail").format(e))
+            return False
+
+    def _load_profile_record(self, rec, confirm_dirty=True, show_msg=False):
+        if not isinstance(rec, dict):
+            return False
+        if confirm_dirty and self.cfg_dirty:
+            confirm = messagebox.askyesno(
+                self.tr("btn_load_cfg"),
+                self.tr("msg_confirm_load_config_dirty"),
+            )
+            if not confirm:
+                return False
+        profile_path = str(rec.get("abs_path", "")).strip()
+        if not os.path.isfile(profile_path):
+            messagebox.showerror(
+                self.tr("btn_load_cfg"),
+                self.tr("msg_profile_file_missing").format(profile_path),
+            )
+            return False
+        try:
+            with open(profile_path, "r", encoding="utf-8") as f:
+                profile_cfg = json.load(f)
+            if not isinstance(profile_cfg, dict):
+                raise ValueError("profile config must be an object")
+            self.config_path = profile_path
+            if hasattr(self, "var_config_path"):
+                self.var_config_path.set(self.config_path)
+            self.var_profile_active_path.set(self.config_path)
+            self._load_config_to_ui()
+            if self.profile_manager_win is not None and self.profile_manager_win.winfo_exists():
+                self._refresh_profile_tree(select_file=rec.get("file", ""))
+            if self.load_profile_dialog is not None and self.load_profile_dialog.winfo_exists():
+                self._refresh_load_profile_tree(select_file=rec.get("file", ""))
+            msg = self.tr("msg_profile_load_ok").format(rec.get("name", ""))
+            if show_msg:
+                messagebox.showinfo(self.tr("btn_load_cfg"), msg)
+            if hasattr(self, "var_status"):
+                self.var_status.set(msg)
+            if hasattr(self, "var_locator_result"):
+                self.var_locator_result.set(msg)
+            return True
+        except Exception as e:
+            messagebox.showerror(
+                self.tr("btn_load_cfg"), self.tr("msg_save_fail").format(e)
+            )
+            return False
+
+    def _create_profile_from_current(self):
+        parent = (
+            self.profile_manager_win
+            if self.profile_manager_win is not None and self.profile_manager_win.winfo_exists()
+            else self
+        )
+        default_name = self._build_default_profile_name()
+        name = simpledialog.askstring(
+            self.tr("btn_profile_new"),
+            self.tr("msg_profile_name_prompt"),
+            parent=parent,
+            initialvalue=default_name,
+        )
+        if name is None:
+            return
+        name = str(name).strip()
+        if not name:
+            messagebox.showwarning(
+                self.tr("btn_profile_new"), self.tr("msg_profile_name_required")
+            )
+            return
+        note = simpledialog.askstring(
+            self.tr("btn_profile_note"),
+            self.tr("msg_profile_note_prompt"),
+            parent=parent,
+            initialvalue="",
+        )
+        note = "" if note is None else note
+        self._save_profile_with_meta(name, note, show_msg=False)
+
+    def _load_selected_profile(self):
+        rec = self._get_selected_profile_record()
+        if rec is None:
+            messagebox.showwarning(
+                self.tr("btn_profile_load"), self.tr("msg_profile_select_required")
+            )
+            return
+        self._load_profile_record(rec, confirm_dirty=True, show_msg=False)
+
+    def _save_current_to_selected_profile(self):
+        rec = self._get_selected_profile_record()
+        if rec is None:
+            messagebox.showwarning(
+                self.tr("btn_profile_save"), self.tr("msg_profile_select_required")
+            )
+            return
+        profile_path = rec.get("abs_path", "")
+        if not profile_path:
+            return
+        payload = self._compose_config_from_ui(self._load_config_for_write(), scope="all")
+        records = self._load_profile_records()
+        try:
+            with open(profile_path, "w", encoding="utf-8") as f:
+                json.dump(payload, f, indent=4, ensure_ascii=False)
+            for item in records:
+                if item.get("file", "") == rec.get("file", ""):
+                    item["updated_at"] = self._profile_timestamp()
+                    break
+            self._save_profile_records(records)
+            self._refresh_profile_tree(select_file=rec.get("file", ""))
+            msg = self.tr("msg_profile_save_ok").format(rec.get("name", ""))
+            if hasattr(self, "var_status"):
+                self.var_status.set(msg)
+            if hasattr(self, "var_locator_result"):
+                self.var_locator_result.set(msg)
+        except Exception as e:
+            messagebox.showerror(
+                self.tr("btn_profile_save"), self.tr("msg_save_fail").format(e)
+            )
+
+    def _rename_selected_profile(self):
+        rec = self._get_selected_profile_record()
+        if rec is None:
+            messagebox.showwarning(
+                self.tr("btn_profile_rename"), self.tr("msg_profile_select_required")
+            )
+            return
+        parent = (
+            self.profile_manager_win
+            if self.profile_manager_win is not None and self.profile_manager_win.winfo_exists()
+            else self
+        )
+        new_name = simpledialog.askstring(
+            self.tr("btn_profile_rename"),
+            self.tr("msg_profile_rename_prompt"),
+            parent=parent,
+            initialvalue=rec.get("name", ""),
+        )
+        if new_name is None:
+            return
+        new_name = str(new_name).strip()
+        if not new_name:
+            messagebox.showwarning(
+                self.tr("btn_profile_rename"), self.tr("msg_profile_name_required")
+            )
+            return
+        records = self._load_profile_records()
+        old_file = rec.get("file", "")
+        new_file = self._next_profile_filename(new_name, records, exclude_file=old_file)
+        old_path = self._profile_abs_path(old_file)
+        new_path = self._profile_abs_path(new_file)
+        try:
+            if new_file != old_file:
+                os.replace(old_path, new_path)
+            for item in records:
+                if item.get("file", "") == old_file:
+                    item["name"] = new_name
+                    item["file"] = new_file
+                    item["updated_at"] = self._profile_timestamp()
+                    break
+            self._save_profile_records(records)
+            if os.path.abspath(self.config_path) == os.path.abspath(old_path):
+                self.config_path = new_path
+                self.var_profile_active_path.set(self.config_path)
+                if hasattr(self, "var_config_path"):
+                    self.var_config_path.set(self.config_path)
+            self._refresh_profile_tree(select_file=new_file)
+            msg = self.tr("msg_profile_rename_ok").format(new_name)
+            if hasattr(self, "var_status"):
+                self.var_status.set(msg)
+            if hasattr(self, "var_locator_result"):
+                self.var_locator_result.set(msg)
+        except Exception as e:
+            messagebox.showerror(
+                self.tr("btn_profile_rename"), self.tr("msg_save_fail").format(e)
+            )
+
+    def _edit_selected_profile_note(self):
+        rec = self._get_selected_profile_record()
+        if rec is None:
+            messagebox.showwarning(
+                self.tr("btn_profile_note"), self.tr("msg_profile_select_required")
+            )
+            return
+        parent = (
+            self.profile_manager_win
+            if self.profile_manager_win is not None and self.profile_manager_win.winfo_exists()
+            else self
+        )
+        note = simpledialog.askstring(
+            self.tr("btn_profile_note"),
+            self.tr("msg_profile_note_prompt"),
+            parent=parent,
+            initialvalue=rec.get("note", ""),
+        )
+        if note is None:
+            return
+        records = self._load_profile_records()
+        for item in records:
+            if item.get("file", "") == rec.get("file", ""):
+                item["note"] = str(note).strip()
+                item["updated_at"] = self._profile_timestamp()
+                break
+        try:
+            self._save_profile_records(records)
+            self._refresh_profile_tree(select_file=rec.get("file", ""))
+            msg = self.tr("msg_profile_note_ok")
+            if hasattr(self, "var_status"):
+                self.var_status.set(msg)
+            if hasattr(self, "var_locator_result"):
+                self.var_locator_result.set(msg)
+        except Exception as e:
+            messagebox.showerror(
+                self.tr("btn_profile_note"), self.tr("msg_save_fail").format(e)
+            )
+
+    def _delete_selected_profile(self):
+        rec = self._get_selected_profile_record()
+        if rec is None:
+            messagebox.showwarning(
+                self.tr("btn_profile_delete"), self.tr("msg_profile_select_required")
+            )
+            return
+        profile_path = rec.get("abs_path", "")
+        if os.path.abspath(profile_path) == os.path.abspath(self.config_path):
+            messagebox.showwarning(
+                self.tr("btn_profile_delete"),
+                self.tr("msg_profile_delete_active_blocked"),
+            )
+            return
+        confirm = messagebox.askyesno(
+            self.tr("btn_profile_delete"),
+            self.tr("msg_profile_delete_confirm").format(rec.get("name", "")),
+        )
+        if not confirm:
+            return
+        records = self._load_profile_records()
+        try:
+            if os.path.exists(profile_path):
+                os.remove(profile_path)
+            records = [
+                item
+                for item in records
+                if item.get("file", "") != rec.get("file", "")
+            ]
+            self._save_profile_records(records)
+            self._refresh_profile_tree()
+            msg = self.tr("msg_profile_delete_ok").format(rec.get("name", ""))
+            if hasattr(self, "var_status"):
+                self.var_status.set(msg)
+            if hasattr(self, "var_locator_result"):
+                self.var_locator_result.set(msg)
+        except Exception as e:
+            messagebox.showerror(
+                self.tr("btn_profile_delete"), self.tr("msg_save_fail").format(e)
+            )
+
+    def _open_profiles_folder(self):
+        os.makedirs(self._profiles_dir(), exist_ok=True)
+        self._open_path(self._profiles_dir())
+
+    def _close_save_profile_dialog(self):
+        if self.save_profile_dialog is not None and self.save_profile_dialog.winfo_exists():
+            try:
+                if self.save_profile_dialog.grab_current() == self.save_profile_dialog:
+                    self.save_profile_dialog.grab_release()
+            except Exception:
+                pass
+            try:
+                self.save_profile_dialog.destroy()
+            except Exception:
+                pass
+        self.save_profile_dialog = None
+
+    def _place_dialog_in_main(self, dialog, width, height):
+        try:
+            self.update_idletasks()
+            base_x = int(self.winfo_rootx())
+            base_y = int(self.winfo_rooty())
+            base_w = max(int(self.winfo_width()), 200)
+            base_h = max(int(self.winfo_height()), 200)
+            x = base_x + max((base_w - int(width)) // 2, 20)
+            y = base_y + max((base_h - int(height)) // 2, 20)
+            dialog.geometry(f"{int(width)}x{int(height)}+{x}+{y}")
+        except Exception:
+            pass
+
+    def open_save_profile_dialog(self):
+        if self._ui_running:
+            return
+        if self.save_profile_dialog is not None and self.save_profile_dialog.winfo_exists():
+            self._place_dialog_in_main(self.save_profile_dialog, 520, 220)
+            self.save_profile_dialog.lift()
+            self.save_profile_dialog.focus_force()
+            return
+        dlg = tk.Toplevel(self)
+        dlg.title(self.tr("win_save_config"))
+        self._place_dialog_in_main(dlg, 520, 220)
+        dlg.minsize(460, 210)
+        dlg.transient(self)
+        dlg.grab_set()
+        dlg.lift()
+        dlg.protocol("WM_DELETE_WINDOW", self._close_save_profile_dialog)
+        self.save_profile_dialog = dlg
+
+        frame = tb.Frame(dlg, padding=12)
+        frame.pack(fill=BOTH, expand=YES)
+        tb.Label(frame, text=self.tr("lbl_profile_name"), font=("System", 9, "bold")).pack(anchor="w")
+        self.var_save_profile_name = tk.StringVar(value=self._build_default_profile_name())
+        ent_name = tb.Entry(frame, textvariable=self.var_save_profile_name)
+        ent_name.pack(fill=X, pady=(2, 10))
+        ent_name.focus_set()
+        ent_name.selection_range(0, END)
+
+        tb.Label(frame, text=self.tr("lbl_profile_note"), font=("System", 9, "bold")).pack(anchor="w")
+        self.var_save_profile_note = tk.StringVar(value="")
+        ent_note = tb.Entry(frame, textvariable=self.var_save_profile_note)
+        ent_note.pack(fill=X, pady=(2, 12))
+
+        btn_row = tb.Frame(frame)
+        btn_row.pack(fill=X)
+        self.btn_save_profile_confirm = tb.Button(
+            btn_row,
+            text=self.tr("btn_confirm_save_profile"),
+            command=self._confirm_save_profile_dialog,
+            bootstyle="success",
+            width=14,
+        )
+        self.btn_save_profile_confirm.pack(side=LEFT)
+        self.btn_save_profile_cancel = tb.Button(
+            btn_row,
+            text=self.tr("btn_cancel"),
+            command=self._close_save_profile_dialog,
+            bootstyle="secondary-outline",
+            width=10,
+        )
+        self.btn_save_profile_cancel.pack(side=LEFT, padx=(8, 0))
+        self._update_profile_dialog_controls()
+
+    def _confirm_save_profile_dialog(self):
+        name = self.var_save_profile_name.get().strip() if hasattr(self, "var_save_profile_name") else ""
+        note = self.var_save_profile_note.get().strip() if hasattr(self, "var_save_profile_note") else ""
+        if not name:
+            messagebox.showwarning(self.tr("btn_save_cfg"), self.tr("msg_profile_name_required"))
+            return
+        if self._save_profile_with_meta(name, note, show_msg=True):
+            self._close_save_profile_dialog()
+
+    def _close_load_profile_dialog(self):
+        if self.load_profile_dialog is not None and self.load_profile_dialog.winfo_exists():
+            try:
+                if self.load_profile_dialog.grab_current() == self.load_profile_dialog:
+                    self.load_profile_dialog.grab_release()
+            except Exception:
+                pass
+            try:
+                self.load_profile_dialog.destroy()
+            except Exception:
+                pass
+        self.load_profile_dialog = None
+        self.load_profile_tree = None
+        self._load_profile_tree_rows = {}
+
+    def _get_selected_load_profile_record(self):
+        if self.load_profile_tree is None or not self.load_profile_tree.winfo_exists():
+            return None
+        selection = self.load_profile_tree.selection()
+        if not selection:
+            return None
+        return self._load_profile_tree_rows.get(selection[0])
+
+    def _refresh_load_profile_tree(self, select_file=None):
+        if self.load_profile_tree is None or not self.load_profile_tree.winfo_exists():
+            return
+        records = self._load_profile_records()
+        self._load_profile_tree_rows = {}
+        self.load_profile_tree.delete(*self.load_profile_tree.get_children())
+        target_file = str(select_file or "").strip()
+        active_path = os.path.abspath(self.config_path)
+        target_iid = None
+        for rec in records:
+            abs_path = os.path.abspath(self._profile_abs_path(rec.get("file", "")))
+            iid = self.load_profile_tree.insert(
+                "",
+                "end",
+                values=(
+                    rec.get("name", ""),
+                    rec.get("file", ""),
+                    rec.get("note", ""),
+                    rec.get("updated_at", ""),
+                ),
+            )
+            row = dict(rec)
+            row["abs_path"] = abs_path
+            self._load_profile_tree_rows[iid] = row
+            if target_file and rec.get("file", "") == target_file:
+                target_iid = iid
+            elif not target_file and abs_path == active_path:
+                target_iid = iid
+        if target_iid is not None:
+            self.load_profile_tree.selection_set(target_iid)
+            self.load_profile_tree.focus(target_iid)
+            self.load_profile_tree.see(target_iid)
+        self._update_profile_dialog_controls()
+
+    def open_load_profile_dialog(self):
+        if self._ui_running:
+            return
+        if self.load_profile_dialog is not None and self.load_profile_dialog.winfo_exists():
+            self._place_dialog_in_main(self.load_profile_dialog, 860, 460)
+            self.load_profile_dialog.lift()
+            self.load_profile_dialog.focus_force()
+            self._refresh_load_profile_tree()
+            return
+        dlg = tk.Toplevel(self)
+        dlg.title(self.tr("win_load_config"))
+        self._place_dialog_in_main(dlg, 860, 460)
+        dlg.minsize(760, 380)
+        dlg.transient(self)
+        dlg.grab_set()
+        dlg.lift()
+        dlg.protocol("WM_DELETE_WINDOW", self._close_load_profile_dialog)
+        self.load_profile_dialog = dlg
+
+        root = tb.Frame(dlg, padding=10)
+        root.pack(fill=BOTH, expand=YES)
+        tb.Label(root, text=self.tr("lbl_profile_select"), font=("System", 9, "bold")).pack(anchor="w", pady=(0, 6))
+
+        tree_frame = tb.Frame(root)
+        tree_frame.pack(fill=BOTH, expand=YES)
+        cols = ("name", "file", "note", "updated")
+        self.load_profile_tree = ttk.Treeview(
+            tree_frame, columns=cols, show="headings", selectmode="browse"
+        )
+        self.load_profile_tree.heading("name", text=self.tr("col_profile_name"))
+        self.load_profile_tree.heading("file", text=self.tr("col_profile_file"))
+        self.load_profile_tree.heading("note", text=self.tr("col_profile_note"))
+        self.load_profile_tree.heading("updated", text=self.tr("col_profile_updated"))
+        self.load_profile_tree.column("name", width=180, anchor="w")
+        self.load_profile_tree.column("file", width=220, anchor="w")
+        self.load_profile_tree.column("note", width=300, anchor="w")
+        self.load_profile_tree.column("updated", width=140, anchor="center")
+        scr_y = tb.Scrollbar(tree_frame, orient=VERTICAL, command=self.load_profile_tree.yview)
+        scr_x = tb.Scrollbar(tree_frame, orient=HORIZONTAL, command=self.load_profile_tree.xview)
+        self.load_profile_tree.configure(yscrollcommand=scr_y.set, xscrollcommand=scr_x.set)
+        self.load_profile_tree.pack(side=LEFT, fill=BOTH, expand=YES)
+        scr_y.pack(side=RIGHT, fill=Y)
+        scr_x.pack(side=BOTTOM, fill=X)
+        self.load_profile_tree.bind("<<TreeviewSelect>>", lambda _e: self._update_profile_dialog_controls())
+
+        btn_row = tb.Frame(root)
+        btn_row.pack(fill=X, pady=(8, 0))
+        self.btn_load_profile_confirm = tb.Button(
+            btn_row,
+            text=self.tr("btn_confirm_load_profile"),
+            command=self._confirm_load_profile_dialog,
+            bootstyle="primary",
+            width=14,
+        )
+        self.btn_load_profile_confirm.pack(side=LEFT)
+        self.btn_load_profile_refresh = tb.Button(
+            btn_row,
+            text=self.tr("btn_profile_refresh"),
+            command=self._refresh_load_profile_tree,
+            bootstyle="info-outline",
+            width=10,
+        )
+        self.btn_load_profile_refresh.pack(side=LEFT, padx=(8, 0))
+        self.btn_load_profile_cancel = tb.Button(
+            btn_row,
+            text=self.tr("btn_cancel"),
+            command=self._close_load_profile_dialog,
+            bootstyle="secondary-outline",
+            width=10,
+        )
+        self.btn_load_profile_cancel.pack(side=RIGHT)
+
+        self._refresh_load_profile_tree()
+        self._update_profile_dialog_controls()
+
+    def _confirm_load_profile_dialog(self):
+        rec = self._get_selected_load_profile_record()
+        if rec is None:
+            messagebox.showwarning(
+                self.tr("btn_load_cfg"),
+                self.tr("msg_profile_select_required"),
+            )
+            return
+        if self._load_profile_record(rec, confirm_dirty=True, show_msg=True):
+            self._close_load_profile_dialog()
+
+    def _update_profile_dialog_controls(self):
+        state_base = "disabled" if self._ui_running else "normal"
+        if self.save_profile_dialog is not None and self.save_profile_dialog.winfo_exists():
+            for btn_name in ("btn_save_profile_confirm", "btn_save_profile_cancel"):
+                btn = getattr(self, btn_name, None)
+                if btn is not None and btn.winfo_exists():
+                    btn.configure(state=state_base)
+        if self.load_profile_dialog is not None and self.load_profile_dialog.winfo_exists():
+            selected = self._get_selected_load_profile_record() is not None
+            confirm_state = "disabled" if (self._ui_running or not selected) else "normal"
+            btn = getattr(self, "btn_load_profile_confirm", None)
+            if btn is not None and btn.winfo_exists():
+                btn.configure(state=confirm_state)
+            for btn_name in ("btn_load_profile_refresh", "btn_load_profile_cancel"):
+                btn = getattr(self, btn_name, None)
+                if btn is not None and btn.winfo_exists():
+                    btn.configure(state=state_base)
 
     def get_locator_map_dir(self):
         target = self.var_target_folder.get().strip()
@@ -2327,6 +3420,8 @@ class OfficeGUI(tb.Window):
                 "pdf_wait_seconds",
                 "ppt_timeout_seconds",
                 "ppt_pdf_wait_seconds",
+                "office_reuse_app",
+                "office_restart_every_n_files",
             ],
             "ai": [
                 "enable_corpus_manifest",
@@ -2336,6 +3431,12 @@ class OfficeGUI(tb.Window):
                 "enable_markdown_quality_report",
                 "enable_excel_json",
                 "enable_chromadb_export",
+                "mshelpviewer_folder_name",
+                "enable_mshelp_merge_output",
+                "mshelp_merge_max_docs",
+                "mshelp_merge_max_chars",
+                "enable_mshelp_output_docx",
+                "enable_mshelp_output_pdf",
             ],
             "incremental": [
                 "enable_incremental_mode",
@@ -2466,6 +3567,12 @@ class OfficeGUI(tb.Window):
             self.var_ppt_pdf_wait_seconds.set(
                 str(snapshot.get("ppt_pdf_wait_seconds", 30))
             )
+            self.var_office_reuse_app.set(
+                1 if snapshot.get("office_reuse_app", True) else 0
+            )
+            self.var_office_restart_every_n_files.set(
+                str(snapshot.get("office_restart_every_n_files", 25))
+            )
         if "ai" in sections:
             self.var_enable_corpus_manifest.set(
                 1 if snapshot.get("enable_corpus_manifest", True) else 0
@@ -2485,6 +3592,28 @@ class OfficeGUI(tb.Window):
             )
             self.var_enable_chromadb_export.set(
                 1 if snapshot.get("enable_chromadb_export", False) else 0
+            )
+            self.var_mshelpviewer_folder_name.set(
+                str(snapshot.get("mshelpviewer_folder_name", "MSHelpViewer") or "MSHelpViewer")
+            )
+            self.var_enable_mshelp_merge_output.set(
+                1 if snapshot.get("enable_mshelp_merge_output", True) else 0
+            )
+            self.var_mshelp_merge_max_docs.set(
+                str(self._safe_positive_int(snapshot.get("mshelp_merge_max_docs", 120), 120))
+            )
+            self.var_mshelp_merge_max_chars.set(
+                str(
+                    self._safe_positive_int(
+                        snapshot.get("mshelp_merge_max_chars", 1200000), 1200000
+                    )
+                )
+            )
+            self.var_enable_mshelp_output_docx.set(
+                1 if snapshot.get("enable_mshelp_output_docx", False) else 0
+            )
+            self.var_enable_mshelp_output_pdf.set(
+                1 if snapshot.get("enable_mshelp_output_pdf", False) else 0
             )
         if "incremental" in sections:
             self.var_enable_incremental_mode.set(
@@ -2678,6 +3807,10 @@ class OfficeGUI(tb.Window):
             "ppt_pdf_wait_seconds": self._safe_positive_int(
                 self.var_ppt_pdf_wait_seconds.get(), 30
             ),
+            "office_reuse_app": bool(self.var_office_reuse_app.get()),
+            "office_restart_every_n_files": self._safe_positive_int(
+                self.var_office_restart_every_n_files.get(), 25
+            ),
             "enable_merge": bool(self.var_enable_merge.get()),
             "merge_mode": self.var_merge_mode.get(),
             "merge_source": self.var_merge_source.get(),
@@ -2699,6 +3832,25 @@ class OfficeGUI(tb.Window):
             ),
             "enable_excel_json": bool(self.var_enable_excel_json.get()),
             "enable_chromadb_export": bool(self.var_enable_chromadb_export.get()),
+            "mshelpviewer_folder_name": str(
+                self.var_mshelpviewer_folder_name.get()
+            ).strip()
+            or "MSHelpViewer",
+            "enable_mshelp_merge_output": bool(
+                self.var_enable_mshelp_merge_output.get()
+            ),
+            "mshelp_merge_max_docs": self._safe_positive_int(
+                self.var_mshelp_merge_max_docs.get(), 120
+            ),
+            "mshelp_merge_max_chars": self._safe_positive_int(
+                self.var_mshelp_merge_max_chars.get(), 1200000
+            ),
+            "enable_mshelp_output_docx": bool(
+                self.var_enable_mshelp_output_docx.get()
+            ),
+            "enable_mshelp_output_pdf": bool(
+                self.var_enable_mshelp_output_pdf.get()
+            ),
             "enable_incremental_mode": bool(self.var_enable_incremental_mode.get()),
             "incremental_verify_hash": bool(self.var_incremental_verify_hash.get()),
             "incremental_reprocess_renamed": bool(
@@ -2744,6 +3896,10 @@ class OfficeGUI(tb.Window):
             "ppt_pdf_wait_seconds": self._safe_positive_int(
                 cfg.get("ppt_pdf_wait_seconds", 30), 30
             ),
+            "office_reuse_app": bool(cfg.get("office_reuse_app", True)),
+            "office_restart_every_n_files": self._safe_positive_int(
+                cfg.get("office_restart_every_n_files", 25), 25
+            ),
             "enable_merge": bool(cfg.get("enable_merge", True)),
             "merge_mode": cfg.get("merge_mode", MERGE_MODE_CATEGORY),
             "merge_source": cfg.get("merge_source", "source"),
@@ -2765,6 +3921,25 @@ class OfficeGUI(tb.Window):
             ),
             "enable_excel_json": bool(cfg.get("enable_excel_json", False)),
             "enable_chromadb_export": bool(cfg.get("enable_chromadb_export", False)),
+            "mshelpviewer_folder_name": str(
+                cfg.get("mshelpviewer_folder_name", "MSHelpViewer")
+            ).strip()
+            or "MSHelpViewer",
+            "enable_mshelp_merge_output": bool(
+                cfg.get("enable_mshelp_merge_output", True)
+            ),
+            "mshelp_merge_max_docs": self._safe_positive_int(
+                cfg.get("mshelp_merge_max_docs", 120), 120
+            ),
+            "mshelp_merge_max_chars": self._safe_positive_int(
+                cfg.get("mshelp_merge_max_chars", 1200000), 1200000
+            ),
+            "enable_mshelp_output_docx": bool(
+                cfg.get("enable_mshelp_output_docx", False)
+            ),
+            "enable_mshelp_output_pdf": bool(
+                cfg.get("enable_mshelp_output_pdf", False)
+            ),
             "enable_incremental_mode": bool(cfg.get("enable_incremental_mode", False)),
             "incremental_verify_hash": bool(cfg.get("incremental_verify_hash", False)),
             "incremental_reprocess_renamed": bool(
@@ -2911,7 +4086,22 @@ class OfficeGUI(tb.Window):
                 ("var_pdf_wait_seconds", "ent_pdf_wait_seconds", "lbl_pdf_wait"),
                 ("var_ppt_timeout_seconds", "ent_ppt_timeout_seconds", "lbl_ppt_timeout"),
                 ("var_ppt_pdf_wait_seconds", "ent_ppt_pdf_wait_seconds", "lbl_ppt_wait"),
+                (
+                    "var_office_restart_every_n_files",
+                    "ent_office_restart_every_n_files",
+                    "lbl_office_restart_every",
+                ),
                 ("var_max_merge_size_mb", "ent_max_merge_size_mb", "lbl_max_mb"),
+                (
+                    "var_mshelp_merge_max_docs",
+                    "ent_mshelp_merge_max_docs",
+                    "lbl_mshelp_merge_max_docs",
+                ),
+                (
+                    "var_mshelp_merge_max_chars",
+                    "ent_mshelp_merge_max_chars",
+                    "lbl_mshelp_merge_max_chars",
+                ),
             ]
             for var_name, ent_name, label_key in numeric_fields:
                 raw = getattr(self, var_name).get().strip() if hasattr(self, var_name) else ""
@@ -3023,6 +4213,8 @@ class OfficeGUI(tb.Window):
             self.var_pdf_wait_seconds.set("15")
             self.var_ppt_timeout_seconds.set("180")
             self.var_ppt_pdf_wait_seconds.set("30")
+            self.var_office_reuse_app.set(1)
+            self.var_office_restart_every_n_files.set("25")
             section_title_key = "grp_cfg_convert"
         elif section == "ai":
             self.var_enable_corpus_manifest.set(1)
@@ -3032,6 +4224,12 @@ class OfficeGUI(tb.Window):
             self.var_enable_markdown_quality_report.set(1)
             self.var_enable_excel_json.set(0)
             self.var_enable_chromadb_export.set(0)
+            self.var_mshelpviewer_folder_name.set("MSHelpViewer")
+            self.var_enable_mshelp_merge_output.set(1)
+            self.var_mshelp_merge_max_docs.set("120")
+            self.var_mshelp_merge_max_chars.set("1200000")
+            self.var_enable_mshelp_output_docx.set(0)
+            self.var_enable_mshelp_output_pdf.set(0)
             section_title_key = "grp_cfg_ai"
         elif section == "incremental":
             self.var_enable_incremental_mode.set(0)
@@ -3128,6 +4326,8 @@ class OfficeGUI(tb.Window):
     def _load_config_to_ui(self):
         """Load values from config.json into UI controls."""
         self._suspend_cfg_dirty = True
+        if hasattr(self, "var_profile_active_path"):
+            self.var_profile_active_path.set(self.config_path)
         if not os.path.exists(self.config_path):
             self._suspend_cfg_dirty = False
             return
@@ -3228,6 +4428,22 @@ class OfficeGUI(tb.Window):
         self.var_enable_chromadb_export.set(
             1 if cfg.get("enable_chromadb_export", False) else 0
         )
+        self.var_mshelpviewer_folder_name.set(
+            str(cfg.get("mshelpviewer_folder_name", "MSHelpViewer") or "MSHelpViewer")
+        )
+        self.var_enable_mshelp_merge_output.set(
+            1 if cfg.get("enable_mshelp_merge_output", True) else 0
+        )
+        self.var_mshelp_merge_max_docs.set(str(cfg.get("mshelp_merge_max_docs", 120)))
+        self.var_mshelp_merge_max_chars.set(
+            str(cfg.get("mshelp_merge_max_chars", 1200000))
+        )
+        self.var_enable_mshelp_output_docx.set(
+            1 if cfg.get("enable_mshelp_output_docx", False) else 0
+        )
+        self.var_enable_mshelp_output_pdf.set(
+            1 if cfg.get("enable_mshelp_output_pdf", False) else 0
+        )
         self.var_enable_incremental_mode.set(
             1 if cfg.get("enable_incremental_mode", False) else 0
         )
@@ -3253,12 +4469,12 @@ class OfficeGUI(tb.Window):
         self.var_enable_merge_index.set(1 if cfg.get("enable_merge_index", False) else 0)
         self.var_enable_merge_excel.set(1 if cfg.get("enable_merge_excel", False) else 0)
 
-        # 运行模式 / 子模式 / 策略（作为默认）
+        # 杩愯妯″紡 / 瀛愭ā寮?/ 绛栫暐锛堜綔涓洪粯璁わ級
         self.var_run_mode.set(cfg.get("run_mode", MODE_CONVERT_THEN_MERGE))
         self.var_collect_mode.set(cfg.get("collect_mode", COLLECT_MODE_COPY_AND_INDEX))
         self.var_strategy.set(cfg.get("content_strategy", "standard"))
 
-        # 引擎 & 进程策略
+        # 寮曟搸 & 杩涚▼绛栫暐
         default_engine = cfg.get("default_engine", ENGINE_WPS)
         if default_engine not in (ENGINE_WPS, ENGINE_MS):
             default_engine = ENGINE_WPS
@@ -3269,7 +4485,7 @@ class OfficeGUI(tb.Window):
             kill_mode = KILL_MODE_AUTO
         self.var_kill_mode.set(kill_mode)
 
-        # 配置管理页
+        # 閰嶇疆绠＄悊椤?
         self.var_log_folder.set(cfg.get("log_folder", "./logs"))
 
         excluded = cfg.get("excluded_folders", [])
@@ -3286,9 +4502,13 @@ class OfficeGUI(tb.Window):
         self.var_pdf_wait_seconds.set(str(cfg.get("pdf_wait_seconds", 15)))
         self.var_ppt_timeout_seconds.set(str(cfg.get("ppt_timeout_seconds", 180)))
         self.var_ppt_pdf_wait_seconds.set(str(cfg.get("ppt_pdf_wait_seconds", 30)))
+        self.var_office_reuse_app.set(1 if cfg.get("office_reuse_app", True) else 0)
+        self.var_office_restart_every_n_files.set(
+            str(cfg.get("office_restart_every_n_files", 25))
+        )
         self.var_max_merge_size_mb.set(str(cfg.get("max_merge_size_mb", 80)))
 
-        # 联动刷新
+        # 鑱斿姩鍒锋柊
         self._on_run_mode_change()
         self._on_toggle_sandbox()
         self._on_toggle_incremental_mode()
@@ -3297,12 +4517,19 @@ class OfficeGUI(tb.Window):
         self._normalize_numeric_var(self.var_pdf_wait_seconds)
         self._normalize_numeric_var(self.var_ppt_timeout_seconds)
         self._normalize_numeric_var(self.var_ppt_pdf_wait_seconds)
+        self._normalize_numeric_var(self.var_office_restart_every_n_files)
         self._normalize_numeric_var(self.var_max_merge_size_mb)
+        self._normalize_numeric_var(self.var_mshelp_merge_max_docs)
+        self._normalize_numeric_var(self.var_mshelp_merge_max_chars)
         self._normalize_short_id_var(self.var_locator_short_id)
         self._normalize_date_var(self.var_date_str)
         self.validate_runtime_inputs(silent=True, scope="all")
         self._suspend_cfg_dirty = False
         self._refresh_config_dirty_from_file()
+        if self.profile_manager_win is not None and self.profile_manager_win.winfo_exists():
+            self._refresh_profile_tree()
+        if self.load_profile_dialog is not None and self.load_profile_dialog.winfo_exists():
+            self._refresh_load_profile_tree()
 
     def _load_config_for_write(self):
         cfg = {}
@@ -3333,6 +4560,10 @@ class OfficeGUI(tb.Window):
             cfg["ppt_pdf_wait_seconds"] = self._safe_positive_int(
                 self.var_ppt_pdf_wait_seconds.get(), 30
             )
+            cfg["office_reuse_app"] = bool(self.var_office_reuse_app.get())
+            cfg["office_restart_every_n_files"] = self._safe_positive_int(
+                self.var_office_restart_every_n_files.get(), 25
+            )
 
         if "ai" in sections:
             cfg["enable_corpus_manifest"] = bool(self.var_enable_corpus_manifest.get())
@@ -3348,6 +4579,24 @@ class OfficeGUI(tb.Window):
             )
             cfg["enable_excel_json"] = bool(self.var_enable_excel_json.get())
             cfg["enable_chromadb_export"] = bool(self.var_enable_chromadb_export.get())
+            cfg["mshelpviewer_folder_name"] = (
+                self.var_mshelpviewer_folder_name.get().strip() or "MSHelpViewer"
+            )
+            cfg["enable_mshelp_merge_output"] = bool(
+                self.var_enable_mshelp_merge_output.get()
+            )
+            cfg["mshelp_merge_max_docs"] = self._safe_positive_int(
+                self.var_mshelp_merge_max_docs.get(), 120
+            )
+            cfg["mshelp_merge_max_chars"] = self._safe_positive_int(
+                self.var_mshelp_merge_max_chars.get(), 1200000
+            )
+            cfg["enable_mshelp_output_docx"] = bool(
+                self.var_enable_mshelp_output_docx.get()
+            )
+            cfg["enable_mshelp_output_pdf"] = bool(
+                self.var_enable_mshelp_output_pdf.get()
+            )
 
         if "incremental" in sections:
             cfg["enable_incremental_mode"] = bool(self.var_enable_incremental_mode.get())
@@ -3462,33 +4711,23 @@ class OfficeGUI(tb.Window):
                     self.tr("msg_save_fail").format(e),
                 )
 
-    def _save_settings_to_file(self, show_msg=True, scope="all"):
-        """保存当前 UI 参数到 config.json（作为默认值）"""
-        cfg = {}
-        if os.path.exists(self.config_path):
-            try:
-                with open(self.config_path, "r", encoding="utf-8") as f:
-                    cfg = json.load(f)
-            except Exception:
-                cfg = {}
-
+    def _compose_config_from_ui(self, cfg, scope="all"):
+        cfg = cfg if isinstance(cfg, dict) else {}
         scope = "mode" if str(scope).lower() == "mode" else "all"
         mode = self.var_run_mode.get()
         write_convert = scope == "all" or mode in (MODE_CONVERT_ONLY, MODE_CONVERT_THEN_MERGE)
         write_merge = scope == "all" or mode in (MODE_CONVERT_THEN_MERGE, MODE_MERGE_ONLY)
         write_collect = scope == "all" or mode == MODE_COLLECT_ONLY
+        write_mshelp = scope == "all" or mode == MODE_MSHELP_ONLY
         write_rules = scope == "all" or mode in (
             MODE_CONVERT_ONLY,
             MODE_CONVERT_THEN_MERGE,
             MODE_COLLECT_ONLY,
         )
 
-        # 运行参数
-        # 运行参数
         is_win = (sys.platform == "win32")
         is_mac = (sys.platform == "darwin")
 
-        # Preserve existing keys for other OS
         if is_win:
              cfg["source_folders_win"] = self.source_folders_list
              cfg["source_folder_win"] = self.source_folders_list[0] if self.source_folders_list else ""
@@ -3501,8 +4740,7 @@ class OfficeGUI(tb.Window):
              cfg["target_folder_mac"] = self.var_target_folder.get().strip()
              if write_convert:
                  cfg["temp_sandbox_root_mac"] = self.var_temp_sandbox_root.get().strip()
-             
-        # Also update generic keys as fallback/current
+
         cfg["source_folders"] = self.source_folders_list
         cfg["source_folder"] = self.source_folders_list[0] if self.source_folders_list else ""
         cfg["target_folder"] = self.var_target_folder.get().strip()
@@ -3519,6 +4757,19 @@ class OfficeGUI(tb.Window):
         )
         cfg["enable_excel_json"] = bool(self.var_enable_excel_json.get())
         cfg["enable_chromadb_export"] = bool(self.var_enable_chromadb_export.get())
+        if write_mshelp:
+            cfg["mshelpviewer_folder_name"] = (
+                self.var_mshelpviewer_folder_name.get().strip() or "MSHelpViewer"
+            )
+            cfg["enable_mshelp_merge_output"] = bool(
+                self.var_enable_mshelp_merge_output.get()
+            )
+            cfg["enable_mshelp_output_docx"] = bool(
+                self.var_enable_mshelp_output_docx.get()
+            )
+            cfg["enable_mshelp_output_pdf"] = bool(
+                self.var_enable_mshelp_output_pdf.get()
+            )
         if write_convert:
             cfg["enable_sandbox"] = bool(self.var_enable_sandbox.get())
             cfg["temp_sandbox_root"] = self.var_temp_sandbox_root.get().strip()
@@ -3553,20 +4804,18 @@ class OfficeGUI(tb.Window):
         if write_convert:
             cfg["default_engine"] = self.var_engine.get()
         cfg["kill_process_mode"] = self.var_kill_mode.get()
-
-        # 配置管理页
         cfg["log_folder"] = self.var_log_folder.get().strip() or "./logs"
 
         if write_rules:
             excluded_text = self.txt_excluded_folders.get("1.0", "end").strip()
-            excluded_list = [
+            cfg["excluded_folders"] = [
                 line.strip() for line in excluded_text.splitlines() if line.strip()
             ]
-            cfg["excluded_folders"] = excluded_list
 
             kw_text = self.txt_price_keywords.get("1.0", "end").strip()
-            kw_list = [line.strip() for line in kw_text.splitlines() if line.strip()]
-            cfg["price_keywords"] = kw_list
+            cfg["price_keywords"] = [
+                line.strip() for line in kw_text.splitlines() if line.strip()
+            ]
 
         def _to_int(var, default):
             try:
@@ -3580,6 +4829,15 @@ class OfficeGUI(tb.Window):
             cfg["pdf_wait_seconds"] = _to_int(self.var_pdf_wait_seconds, 15)
             cfg["ppt_timeout_seconds"] = _to_int(self.var_ppt_timeout_seconds, 180)
             cfg["ppt_pdf_wait_seconds"] = _to_int(self.var_ppt_pdf_wait_seconds, 30)
+            cfg["office_reuse_app"] = bool(self.var_office_reuse_app.get())
+            cfg["office_restart_every_n_files"] = _to_int(
+                self.var_office_restart_every_n_files, 25
+            )
+        if write_mshelp:
+            cfg["mshelp_merge_max_docs"] = _to_int(self.var_mshelp_merge_max_docs, 120)
+            cfg["mshelp_merge_max_chars"] = _to_int(
+                self.var_mshelp_merge_max_chars, 1200000
+            )
         if write_merge:
             cfg["max_merge_size_mb"] = _to_int(self.var_max_merge_size_mb, 80)
         cfg["enable_merge_map"] = cfg.get("enable_merge_map", True)
@@ -3611,22 +4869,58 @@ class OfficeGUI(tb.Window):
             "tooltip_auto_theme": self.tooltip_auto_theme,
             "confirm_revert_dirty": bool(self.var_confirm_revert_dirty.get()),
         }
+        return cfg
 
+    def _save_settings_to_file(self, show_msg=True, scope="all"):
+        """Save current UI values into the active config file."""
+        cfg = self._compose_config_from_ui(self._load_config_for_write(), scope=scope)
         try:
             with open(self.config_path, "w", encoding="utf-8") as f:
                 json.dump(cfg, f, indent=4, ensure_ascii=False)
             self._baseline_config_snapshot = self._build_config_snapshot_from_cfg(cfg)
             self._refresh_config_dirty_state()
             if show_msg:
-                title_key = "btn_save_cfg_mode" if scope == "mode" else "btn_save_cfg_all"
-                messagebox.showinfo(self.tr(title_key), self.tr("msg_save_ok"))
+                messagebox.showinfo(self.tr("btn_save_cfg"), self.tr("msg_save_ok"))
         except Exception as e:
             if show_msg:
-                title_key = "btn_save_cfg_mode" if scope == "mode" else "btn_save_cfg_all"
-                messagebox.showerror(self.tr(title_key), self.tr("msg_save_fail").format(e))
+                messagebox.showerror(
+                    self.tr("btn_save_cfg"),
+                    self.tr("msg_save_fail").format(e),
+                )
 
-    # ===================== 日志 & 状态 =====================
+    def _reload_config_from_file(self, show_msg=True, confirm_dirty=True):
+        if confirm_dirty and self.cfg_dirty:
+            confirm = messagebox.askyesno(
+                self.tr("btn_load_cfg"),
+                self.tr("msg_confirm_load_config_dirty"),
+            )
+            if not confirm:
+                return
+        if not os.path.exists(self.config_path):
+            if show_msg:
+                messagebox.showerror(
+                    self.tr("btn_load_cfg"),
+                    self.tr("msg_load_missing").format(self.config_path),
+                )
+            return
+        try:
+            with open(self.config_path, "r", encoding="utf-8") as f:
+                json.load(f)
+            self._load_config_to_ui()
+            if show_msg:
+                messagebox.showinfo(self.tr("btn_load_cfg"), self.tr("msg_load_ok"))
+            if hasattr(self, "var_status"):
+                self.var_status.set(self.tr("msg_load_ok"))
+            if hasattr(self, "var_locator_result"):
+                self.var_locator_result.set(self.tr("msg_load_ok"))
+        except Exception as e:
+            if show_msg:
+                messagebox.showerror(
+                    self.tr("btn_load_cfg"),
+                    self.tr("msg_load_fail").format(e),
+                )
 
+    # ===================== 鏃ュ織 & 鐘舵€?=====================
     def _poll_log_queue(self):
         try:
             while True:
@@ -3643,9 +4937,11 @@ class OfficeGUI(tb.Window):
             if hasattr(self, "btn_start"): self.btn_start.configure(state="disabled")
             if hasattr(self, "btn_stop"): self.btn_stop.configure(state="normal")
             if hasattr(self, "btn_save_cfg"): self.btn_save_cfg.configure(state="disabled")
-            if hasattr(self, "btn_save_cfg_mode"): self.btn_save_cfg_mode.configure(state="disabled")
+            if hasattr(self, "btn_load_cfg"): self.btn_load_cfg.configure(state="disabled")
             if hasattr(self, "btn_save_cfg_tab"): self.btn_save_cfg_tab.configure(state="disabled")
-            if hasattr(self, "btn_save_cfg_mode_tab"): self.btn_save_cfg_mode_tab.configure(state="disabled")
+            if hasattr(self, "btn_load_cfg_tab"): self.btn_load_cfg_tab.configure(state="disabled")
+            if hasattr(self, "btn_manage_profiles"): self.btn_manage_profiles.configure(state="disabled")
+            if hasattr(self, "btn_manage_profiles_tab"): self.btn_manage_profiles_tab.configure(state="disabled")
             for btn_name in (
                 "btn_save_cfg_shared",
                 "btn_save_cfg_convert",
@@ -3680,9 +4976,11 @@ class OfficeGUI(tb.Window):
             if hasattr(self, "btn_start"): self.btn_start.configure(state="normal")
             if hasattr(self, "btn_stop"): self.btn_stop.configure(state="disabled")
             if hasattr(self, "btn_save_cfg"): self.btn_save_cfg.configure(state="normal")
-            if hasattr(self, "btn_save_cfg_mode"): self.btn_save_cfg_mode.configure(state="normal")
+            if hasattr(self, "btn_load_cfg"): self.btn_load_cfg.configure(state="normal")
             if hasattr(self, "btn_save_cfg_tab"): self.btn_save_cfg_tab.configure(state="normal")
-            if hasattr(self, "btn_save_cfg_mode_tab"): self.btn_save_cfg_mode_tab.configure(state="normal")
+            if hasattr(self, "btn_load_cfg_tab"): self.btn_load_cfg_tab.configure(state="normal")
+            if hasattr(self, "btn_manage_profiles"): self.btn_manage_profiles.configure(state="normal")
+            if hasattr(self, "btn_manage_profiles_tab"): self.btn_manage_profiles_tab.configure(state="normal")
             for btn_name in (
                 "btn_save_cfg_shared",
                 "btn_save_cfg_convert",
@@ -3705,6 +5003,9 @@ class OfficeGUI(tb.Window):
             self.progress.stop()
             self.progress["value"] = 100
             self.var_status.set(self.tr("status_ready") if hasattr(self, "tr") else "Ready")
+        self._update_profile_manager_controls()
+        self._update_profile_dialog_controls()
+
     def on_progress_update(self, current, total):
         """Thread-safe callback invoked from converter worker thread."""
 
@@ -3747,6 +5048,7 @@ class OfficeGUI(tb.Window):
         chromadb_count = len(
             getattr(converter, "generated_chromadb_outputs", []) or []
         )
+        mshelp_count = len(getattr(converter, "generated_mshelp_outputs", []) or [])
 
         lines = [
             self.tr("log_artifacts_title").format(step_index, total_steps),
@@ -3759,6 +5061,8 @@ class OfficeGUI(tb.Window):
             self.tr("log_artifacts_ai_quality").format(markdown_quality_count),
             self.tr("log_artifacts_ai_vector").format(chromadb_count),
         ]
+        if mshelp_count:
+            lines.append(self.tr("log_artifacts_mshelp").format(mshelp_count))
 
         manifest_path = getattr(converter, "corpus_manifest_path", "")
         if manifest_path:
@@ -3792,6 +5096,8 @@ class OfficeGUI(tb.Window):
             lines.append(self.tr("log_artifacts_records_json").format(js_path))
         for vec_path in (getattr(converter, "generated_chromadb_outputs", []) or [])[:2]:
             lines.append(self.tr("log_artifacts_chromadb").format(vec_path))
+        for mshelp_path in (getattr(converter, "generated_mshelp_outputs", []) or [])[:2]:
+            lines.append(self.tr("log_artifacts_markdown").format(mshelp_path))
         update_manifest = getattr(converter, "update_package_manifest_path", "")
         if update_manifest:
             lines.append(self.tr("log_artifacts_update_package").format(update_manifest))
@@ -3809,7 +5115,7 @@ class OfficeGUI(tb.Window):
 
         return "\n".join(lines)
 
-    # ===================== 任务控制 =====================
+    # ===================== 浠诲姟鎺у埗 =====================
     def _on_click_start(self):
         if self.worker_thread and self.worker_thread.is_alive():
             messagebox.showinfo(self.tr("btn_start"), self.tr("msg_task_already_running"))
@@ -3855,6 +5161,16 @@ class OfficeGUI(tb.Window):
                                 "source": src,
                                 "mode": MODE_COLLECT_ONLY,
                                 "desc": f"Collect: {src}",
+                            }
+                        )
+
+                elif base_mode == MODE_MSHELP_ONLY:
+                    for src in clean_sources:
+                        steps.append(
+                            {
+                                "source": src,
+                                "mode": MODE_MSHELP_ONLY,
+                                "desc": f"MSHelp: {src}",
                             }
                         )
 
@@ -3943,6 +5259,24 @@ class OfficeGUI(tb.Window):
                     cfg["enable_markdown_quality_report"] = bool(self.var_enable_markdown_quality_report.get())
                     cfg["enable_excel_json"] = bool(self.var_enable_excel_json.get())
                     cfg["enable_chromadb_export"] = bool(self.var_enable_chromadb_export.get())
+                    cfg["mshelpviewer_folder_name"] = (
+                        self.var_mshelpviewer_folder_name.get().strip() or "MSHelpViewer"
+                    )
+                    cfg["enable_mshelp_merge_output"] = bool(
+                        self.var_enable_mshelp_merge_output.get()
+                    )
+                    cfg["mshelp_merge_max_docs"] = self._safe_positive_int(
+                        self.var_mshelp_merge_max_docs.get(), 120
+                    )
+                    cfg["mshelp_merge_max_chars"] = self._safe_positive_int(
+                        self.var_mshelp_merge_max_chars.get(), 1200000
+                    )
+                    cfg["enable_mshelp_output_docx"] = bool(
+                        self.var_enable_mshelp_output_docx.get()
+                    )
+                    cfg["enable_mshelp_output_pdf"] = bool(
+                        self.var_enable_mshelp_output_pdf.get()
+                    )
                     cfg["enable_incremental_mode"] = bool(self.var_enable_incremental_mode.get())
                     cfg["incremental_verify_hash"] = bool(self.var_incremental_verify_hash.get())
                     cfg["incremental_reprocess_renamed"] = bool(self.var_incremental_reprocess_renamed.get())
@@ -3951,6 +5285,10 @@ class OfficeGUI(tb.Window):
                     cfg["enable_update_package"] = bool(self.var_enable_update_package.get())
                     cfg["kill_process_mode"] = self.var_kill_mode.get()
                     cfg["default_engine"] = self.var_engine.get()
+                    cfg["office_reuse_app"] = bool(self.var_office_reuse_app.get())
+                    cfg["office_restart_every_n_files"] = self._safe_positive_int(
+                        self.var_office_restart_every_n_files.get(), 25
+                    )
 
                     converter.run_mode = step["mode"]
                     converter.collect_mode = self.var_collect_mode.get()
@@ -4019,7 +5357,7 @@ class OfficeGUI(tb.Window):
             print("[GUI] stop requested; waiting for current step to finish...")
             self.var_status.set(self.tr("status_stop_wait"))
 
-    # ===================== 程序入口 =====================
+    # ===================== 绋嬪簭鍏ュ彛 =====================
 
 
 if __name__ == "__main__":
@@ -4028,3 +5366,4 @@ if __name__ == "__main__":
         app.mainloop()
     except Exception:
         traceback.print_exc()
+
