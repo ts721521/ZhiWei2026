@@ -68,7 +68,9 @@
         "tooltip_font_family": "System",
         "tooltip_font_size": 9,
         "tooltip_auto_theme": true,
-        "confirm_revert_dirty": true
+        "confirm_revert_dirty": true,
+        "window_geometry": "1352x1166+483+60",
+        "window_state": "normal"
     },
     "source_folder_win": "E:\\21_SE_Doc\\BaiduNetdiskWorkspace\\SynologyDrive\\5_投标\\2026",
     "target_folder_win": "C:\\PDFs",
@@ -94,5 +96,18 @@
     "incremental_reprocess_renamed": false,
     "source_priority_skip_same_name_pdf": false,
     "global_md5_dedup": true,
-    "enable_update_package": true
+    "enable_update_package": true,
+    "llm_delivery_root_win": "",
+    "mshelpviewer_folder_name": "MSHelpViewer",
+    "enable_mshelp_merge_output": true,
+    "enable_mshelp_output_docx": false,
+    "enable_mshelp_output_pdf": false,
+    "sandbox_min_free_gb": 10,
+    "sandbox_low_space_policy": "block",
+    "enable_llm_delivery_hub": true,
+    "llm_delivery_root": "",
+    "llm_delivery_flatten": true,
+    "llm_delivery_include_pdf": false,
+    "office_reuse_app": true,
+    "office_restart_every_n_files": 25
 }

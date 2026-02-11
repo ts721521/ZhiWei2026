@@ -1,4 +1,4 @@
-﻿# AI Handover (2026-02-11)
+# AI Handover (2026-02-11)
 
 ## 1. Project Snapshot
 - Repo: `GPTVersion/2026`
@@ -140,3 +140,16 @@ Add keys for:
 - Keep V1 compatibility as hard constraint.
 - Do not remove existing `_AI` outputs; add hub as overlay layer.
 - If free-space precheck is uncertain on non-Windows, implement conservative warn fallback.
+
+## 11. Future: Google Drive Upload (desktop OAuth)
+
+- Scenario: single user runs this tool locally and uploads `_LLM_UPLOAD` outputs to their own Google Drive / NotebookLM.
+- Preferred approach: **desktop OAuth flow** (no service account at this stage).
+- Suggested capability (V1.2+):
+  - Add `enable_gdrive_upload`, `gdrive_folder_id`, `gdrive_client_secrets_path` config keys.
+  - Add "Upload _LLM_UPLOAD to Google Drive" action in GUI after run completion.
+  - First-time use triggers browser-based OAuth login; tokens are cached locally for subsequent runs.
+  - Upload strategy: create a `GPTVersion_Uploads/Run_YYYYMMDD_HHMMSS` folder in Drive and mirror `_LLM_UPLOAD` contents.
+  - Optionally, append a `gdrive` section into `llm_upload_manifest.json` with `remote_folder_id` and `uploaded_at`.
+
+> Note: Google Drive integration is intentionally kept as a **separate iteration** on top of the LLM delivery hub to avoid coupling cloud concerns with core artifact generation.

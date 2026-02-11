@@ -1,4 +1,4 @@
-﻿# 产品需求文档（PRD）与技术规格
+# 产品需求文档（PRD）与技术规格
 
 ## 1. 背景与目标
 - 当前工具已具备：Office 转 PDF、PDF 合并、索引映射、反向定位。
@@ -46,6 +46,10 @@
 - 已完成：分区回滚安全增强（恢复前二次确认回滚范围，且执行前先刷新 `config.json` 基线以避免过期回滚）。
 - 已完成：回滚确认可配置（UI 默认配置新增开关，可关闭“恢复未保存分区”前的确认弹窗，并持久化到 `config.json`）。
 - 已完成：转换运行页配置二次分层（核心转换 / 过滤策略 / AI 导出 / 增量同步），降低配置混杂度。
+
+- 已完成：_LLM_UPLOAD 扁平化输出（默认 `llm_delivery_flatten=true`，文件直接放在上传目录根目录，消除嵌套子目录）。
+- 已完成：LLM 上传内容筛选（白名单机制，仅收集 Markdown 导出、MSHelp 合并 Markdown、Excel 结构化 JSON 及可选 PDF；排除 manifest、质量报告、Records JSON、ChromaDB 元数据等非内容文件）。
+- 已完成：MSHelp 合并参数统一（复用 `max_merge_size_mb`，删除独立的 `mshelp_merge_max_docs` / `mshelp_merge_max_chars`，统一按文件字节大小分包）。
 
 ### 2.2 P1（增强）
 - Markdown 清洗增强：页眉页脚噪声识别、段落结构优化。
@@ -259,3 +263,13 @@
 
 ### 8.4 交接文档
 - 下个 AI 的完整接续说明见：`docs/AI_HANDOVER_20260211.md`。
+
+### 8.5 后续能力：Google Drive 直接上传（桌面 OAuth）
+- 场景：个人用户在本机完成 `_LLM_UPLOAD` 产物归集后，希望一键上传到自己的 Google Drive / NotebookLM。
+- 设计方向（V1.2+，建立在 V1.1 hub 能力之上）：
+  - 引入 Google Drive 桌面 OAuth 授权流程，使用用户本人账号权限。
+  - 配置项示例：`enable_gdrive_upload`、`gdrive_folder_id`、`gdrive_client_secrets_path`。
+  - GUI 在运行结束后提供“上传 _LLM_UPLOAD 到 Google Drive”按钮。
+  - 首次点击触发浏览器 OAuth 登录，成功后本地缓存刷新 token，后续静默续期。
+  - 上传策略：在 Drive 中创建 `GPTVersion_Uploads/Run_YYYYMMDD_HHMMSS` 目录，将 `_LLM_UPLOAD` 中的可上传文件作为一批上传。
+  - 可选：在本地 `llm_upload_manifest.json` 中增加 `gdrive` 区段（远端目录 ID、上传时间等），便于后续追溯。 
