@@ -25,6 +25,14 @@ from types import SimpleNamespace
 import tkinter as tk
 from tkinter import filedialog, messagebox, ttk, colorchooser
 from tkinter.constants import *  # Explicitly import standard constants
+
+# Avoid UnicodeEncodeError on Windows consoles with legacy code pages.
+for _stream in (sys.stdout, sys.stderr):
+    try:
+        _stream.reconfigure(errors="replace")
+    except Exception:
+        pass
+
 try:
     import ttkbootstrap as tb
     from ttkbootstrap.constants import *
@@ -402,6 +410,12 @@ class OfficeGUI(tb.Window):
         self._tooltips = []
         self._tooltip_widget_ids = set()
         self._normalizing_inputs = False
+        self._suspend_cfg_dirty = False
+        self.cfg_dirty = False
+        self._baseline_config_snapshot = {}
+        self._cfg_tab_meta = []
+        self._last_section_dirty = {}
+        self._ui_running = False
         self.source_folders_list = []  # List to store multiple source folders
         self.tooltip_delay_ms = self.TOOLTIP_DEFAULTS["tooltip_delay_ms"]
         self.tooltip_bg = self.TOOLTIP_DEFAULTS["tooltip_bg"]
@@ -417,10 +431,8 @@ class OfficeGUI(tb.Window):
         if not os.path.exists(self.config_path):
             success = create_default_config(self.config_path)
             if success:
-                messagebox.showinfo(
-                    "提示",
-                    "未找到 config.json，已为您自动生成默认配置。\n",
-                )
+                info_title = "Info" if self.current_lang == "en" else "提示"
+                messagebox.showinfo(info_title, self.tr("msg_no_config"))
 
         self._build_ui()
         self._load_config_to_ui()
@@ -479,10 +491,25 @@ class OfficeGUI(tb.Window):
             self.tr("mode_convert_merge"): "tip_mode_convert_merge",
             self.tr("mode_collect"): "tip_mode_collect",
             self.tr("lbl_sandbox"): "tip_toggle_sandbox",
+            self.tr("chk_corpus_manifest"): "tip_toggle_corpus_manifest",
+            self.tr("chk_export_markdown"): "tip_toggle_export_markdown",
+            self.tr("chk_markdown_strip_header_footer"): "tip_toggle_markdown_strip_header_footer",
+            self.tr("chk_markdown_structured_headings"): "tip_toggle_markdown_structured_headings",
+            self.tr("chk_markdown_quality_report"): "tip_toggle_markdown_quality_report",
+            self.tr("chk_export_records_json"): "tip_toggle_export_records_json",
+            self.tr("chk_chromadb_export"): "tip_toggle_chromadb_export",
+            self.tr("chk_incremental_mode"): "tip_toggle_incremental_mode",
+            self.tr("chk_incremental_verify_hash"): "tip_toggle_incremental_verify_hash",
+            self.tr("chk_incremental_reprocess_renamed"): "tip_toggle_incremental_reprocess_renamed",
+            self.tr("chk_source_priority_skip_pdf"): "tip_toggle_source_priority_skip_pdf",
+            self.tr("chk_global_md5_dedup"): "tip_toggle_global_md5_dedup",
+            self.tr("chk_enable_update_package"): "tip_toggle_enable_update_package",
+            self.tr("chk_enable_merge"): "tip_toggle_enable_merge",
             self.tr("lbl_filter_date"): "tip_toggle_date_filter",
             self.tr("chk_merge_index"): "tip_toggle_merge_index",
             self.tr("chk_merge_excel"): "tip_toggle_merge_excel",
             self.tr("chk_tooltip_auto_theme"): "tip_toggle_tooltip_auto_theme",
+            self.tr("chk_confirm_revert_dirty"): "tip_toggle_confirm_revert_dirty",
         }
         for child in root.winfo_children():
             self._auto_attach_action_tooltips(child)
@@ -508,6 +535,29 @@ class OfficeGUI(tb.Window):
             else:
                 tip = self.tr("tip_auto_option_action").format(text)
             self._attach_tooltip_text(child, tip)
+
+    def _add_cfg_section_reset_action(self, parent, section_name):
+        frame = tb.Frame(parent)
+        frame.pack(fill=X, pady=(0, 5))
+        btn_save = tb.Button(
+            frame,
+            text=self.tr("btn_save_cfg_section"),
+            command=lambda s=section_name: self._save_specific_config_section(s),
+            bootstyle="success-outline",
+            width=14,
+        )
+        btn_save.pack(side=RIGHT, padx=(0, 6))
+        self._attach_tooltip(btn_save, "tip_save_config_section")
+        btn_reset = tb.Button(
+            frame,
+            text=self.tr("btn_reset_cfg_section"),
+            command=lambda s=section_name: self._reset_config_section_defaults(s),
+            bootstyle="warning-outline",
+            width=14,
+        )
+        btn_reset.pack(side=RIGHT)
+        self._attach_tooltip(btn_reset, "tip_reset_config_section")
+        return frame, btn_save, btn_reset
 
     def _get_tooltip_style(self):
         if self.tooltip_auto_theme:
@@ -675,28 +725,46 @@ class OfficeGUI(tb.Window):
                 return 1
             return 0
 
+        def _is_descendant(widget, ancestor):
+            cur = widget
+            while cur is not None:
+                if cur is ancestor:
+                    return True
+                cur = getattr(cur, "master", None)
+            return False
+
+        def _widget_can_self_scroll(widget):
+            # Give native scrollable controls (list/text/tree/canvas) first chance
+            # to consume wheel events, so page-level canvas scrolling does not
+            # hijack their behavior on Windows.
+            try:
+                if isinstance(widget, (tk.Listbox, tk.Text, tk.Canvas, ttk.Treeview)):
+                    first, last = widget.yview()
+                    first = float(first)
+                    last = float(last)
+                    return first > 0.0 or last < 1.0
+            except Exception:
+                return False
+            return False
+
         def _on_mousewheel(event):
+            # Keep all-page wheel binding stable, but only scroll when event comes
+            # from this canvas subtree. This avoids bind_all/unbind_all conflicts.
+            evt_widget = getattr(event, "widget", None)
+            if not _is_descendant(evt_widget, canvas):
+                return None
+            if evt_widget is not None and _widget_can_self_scroll(evt_widget):
+                return None
             step = _calc_wheel_step(event)
             if step:
                 canvas.yview_scroll(step, "units")
                 return "break"
             return None
 
-        def _bind_mousewheel(_event=None):
-            canvas.bind_all("<MouseWheel>", _on_mousewheel, add="+")
-            canvas.bind_all("<Button-4>", _on_mousewheel, add="+")
-            canvas.bind_all("<Button-5>", _on_mousewheel, add="+")
-
-        def _unbind_mousewheel(_event=None):
-            canvas.unbind_all("<MouseWheel>")
-            canvas.unbind_all("<Button-4>")
-            canvas.unbind_all("<Button-5>")
-
         canvas.bind("<Configure>", on_canvas_configure)
-        canvas.bind("<Enter>", _bind_mousewheel, add="+")
-        canvas.bind("<Leave>", _unbind_mousewheel, add="+")
-        content.bind("<Enter>", _bind_mousewheel, add="+")
-        content.bind("<Leave>", _unbind_mousewheel, add="+")
+        self.bind_all("<MouseWheel>", _on_mousewheel, add="+")
+        self.bind_all("<Button-4>", _on_mousewheel, add="+")
+        self.bind_all("<Button-5>", _on_mousewheel, add="+")
         canvas.configure(yscrollcommand=scrollbar.set)
         canvas.pack(side=LEFT, fill=BOTH, expand=YES)
         scrollbar.pack(side=RIGHT, fill=Y)
@@ -723,7 +791,7 @@ class OfficeGUI(tb.Window):
         btn_browse.pack(side=LEFT, padx=(2, 0))
         self._attach_tooltip(btn_browse, "tip_browse_folder")
         if cmd_open:
-            btn_open = tb.Button(f_in, text="↗", command=cmd_open, bootstyle="link", width=2)
+            btn_open = tb.Button(f_in, text=">", command=cmd_open, bootstyle="link", width=2)
             btn_open.pack(side=LEFT)
             self._attach_tooltip(btn_open, "tip_open_folder")
 
@@ -832,6 +900,15 @@ class OfficeGUI(tb.Window):
 
         self.var_target_folder = tk.StringVar()
         self._create_path_row(lf_paths, "lbl_target", self.var_target_folder, self.browse_target, self.open_target_folder)
+        self.var_enable_corpus_manifest = tk.IntVar(value=1)
+        self.chk_corpus_manifest = tb.Checkbutton(
+            lf_paths,
+            text=self.tr("chk_corpus_manifest"),
+            variable=self.var_enable_corpus_manifest,
+            bootstyle="round-toggle",
+        )
+        self.chk_corpus_manifest.pack(anchor="w", pady=(6, 0))
+        self._attach_tooltip(self.chk_corpus_manifest, "tip_toggle_corpus_manifest")
 
         # Section 3: feature-specific runtime options
         lf_settings = tb.Labelframe(self.tab_run_convert, text=self.tr("grp_convert_runtime"), padding=10)
@@ -868,7 +945,10 @@ class OfficeGUI(tb.Window):
         self.lbl_merge.pack(anchor="w")
         self.var_enable_merge = tk.IntVar(value=1)
         self.chk_enable_merge = tb.Checkbutton(
-            lf_merge_runtime, text="Enable Merge", variable=self.var_enable_merge, bootstyle="square-toggle"
+            lf_merge_runtime,
+            text=self.tr("chk_enable_merge"),
+            variable=self.var_enable_merge,
+            bootstyle="square-toggle",
         )
         self.chk_enable_merge.pack(anchor="w")
         self.frm_merge_opts = tb.Frame(lf_merge_runtime, padding=(20, 0))
@@ -893,20 +973,165 @@ class OfficeGUI(tb.Window):
         tb.Radiobutton(frm_m_src, text=self.tr("rad_tgt_dir"), variable=self.var_merge_source, value="target").pack(side=LEFT, padx=10)
 
         # Section 4: conversion strategy + date filter
-        lf_extra = tb.Labelframe(lf_convert_runtime, text=self.tr("sec_filters"), padding=10)
-        lf_extra.pack(fill=X, pady=5)
-        self._add_section_help(lf_extra, "tip_section_run_filters")
-        self.lbl_strategy = tb.Label(lf_extra, text=self.tr("lbl_strategy"))
+        lf_convert_content = tb.Labelframe(
+            lf_settings, text=self.tr("sec_filters"), padding=10
+        )
+        lf_convert_content.pack(fill=X, pady=5)
+        self._add_section_help(lf_convert_content, "tip_section_run_filters")
+        self.lbl_strategy = tb.Label(lf_convert_content, text=self.tr("lbl_strategy"))
         self.lbl_strategy.pack(anchor="w")
         self.var_strategy = tk.StringVar(value="standard")
         self.cb_strat = tb.Combobox(
-            lf_extra, textvariable=self.var_strategy, values=["standard", "smart_tag", "price_only"], state="readonly"
+            lf_convert_content,
+            textvariable=self.var_strategy,
+            values=["standard", "smart_tag", "price_only"],
+            state="readonly",
         )
         self.cb_strat.pack(fill=X, pady=(0, 5))
+
+        # Section 5: AI export (convert-specific)
+        lf_ai_export = tb.Labelframe(
+            lf_settings, text=self.tr("grp_ai_runtime"), padding=(10, 8)
+        )
+        lf_ai_export.pack(fill=X, pady=(2, 6))
+        frm_ai_export = tb.Frame(lf_ai_export)
+        frm_ai_export.pack(fill=X, pady=(2, 6))
+        self.var_enable_markdown = tk.IntVar(value=1)
+        self.chk_export_markdown = tb.Checkbutton(
+            frm_ai_export,
+            text=self.tr("chk_export_markdown"),
+            variable=self.var_enable_markdown,
+        )
+        self.chk_export_markdown.pack(anchor="w")
+        self.var_markdown_strip_header_footer = tk.IntVar(value=1)
+        self.chk_markdown_strip_header_footer = tb.Checkbutton(
+            frm_ai_export,
+            text=self.tr("chk_markdown_strip_header_footer"),
+            variable=self.var_markdown_strip_header_footer,
+        )
+        self.chk_markdown_strip_header_footer.pack(anchor="w")
+        self.var_markdown_structured_headings = tk.IntVar(value=1)
+        self.chk_markdown_structured_headings = tb.Checkbutton(
+            frm_ai_export,
+            text=self.tr("chk_markdown_structured_headings"),
+            variable=self.var_markdown_structured_headings,
+        )
+        self.chk_markdown_structured_headings.pack(anchor="w")
+        self.var_enable_markdown_quality_report = tk.IntVar(value=1)
+        self.chk_markdown_quality_report = tb.Checkbutton(
+            frm_ai_export,
+            text=self.tr("chk_markdown_quality_report"),
+            variable=self.var_enable_markdown_quality_report,
+        )
+        self.chk_markdown_quality_report.pack(anchor="w")
+        self.var_enable_excel_json = tk.IntVar(value=0)
+        self.chk_export_records_json = tb.Checkbutton(
+            frm_ai_export,
+            text=self.tr("chk_export_records_json"),
+            variable=self.var_enable_excel_json,
+        )
+        self.chk_export_records_json.pack(anchor="w")
+        self.var_enable_chromadb_export = tk.IntVar(value=0)
+        self.chk_chromadb_export = tb.Checkbutton(
+            frm_ai_export,
+            text=self.tr("chk_chromadb_export"),
+            variable=self.var_enable_chromadb_export,
+        )
+        self.chk_chromadb_export.pack(anchor="w")
+        self._attach_tooltip(self.chk_export_markdown, "tip_toggle_export_markdown")
+        self._attach_tooltip(
+            self.chk_markdown_strip_header_footer,
+            "tip_toggle_markdown_strip_header_footer",
+        )
+        self._attach_tooltip(
+            self.chk_markdown_structured_headings,
+            "tip_toggle_markdown_structured_headings",
+        )
+        self._attach_tooltip(
+            self.chk_markdown_quality_report, "tip_toggle_markdown_quality_report"
+        )
+        self._attach_tooltip(
+            self.chk_export_records_json, "tip_toggle_export_records_json"
+        )
+        self._attach_tooltip(
+            self.chk_chromadb_export, "tip_toggle_chromadb_export"
+        )
+
+        # Section 6: incremental / dedup (convert-specific)
+        lf_incremental = tb.Labelframe(
+            lf_settings, text=self.tr("grp_incremental_runtime"), padding=(8, 6)
+        )
+        lf_incremental.pack(fill=X, pady=(2, 6))
+        self.var_enable_incremental_mode = tk.IntVar(value=0)
+        self.chk_incremental_mode = tb.Checkbutton(
+            lf_incremental,
+            text=self.tr("chk_incremental_mode"),
+            variable=self.var_enable_incremental_mode,
+            command=self._on_toggle_incremental_mode,
+        )
+        self.chk_incremental_mode.pack(anchor="w")
+        self.var_incremental_verify_hash = tk.IntVar(value=0)
+        self.chk_incremental_verify_hash = tb.Checkbutton(
+            lf_incremental,
+            text=self.tr("chk_incremental_verify_hash"),
+            variable=self.var_incremental_verify_hash,
+        )
+        self.chk_incremental_verify_hash.pack(anchor="w")
+        self.var_incremental_reprocess_renamed = tk.IntVar(value=0)
+        self.chk_incremental_reprocess_renamed = tb.Checkbutton(
+            lf_incremental,
+            text=self.tr("chk_incremental_reprocess_renamed"),
+            variable=self.var_incremental_reprocess_renamed,
+        )
+        self.chk_incremental_reprocess_renamed.pack(anchor="w")
+        self.var_source_priority_skip_same_name_pdf = tk.IntVar(value=0)
+        self.chk_source_priority_skip_pdf = tb.Checkbutton(
+            lf_incremental,
+            text=self.tr("chk_source_priority_skip_pdf"),
+            variable=self.var_source_priority_skip_same_name_pdf,
+        )
+        self.chk_source_priority_skip_pdf.pack(anchor="w")
+        self.var_global_md5_dedup = tk.IntVar(value=0)
+        self.chk_global_md5_dedup = tb.Checkbutton(
+            lf_incremental,
+            text=self.tr("chk_global_md5_dedup"),
+            variable=self.var_global_md5_dedup,
+        )
+        self.chk_global_md5_dedup.pack(anchor="w")
+        self.var_enable_update_package = tk.IntVar(value=1)
+        self.chk_enable_update_package = tb.Checkbutton(
+            lf_incremental,
+            text=self.tr("chk_enable_update_package"),
+            variable=self.var_enable_update_package,
+        )
+        self.chk_enable_update_package.pack(anchor="w")
+        self._attach_tooltip(self.chk_incremental_mode, "tip_toggle_incremental_mode")
+        self._attach_tooltip(
+            self.chk_incremental_verify_hash, "tip_toggle_incremental_verify_hash"
+        )
+        self._attach_tooltip(
+            self.chk_incremental_reprocess_renamed,
+            "tip_toggle_incremental_reprocess_renamed",
+        )
+        self._attach_tooltip(
+            self.chk_source_priority_skip_pdf, "tip_toggle_source_priority_skip_pdf"
+        )
+        self._attach_tooltip(
+            self.chk_global_md5_dedup, "tip_toggle_global_md5_dedup"
+        )
+        self._attach_tooltip(
+            self.chk_enable_update_package, "tip_toggle_enable_update_package"
+        )
+
         self.var_enable_date_filter = tk.IntVar(value=0)
-        self.chk_date_filter = tb.Checkbutton(lf_extra, text=self.tr("lbl_filter_date"), variable=self.var_enable_date_filter, command=self._on_toggle_date_filter)
+        self.chk_date_filter = tb.Checkbutton(
+            lf_convert_content,
+            text=self.tr("lbl_filter_date"),
+            variable=self.var_enable_date_filter,
+            command=self._on_toggle_date_filter,
+        )
         self.chk_date_filter.pack(anchor="w", pady=(5, 0))
-        self.frm_date = tb.Frame(lf_extra)
+        self.frm_date = tb.Frame(lf_convert_content)
         self.frm_date.pack(fill=X, padx=20)
         today_str = datetime.now().strftime("%Y-%m-%d")
         self.var_date_str = tk.StringVar(value=today_str)
@@ -976,7 +1201,9 @@ class OfficeGUI(tb.Window):
         self._auto_attach_action_tooltips(lf_collect)
         self._auto_attach_action_tooltips(lf_paths)
         self._auto_attach_action_tooltips(lf_settings)
-        self._auto_attach_action_tooltips(lf_extra)
+        self._auto_attach_action_tooltips(lf_convert_content)
+        self._auto_attach_action_tooltips(lf_ai_export)
+        self._auto_attach_action_tooltips(lf_incremental)
         self._auto_attach_action_tooltips(lf_locator)
         self._attach_tooltip(self.entry_temp_sandbox_root, "tip_input_sandbox_root")
         self._attach_tooltip(self.cb_strat, "tip_input_strategy")
@@ -987,28 +1214,100 @@ class OfficeGUI(tb.Window):
         self._bind_var_validation(self.var_enable_date_filter, lambda: self.validate_runtime_inputs(silent=False, scope="run"))
 
     def _build_config_tab_content(self, parent):
+        self.lbl_cfg_defaults_hint = tb.Label(
+            parent,
+            text=self.tr("lbl_cfg_defaults_hint"),
+            bootstyle="secondary",
+        )
+        self.lbl_cfg_defaults_hint.pack(anchor="w", pady=(0, 2))
+        self.lbl_cfg_dirty_state = tb.Label(
+            parent,
+            text=self.tr("lbl_cfg_dirty_clean"),
+            bootstyle="success",
+        )
+        self.lbl_cfg_dirty_state.pack(anchor="w", pady=(0, 2))
+        dirty_row = tb.Frame(parent)
+        dirty_row.pack(fill=X, pady=(0, 4))
+        self.frm_cfg_dirty_summary = tb.Frame(dirty_row)
+        self.frm_cfg_dirty_summary.pack(side=LEFT, fill=X, expand=YES)
+        self.lbl_cfg_dirty_sections = tb.Label(
+            self.frm_cfg_dirty_summary,
+            text=self.tr("lbl_cfg_dirty_none"),
+            bootstyle="secondary",
+        )
+        self.lbl_cfg_dirty_sections.pack(side=LEFT)
+        self.frm_cfg_dirty_links = tb.Frame(self.frm_cfg_dirty_summary)
+        self.frm_cfg_dirty_links.pack(side=LEFT, padx=(8, 0))
+        self.btn_save_cfg_dirty = tb.Button(
+            dirty_row,
+            text=self.tr("btn_save_cfg_dirty"),
+            command=self._save_dirty_config_sections,
+            bootstyle="success-outline",
+            width=18,
+            state="disabled",
+        )
+        self.btn_save_cfg_dirty.pack(side=RIGHT, padx=(0, 6))
+        self._attach_tooltip(self.btn_save_cfg_dirty, "tip_save_config_dirty")
+        self.btn_revert_cfg_dirty = tb.Button(
+            dirty_row,
+            text=self.tr("btn_revert_cfg_dirty"),
+            command=self._revert_dirty_config_sections,
+            bootstyle="warning-outline",
+            width=18,
+            state="disabled",
+        )
+        self.btn_revert_cfg_dirty.pack(side=RIGHT, padx=(0, 6))
+        self._attach_tooltip(self.btn_revert_cfg_dirty, "tip_revert_config_dirty")
+        self.btn_cfg_focus_dirty = tb.Button(
+            dirty_row,
+            text=self.tr("btn_cfg_focus_dirty"),
+            command=self._focus_first_dirty_section,
+            bootstyle="warning-outline",
+            width=14,
+            state="disabled",
+        )
+        self.btn_cfg_focus_dirty.pack(side=RIGHT)
+        self._attach_tooltip(self.btn_cfg_focus_dirty, "tip_cfg_focus_dirty")
+        self._set_config_dirty(False)
+
         self.cfg_tabs = tb.Notebook(parent)
         self.cfg_tabs.pack(fill=X, pady=5)
         self.tab_cfg_shared = tb.Frame(self.cfg_tabs)
         self.tab_cfg_convert = tb.Frame(self.cfg_tabs)
+        self.tab_cfg_ai = tb.Frame(self.cfg_tabs)
+        self.tab_cfg_incremental = tb.Frame(self.cfg_tabs)
         self.tab_cfg_merge = tb.Frame(self.cfg_tabs)
         self.tab_cfg_ui = tb.Frame(self.cfg_tabs)
         self.tab_cfg_rules = tb.Frame(self.cfg_tabs)
         self.cfg_tabs.add(self.tab_cfg_shared, text=self.tr("grp_cfg_shared"))
         self.cfg_tabs.add(self.tab_cfg_convert, text=self.tr("grp_cfg_convert"))
+        self.cfg_tabs.add(self.tab_cfg_ai, text=self.tr("grp_cfg_ai"))
+        self.cfg_tabs.add(
+            self.tab_cfg_incremental, text=self.tr("grp_cfg_incremental")
+        )
         self.cfg_tabs.add(self.tab_cfg_merge, text=self.tr("grp_cfg_merge"))
         self.cfg_tabs.add(self.tab_cfg_ui, text=self.tr("grp_cfg_ui"))
         self.cfg_tabs.add(self.tab_cfg_rules, text=self.tr("grp_cfg_rules"))
+        self._cfg_tab_meta = [
+            ("shared", self.tab_cfg_shared, "grp_cfg_shared"),
+            ("convert", self.tab_cfg_convert, "grp_cfg_convert"),
+            ("ai", self.tab_cfg_ai, "grp_cfg_ai"),
+            ("incremental", self.tab_cfg_incremental, "grp_cfg_incremental"),
+            ("merge", self.tab_cfg_merge, "grp_cfg_merge"),
+            ("ui", self.tab_cfg_ui, "grp_cfg_ui"),
+            ("rules", self.tab_cfg_rules, "grp_cfg_rules"),
+        ]
+        self._update_config_tab_dirty_markers({})
 
-        # Config path and log path
+        # Shared defaults: paths
         lf_cfg_path = tb.Labelframe(self.tab_cfg_shared, text=self.tr("sec_paths"), padding=10)
         lf_cfg_path.pack(fill=X, pady=5)
         self._add_section_help(lf_cfg_path, "tip_section_cfg_paths")
         self.var_config_path = tk.StringVar(value=self.config_path)
         self._create_path_row(lf_cfg_path, "lbl_config", self.var_config_path, self.open_config_folder, None)
 
-        # Process & limits (persistent defaults)
-        lf_proc_shared = tb.Labelframe(self.tab_cfg_shared, text=self.tr("grp_cfg_shared"), padding=10)
+        # Shared defaults: process strategy
+        lf_proc_shared = tb.Labelframe(self.tab_cfg_shared, text=self.tr("grp_cfg_shared_process"), padding=10)
         lf_proc_shared.pack(fill=X, pady=5)
         self._add_section_help(lf_proc_shared, "tip_section_cfg_process")
         tb.Label(lf_proc_shared, text=self.tr("lbl_kill_mode"), font=("System", 9)).pack(anchor="w")
@@ -1018,8 +1317,11 @@ class OfficeGUI(tb.Window):
         tb.Radiobutton(frm_kill, text=self.tr("rad_auto_kill"), variable=self.var_kill_mode, value=KILL_MODE_AUTO).pack(side=LEFT)
         tb.Radiobutton(frm_kill, text=self.tr("rad_keep_running"), variable=self.var_kill_mode, value=KILL_MODE_KEEP).pack(side=LEFT, padx=10)
 
-        tb.Label(lf_proc_shared, text=self.tr("lbl_log_folder"), font=("System", 9)).pack(anchor="w", pady=(5, 0))
-        frm_log = tb.Frame(lf_proc_shared)
+        # Shared defaults: log output
+        lf_cfg_log = tb.Labelframe(self.tab_cfg_shared, text=self.tr("grp_cfg_shared_log"), padding=10)
+        lf_cfg_log.pack(fill=X, pady=5)
+        tb.Label(lf_cfg_log, text=self.tr("lbl_log_folder"), font=("System", 9)).pack(anchor="w", pady=(0, 0))
+        frm_log = tb.Frame(lf_cfg_log)
         frm_log.pack(fill=X)
         self.var_log_folder = tk.StringVar(value="./logs")
         self.ent_log_folder = tb.Entry(frm_log, textvariable=self.var_log_folder)
@@ -1028,6 +1330,11 @@ class OfficeGUI(tb.Window):
         self.btn_log_folder = tb.Button(frm_log, text=self.tr("btn_browse"), command=self.browse_log_folder, bootstyle="outline", width=3)
         self.btn_log_folder.pack(side=LEFT, padx=2)
         self._attach_tooltip(self.btn_log_folder, "tip_choose_log")
+        (
+            frm_cfg_shared_actions,
+            self.btn_save_cfg_shared,
+            self.btn_reset_cfg_shared,
+        ) = self._add_cfg_section_reset_action(self.tab_cfg_shared, "shared")
 
         lf_proc_convert = tb.Labelframe(self.tab_cfg_convert, text=self.tr("grp_cfg_convert"), padding=10)
         lf_proc_convert.pack(fill=X, pady=5)
@@ -1054,17 +1361,183 @@ class OfficeGUI(tb.Window):
         self.ent_ppt_pdf_wait_seconds = tb.Entry(frm_time, textvariable=self.var_ppt_pdf_wait_seconds, width=5)
         self.ent_ppt_pdf_wait_seconds.grid(row=1, column=3, sticky="w", padx=5)
         self._attach_tooltip(self.ent_ppt_pdf_wait_seconds, "tip_input_ppt_pdf_wait_seconds")
+        (
+            frm_cfg_convert_actions,
+            self.btn_save_cfg_convert,
+            self.btn_reset_cfg_convert,
+        ) = self._add_cfg_section_reset_action(self.tab_cfg_convert, "convert")
 
-        lf_proc_merge = tb.Labelframe(self.tab_cfg_merge, text=self.tr("grp_cfg_merge"), padding=10)
-        lf_proc_merge.pack(fill=X, pady=5)
-        self._add_section_help(lf_proc_merge, "tip_section_cfg_process")
+        lf_proc_merge_behavior = tb.Labelframe(
+            self.tab_cfg_merge, text=self.tr("grp_cfg_merge_behavior"), padding=10
+        )
+        lf_proc_merge_behavior.pack(fill=X, pady=5)
+        self._add_section_help(lf_proc_merge_behavior, "tip_section_cfg_process")
+        tb.Checkbutton(
+            lf_proc_merge_behavior,
+            text=self.tr("chk_enable_merge"),
+            variable=self.var_enable_merge,
+        ).pack(anchor="w")
+        tb.Radiobutton(
+            lf_proc_merge_behavior,
+            text=self.tr("rad_category"),
+            variable=self.var_merge_mode,
+            value=MERGE_MODE_CATEGORY,
+        ).pack(anchor="w")
+        tb.Radiobutton(
+            lf_proc_merge_behavior,
+            text=self.tr("rad_all_in_one"),
+            variable=self.var_merge_mode,
+            value=MERGE_MODE_ALL_IN_ONE,
+        ).pack(anchor="w")
+        tb.Label(
+            lf_proc_merge_behavior,
+            text=self.tr("lbl_merge_src"),
+            font=("System", 9),
+        ).pack(anchor="w", pady=(4, 0))
+        frm_merge_src_cfg = tb.Frame(lf_proc_merge_behavior)
+        frm_merge_src_cfg.pack(fill=X)
+        tb.Radiobutton(
+            frm_merge_src_cfg,
+            text=self.tr("rad_src_dir"),
+            variable=self.var_merge_source,
+            value="source",
+        ).pack(side=LEFT)
+        tb.Radiobutton(
+            frm_merge_src_cfg,
+            text=self.tr("rad_tgt_dir"),
+            variable=self.var_merge_source,
+            value="target",
+        ).pack(side=LEFT, padx=10)
+
+        lf_proc_merge_output = tb.Labelframe(
+            self.tab_cfg_merge, text=self.tr("grp_cfg_merge_output"), padding=10
+        )
+        lf_proc_merge_output.pack(fill=X, pady=5)
+        tb.Checkbutton(
+            lf_proc_merge_output,
+            text=self.tr("chk_merge_index"),
+            variable=self.var_enable_merge_index,
+        ).pack(anchor="w")
+        tb.Checkbutton(
+            lf_proc_merge_output,
+            text=self.tr("chk_merge_excel"),
+            variable=self.var_enable_merge_excel,
+        ).pack(anchor="w")
         self.var_max_merge_size_mb = tk.StringVar(value="80")
-        frm_merge_cfg = tb.Frame(lf_proc_merge)
+        frm_merge_cfg = tb.Frame(lf_proc_merge_output)
         frm_merge_cfg.pack(fill=X, pady=(4, 0))
         tb.Label(frm_merge_cfg, text=self.tr("lbl_max_mb")).pack(side=LEFT)
-        self.ent_max_merge_size_mb = tb.Entry(frm_merge_cfg, textvariable=self.var_max_merge_size_mb, width=5)
+        self.ent_max_merge_size_mb = tb.Entry(
+            frm_merge_cfg, textvariable=self.var_max_merge_size_mb, width=5
+        )
         self.ent_max_merge_size_mb.pack(side=LEFT, padx=(5, 0))
         self._attach_tooltip(self.ent_max_merge_size_mb, "tip_input_max_merge_size_mb")
+        (
+            frm_cfg_merge_actions,
+            self.btn_save_cfg_merge,
+            self.btn_reset_cfg_merge,
+        ) = self._add_cfg_section_reset_action(self.tab_cfg_merge, "merge")
+
+        lf_cfg_ai_text = tb.Labelframe(
+            self.tab_cfg_ai, text=self.tr("grp_cfg_ai_text"), padding=10
+        )
+        lf_cfg_ai_text.pack(fill=X, pady=5)
+        self._add_section_help(lf_cfg_ai_text, "tip_section_run_advanced")
+        tb.Checkbutton(
+            lf_cfg_ai_text,
+            text=self.tr("chk_corpus_manifest"),
+            variable=self.var_enable_corpus_manifest,
+        ).pack(anchor="w")
+        tb.Checkbutton(
+            lf_cfg_ai_text,
+            text=self.tr("chk_export_markdown"),
+            variable=self.var_enable_markdown,
+        ).pack(anchor="w")
+        tb.Checkbutton(
+            lf_cfg_ai_text,
+            text=self.tr("chk_markdown_strip_header_footer"),
+            variable=self.var_markdown_strip_header_footer,
+        ).pack(anchor="w")
+        tb.Checkbutton(
+            lf_cfg_ai_text,
+            text=self.tr("chk_markdown_structured_headings"),
+            variable=self.var_markdown_structured_headings,
+        ).pack(anchor="w")
+        tb.Checkbutton(
+            lf_cfg_ai_text,
+            text=self.tr("chk_markdown_quality_report"),
+            variable=self.var_enable_markdown_quality_report,
+        ).pack(anchor="w")
+
+        lf_cfg_ai_structured = tb.Labelframe(
+            self.tab_cfg_ai, text=self.tr("grp_cfg_ai_structured"), padding=10
+        )
+        lf_cfg_ai_structured.pack(fill=X, pady=5)
+        tb.Checkbutton(
+            lf_cfg_ai_structured,
+            text=self.tr("chk_export_records_json"),
+            variable=self.var_enable_excel_json,
+        ).pack(anchor="w")
+        tb.Checkbutton(
+            lf_cfg_ai_structured,
+            text=self.tr("chk_chromadb_export"),
+            variable=self.var_enable_chromadb_export,
+        ).pack(anchor="w")
+        (
+            frm_cfg_ai_actions,
+            self.btn_save_cfg_ai,
+            self.btn_reset_cfg_ai,
+        ) = self._add_cfg_section_reset_action(self.tab_cfg_ai, "ai")
+
+        lf_cfg_incremental_scan = tb.Labelframe(
+            self.tab_cfg_incremental,
+            text=self.tr("grp_cfg_incremental_scan"),
+            padding=10,
+        )
+        lf_cfg_incremental_scan.pack(fill=X, pady=5)
+        self._add_section_help(lf_cfg_incremental_scan, "tip_section_run_advanced")
+        tb.Checkbutton(
+            lf_cfg_incremental_scan,
+            text=self.tr("chk_incremental_mode"),
+            variable=self.var_enable_incremental_mode,
+        ).pack(anchor="w")
+        tb.Checkbutton(
+            lf_cfg_incremental_scan,
+            text=self.tr("chk_incremental_verify_hash"),
+            variable=self.var_incremental_verify_hash,
+        ).pack(anchor="w")
+        tb.Checkbutton(
+            lf_cfg_incremental_scan,
+            text=self.tr("chk_incremental_reprocess_renamed"),
+            variable=self.var_incremental_reprocess_renamed,
+        ).pack(anchor="w")
+
+        lf_cfg_incremental_package = tb.Labelframe(
+            self.tab_cfg_incremental,
+            text=self.tr("grp_cfg_incremental_package"),
+            padding=10,
+        )
+        lf_cfg_incremental_package.pack(fill=X, pady=5)
+        tb.Checkbutton(
+            lf_cfg_incremental_package,
+            text=self.tr("chk_source_priority_skip_pdf"),
+            variable=self.var_source_priority_skip_same_name_pdf,
+        ).pack(anchor="w")
+        tb.Checkbutton(
+            lf_cfg_incremental_package,
+            text=self.tr("chk_global_md5_dedup"),
+            variable=self.var_global_md5_dedup,
+        ).pack(anchor="w")
+        tb.Checkbutton(
+            lf_cfg_incremental_package,
+            text=self.tr("chk_enable_update_package"),
+            variable=self.var_enable_update_package,
+        ).pack(anchor="w")
+        (
+            frm_cfg_incremental_actions,
+            self.btn_save_cfg_incremental,
+            self.btn_reset_cfg_incremental,
+        ) = self._add_cfg_section_reset_action(self.tab_cfg_incremental, "incremental")
 
         lf_proc_ui = tb.Labelframe(self.tab_cfg_ui, text=self.tr("grp_cfg_ui"), padding=10)
         lf_proc_ui.pack(fill=X, pady=5)
@@ -1075,6 +1548,16 @@ class OfficeGUI(tb.Window):
         self.var_tooltip_auto_theme = tk.IntVar(value=1)
         self.chk_tooltip_auto_theme = tb.Checkbutton(frm_tip, text=self.tr("chk_tooltip_auto_theme"), variable=self.var_tooltip_auto_theme)
         self.chk_tooltip_auto_theme.grid(row=0, column=0, sticky="w", padx=(0, 8))
+        self.var_confirm_revert_dirty = tk.IntVar(value=1)
+        self.chk_confirm_revert_dirty = tb.Checkbutton(
+            frm_tip,
+            text=self.tr("chk_confirm_revert_dirty"),
+            variable=self.var_confirm_revert_dirty,
+        )
+        self.chk_confirm_revert_dirty.grid(row=0, column=5, sticky="w", padx=(8, 0))
+        self._attach_tooltip(
+            self.chk_confirm_revert_dirty, "tip_toggle_confirm_revert_dirty"
+        )
         self.var_tooltip_delay_ms = tk.StringVar(value="300")
         tb.Label(frm_tip, text=self.tr("lbl_tooltip_delay")).grid(row=0, column=1, sticky="e")
         self.ent_tooltip_delay = tb.Entry(frm_tip, textvariable=self.var_tooltip_delay_ms, width=6)
@@ -1087,14 +1570,14 @@ class OfficeGUI(tb.Window):
         tb.Label(frm_tip, text=self.tr("lbl_tooltip_bg")).grid(row=1, column=1, sticky="e")
         self.ent_tooltip_bg = tb.Entry(frm_tip, textvariable=self.var_tooltip_bg, width=10)
         self.ent_tooltip_bg.grid(row=1, column=2, sticky="w", padx=4)
-        self.btn_pick_tooltip_bg = tb.Button(frm_tip, text="🎨", width=3, command=lambda: self.pick_tooltip_color("bg"))
+        self.btn_pick_tooltip_bg = tb.Button(frm_tip, text="...", width=3, command=lambda: self.pick_tooltip_color("bg"))
         self.btn_pick_tooltip_bg.grid(row=1, column=2, sticky="e", padx=(0, 0))
         self._attach_tooltip(self.btn_pick_tooltip_bg, "tip_pick_color")
         self.var_tooltip_fg = tk.StringVar(value="#202124")
         tb.Label(frm_tip, text=self.tr("lbl_tooltip_fg")).grid(row=1, column=3, sticky="e")
         self.ent_tooltip_fg = tb.Entry(frm_tip, textvariable=self.var_tooltip_fg, width=10)
         self.ent_tooltip_fg.grid(row=1, column=4, sticky="w", padx=4)
-        self.btn_pick_tooltip_fg = tb.Button(frm_tip, text="🎨", width=3, command=lambda: self.pick_tooltip_color("fg"))
+        self.btn_pick_tooltip_fg = tb.Button(frm_tip, text="...", width=3, command=lambda: self.pick_tooltip_color("fg"))
         self.btn_pick_tooltip_fg.grid(row=1, column=4, sticky="e", padx=(0, 0))
         self._attach_tooltip(self.btn_pick_tooltip_fg, "tip_pick_color")
         self.lbl_tooltip_bg_preview = tb.Label(frm_tip, text=self.tr("lbl_tooltip_preview_bg"), width=12, anchor="center")
@@ -1111,17 +1594,39 @@ class OfficeGUI(tb.Window):
         self._attach_tooltip(self.btn_reset_tooltip, "tip_reset_tooltip")
         for v in (self.var_tooltip_delay_ms, self.var_tooltip_font_size, self.var_tooltip_bg, self.var_tooltip_fg, self.var_tooltip_auto_theme):
             v.trace_add("write", lambda *_: self.validate_tooltip_inputs(silent=True))
+        (
+            frm_cfg_ui_actions,
+            self.btn_save_cfg_ui,
+            self.btn_reset_cfg_ui,
+        ) = self._add_cfg_section_reset_action(self.tab_cfg_ui, "ui")
 
-        # Exclude/keyword defaults
-        lf_lists = tb.Labelframe(self.tab_cfg_rules, text=self.tr("grp_cfg_rules"), padding=10)
-        lf_lists.pack(fill=X, pady=5)
-        self._add_section_help(lf_lists, "tip_section_cfg_lists")
-        tb.Label(lf_lists, text=self.tr("lbl_excluded")).pack(anchor="w")
-        self.txt_excluded_folders = ScrolledText(lf_lists, height=4, font=("Consolas", 8), bootstyle="default")
+        # Rules defaults: excluded folders
+        lf_rules_excluded = tb.Labelframe(
+            self.tab_cfg_rules, text=self.tr("grp_cfg_rules_excluded"), padding=10
+        )
+        lf_rules_excluded.pack(fill=X, pady=5)
+        self._add_section_help(lf_rules_excluded, "tip_section_cfg_lists")
+        tb.Label(lf_rules_excluded, text=self.tr("lbl_excluded")).pack(anchor="w")
+        self.txt_excluded_folders = ScrolledText(
+            lf_rules_excluded, height=4, font=("Consolas", 8), bootstyle="default"
+        )
         self.txt_excluded_folders.pack(fill=X, pady=(0, 5))
-        tb.Label(lf_lists, text=self.tr("lbl_keywords")).pack(anchor="w")
-        self.txt_price_keywords = ScrolledText(lf_lists, height=3, font=("Consolas", 8), bootstyle="default")
+
+        # Rules defaults: keyword strategy
+        lf_rules_keywords = tb.Labelframe(
+            self.tab_cfg_rules, text=self.tr("grp_cfg_rules_keywords"), padding=10
+        )
+        lf_rules_keywords.pack(fill=X, pady=5)
+        tb.Label(lf_rules_keywords, text=self.tr("lbl_keywords")).pack(anchor="w")
+        self.txt_price_keywords = ScrolledText(
+            lf_rules_keywords, height=3, font=("Consolas", 8), bootstyle="default"
+        )
         self.txt_price_keywords.pack(fill=X)
+        (
+            frm_cfg_rules_actions,
+            self.btn_save_cfg_rules,
+            self.btn_reset_cfg_rules,
+        ) = self._add_cfg_section_reset_action(self.tab_cfg_rules, "rules")
 
         # Emphasized save in config tab
         cfg_actions = tb.Frame(parent)
@@ -1146,10 +1651,24 @@ class OfficeGUI(tb.Window):
         self._attach_tooltip(self.btn_save_cfg_tab, "tip_save_config_all")
         self._auto_attach_action_tooltips(lf_cfg_path)
         self._auto_attach_action_tooltips(lf_proc_shared)
+        self._auto_attach_action_tooltips(lf_cfg_log)
         self._auto_attach_action_tooltips(lf_proc_convert)
-        self._auto_attach_action_tooltips(lf_proc_merge)
+        self._auto_attach_action_tooltips(lf_cfg_ai_text)
+        self._auto_attach_action_tooltips(lf_cfg_ai_structured)
+        self._auto_attach_action_tooltips(lf_cfg_incremental_scan)
+        self._auto_attach_action_tooltips(lf_cfg_incremental_package)
+        self._auto_attach_action_tooltips(lf_proc_merge_behavior)
+        self._auto_attach_action_tooltips(lf_proc_merge_output)
         self._auto_attach_action_tooltips(lf_proc_ui)
-        self._auto_attach_action_tooltips(lf_lists)
+        self._auto_attach_action_tooltips(lf_rules_excluded)
+        self._auto_attach_action_tooltips(lf_rules_keywords)
+        self._auto_attach_action_tooltips(frm_cfg_shared_actions)
+        self._auto_attach_action_tooltips(frm_cfg_convert_actions)
+        self._auto_attach_action_tooltips(frm_cfg_ai_actions)
+        self._auto_attach_action_tooltips(frm_cfg_incremental_actions)
+        self._auto_attach_action_tooltips(frm_cfg_merge_actions)
+        self._auto_attach_action_tooltips(frm_cfg_ui_actions)
+        self._auto_attach_action_tooltips(frm_cfg_rules_actions)
         self._auto_attach_action_tooltips(cfg_actions)
         self._attach_tooltip(self.txt_excluded_folders, "tip_input_excluded_folders")
         self._attach_tooltip(self.txt_price_keywords, "tip_input_price_keywords")
@@ -1158,9 +1677,45 @@ class OfficeGUI(tb.Window):
         self._bind_var_validation(self.var_ppt_timeout_seconds, lambda: self._normalize_then_validate(self.var_ppt_timeout_seconds, self._normalize_numeric_var, "config"))
         self._bind_var_validation(self.var_ppt_pdf_wait_seconds, lambda: self._normalize_then_validate(self.var_ppt_pdf_wait_seconds, self._normalize_numeric_var, "config"))
         self._bind_var_validation(self.var_max_merge_size_mb, lambda: self._normalize_then_validate(self.var_max_merge_size_mb, self._normalize_numeric_var, "config"))
+        self._bind_config_dirty_text(self.txt_excluded_folders)
+        self._bind_config_dirty_text(self.txt_price_keywords)
+        for _dirty_var in (
+            self.var_kill_mode,
+            self.var_log_folder,
+            self.var_timeout_seconds,
+            self.var_pdf_wait_seconds,
+            self.var_ppt_timeout_seconds,
+            self.var_ppt_pdf_wait_seconds,
+            self.var_enable_merge,
+            self.var_merge_mode,
+            self.var_merge_source,
+            self.var_enable_merge_index,
+            self.var_enable_merge_excel,
+            self.var_max_merge_size_mb,
+            self.var_enable_corpus_manifest,
+            self.var_enable_markdown,
+            self.var_markdown_strip_header_footer,
+            self.var_markdown_structured_headings,
+            self.var_enable_markdown_quality_report,
+            self.var_enable_excel_json,
+            self.var_enable_chromadb_export,
+            self.var_enable_incremental_mode,
+            self.var_incremental_verify_hash,
+            self.var_incremental_reprocess_renamed,
+            self.var_source_priority_skip_same_name_pdf,
+            self.var_global_md5_dedup,
+            self.var_enable_update_package,
+            self.var_tooltip_auto_theme,
+            self.var_confirm_revert_dirty,
+            self.var_tooltip_delay_ms,
+            self.var_tooltip_font_size,
+            self.var_tooltip_bg,
+            self.var_tooltip_fg,
+        ):
+            self._bind_config_dirty_var(_dirty_var)
 
     def _build_footer(self, parent):
-        """底部按钮 + Status"""
+        """Footer actions + status."""
         parent.columnconfigure(1, weight=1) # Spacer between status and buttons
         
         # Status Label (Left)
@@ -1212,7 +1767,7 @@ class OfficeGUI(tb.Window):
         else:
              self.paned.add(self.log_pane, weight=1)
 
-    # ===================== UI 联动更新 (Adapt for new structure) =====================
+    # ===================== UI state sync (Adapt for new structure) =====================
 
     def _set_widget_tree_state(self, root, state):
         for child in root.winfo_children():
@@ -1252,6 +1807,10 @@ class OfficeGUI(tb.Window):
         self._set_cfg_tab_state(self.tab_cfg_shared, "normal")
         self._set_cfg_tab_state(self.tab_cfg_ui, "normal")
         self._set_cfg_tab_state(self.tab_cfg_convert, "normal" if is_convert else "disabled")
+        self._set_cfg_tab_state(self.tab_cfg_ai, "normal" if is_convert else "disabled")
+        self._set_cfg_tab_state(
+            self.tab_cfg_incremental, "normal" if is_convert else "disabled"
+        )
         self._set_cfg_tab_state(self.tab_cfg_merge, "normal" if is_merge_related else "disabled")
         self._set_cfg_tab_state(self.tab_cfg_rules, "normal" if is_rules_related else "disabled")
 
@@ -1278,7 +1837,7 @@ class OfficeGUI(tb.Window):
             elif mode == MODE_MERGE_ONLY:
                 self.cfg_tabs.select(self.tab_cfg_merge)
             else:
-                self.cfg_tabs.select(self.tab_cfg_convert)
+                self.cfg_tabs.select(self.tab_cfg_ai)
         except Exception:
             pass
 
@@ -1299,6 +1858,31 @@ class OfficeGUI(tb.Window):
             self.chk_date_filter.configure(state=state_exec)
         except Exception:
             pass
+        try:
+            self.chk_export_markdown.configure(state=state_exec)
+        except Exception:
+            pass
+        try:
+            self.chk_markdown_strip_header_footer.configure(state=state_exec)
+        except Exception:
+            pass
+        try:
+            self.chk_markdown_structured_headings.configure(state=state_exec)
+        except Exception:
+            pass
+        try:
+            self.chk_markdown_quality_report.configure(state=state_exec)
+        except Exception:
+            pass
+        try:
+            self.chk_export_records_json.configure(state=state_exec)
+        except Exception:
+            pass
+        try:
+            self.chk_chromadb_export.configure(state=state_exec)
+        except Exception:
+            pass
+        self._on_toggle_incremental_mode()
 
         # Trigger sandbox toggle to refresh sub-widgets
         self._on_toggle_sandbox()
@@ -1347,6 +1931,34 @@ class OfficeGUI(tb.Window):
         state = "normal" if enabled else "disabled"
         self.entry_temp_sandbox_root.configure(state=state)
         self.btn_temp_sandbox_root.configure(state=state)
+
+    def _on_toggle_incremental_mode(self):
+        mode = self.var_run_mode.get()
+        is_convert = mode in (MODE_CONVERT_ONLY, MODE_CONVERT_THEN_MERGE)
+        master_state = "normal" if is_convert else "disabled"
+        verify_state = (
+            "normal"
+            if is_convert and bool(self.var_enable_incremental_mode.get())
+            else "disabled"
+        )
+        for widget in (
+            self.chk_incremental_mode,
+            self.chk_source_priority_skip_pdf,
+            self.chk_global_md5_dedup,
+            self.chk_enable_update_package,
+        ):
+            try:
+                widget.configure(state=master_state)
+            except Exception:
+                pass
+        try:
+            self.chk_incremental_verify_hash.configure(state=verify_state)
+        except Exception:
+            pass
+        try:
+            self.chk_incremental_reprocess_renamed.configure(state=verify_state)
+        except Exception:
+            pass
 
 
 
@@ -1571,7 +2183,7 @@ class OfficeGUI(tb.Window):
         self.last_locate_record = None
         self._set_locator_action_state(False)
         if result.alternatives:
-            alt = "；".join(
+            alt = ", ".join(
                 [f"{x.source_filename}({x.start_page_1based}-{x.end_page_1based})" for x in result.alternatives[:2]]
             )
             self.var_locator_result.set(priority_note + self.tr("msg_locator_miss_alt").format(alt))
@@ -1675,6 +2287,530 @@ class OfficeGUI(tb.Window):
             var.trace_add("write", lambda *_: callback())
         except Exception:
             pass
+
+    def _set_config_dirty(self, dirty=True):
+        self.cfg_dirty = bool(dirty)
+        if hasattr(self, "lbl_cfg_dirty_state"):
+            if self.cfg_dirty:
+                self.lbl_cfg_dirty_state.configure(
+                    text=self.tr("lbl_cfg_dirty_unsaved"),
+                    bootstyle="warning",
+                )
+            else:
+                self.lbl_cfg_dirty_state.configure(
+                    text=self.tr("lbl_cfg_dirty_clean"),
+                    bootstyle="success",
+                )
+        if not self.cfg_dirty:
+            self._update_config_dirty_summary({})
+
+    def _update_config_tab_dirty_markers(self, section_dirty=None):
+        if not hasattr(self, "cfg_tabs"):
+            return
+        if not self._cfg_tab_meta:
+            return
+        section_dirty = section_dirty or {}
+        for section_name, tab_widget, label_key in self._cfg_tab_meta:
+            try:
+                title = self.tr(label_key)
+                if section_dirty.get(section_name, False):
+                    title = f"{title} *"
+                self.cfg_tabs.tab(tab_widget, text=title)
+            except Exception:
+                pass
+
+    def _compute_section_dirty(self, ui_snapshot, base_snapshot):
+        section_fields = {
+            "shared": ["kill_process_mode", "log_folder"],
+            "convert": [
+                "timeout_seconds",
+                "pdf_wait_seconds",
+                "ppt_timeout_seconds",
+                "ppt_pdf_wait_seconds",
+            ],
+            "ai": [
+                "enable_corpus_manifest",
+                "enable_markdown",
+                "markdown_strip_header_footer",
+                "markdown_structured_headings",
+                "enable_markdown_quality_report",
+                "enable_excel_json",
+                "enable_chromadb_export",
+            ],
+            "incremental": [
+                "enable_incremental_mode",
+                "incremental_verify_hash",
+                "incremental_reprocess_renamed",
+                "source_priority_skip_same_name_pdf",
+                "global_md5_dedup",
+                "enable_update_package",
+            ],
+            "merge": [
+                "enable_merge",
+                "merge_mode",
+                "merge_source",
+                "enable_merge_index",
+                "enable_merge_excel",
+                "max_merge_size_mb",
+            ],
+            "rules": ["excluded_folders", "price_keywords"],
+        }
+        section_dirty = {}
+        for section_name, keys in section_fields.items():
+            section_dirty[section_name] = any(
+                ui_snapshot.get(k) != base_snapshot.get(k) for k in keys
+            )
+        section_dirty["ui"] = ui_snapshot.get("ui", {}) != base_snapshot.get("ui", {})
+        return section_dirty
+
+    def _update_config_dirty_summary(self, section_dirty):
+        if not hasattr(self, "lbl_cfg_dirty_sections"):
+            return
+        section_dirty = section_dirty or {}
+        self._last_section_dirty = dict(section_dirty)
+        if hasattr(self, "frm_cfg_dirty_links"):
+            for child in self.frm_cfg_dirty_links.winfo_children():
+                try:
+                    child.destroy()
+                except Exception:
+                    pass
+        dirty_names = []
+        dirty_sections = []
+        for section_name, _, label_key in self._cfg_tab_meta:
+            if section_dirty.get(section_name, False):
+                dirty_names.append(self.tr(label_key))
+                dirty_sections.append((section_name, self.tr(label_key)))
+        if dirty_names:
+            self.lbl_cfg_dirty_sections.configure(
+                text=self.tr("lbl_cfg_dirty_sections").format(", ".join(dirty_names)),
+                bootstyle="warning",
+            )
+            if hasattr(self, "frm_cfg_dirty_links"):
+                for section_name, section_title in dirty_sections:
+                    btn = tb.Button(
+                        self.frm_cfg_dirty_links,
+                        text=section_title,
+                        command=lambda s=section_name: self._focus_dirty_section(s),
+                        bootstyle="link",
+                        state=("disabled" if self._ui_running else "normal"),
+                    )
+                    btn.pack(side=LEFT, padx=(0, 6))
+        else:
+            self.lbl_cfg_dirty_sections.configure(
+                text=self.tr("lbl_cfg_dirty_none"),
+                bootstyle="secondary",
+            )
+        can_act = bool(dirty_names) and (not self._ui_running)
+        if hasattr(self, "btn_cfg_focus_dirty"):
+            self.btn_cfg_focus_dirty.configure(
+                state=("normal" if can_act else "disabled")
+            )
+        if hasattr(self, "btn_save_cfg_dirty"):
+            count = len(dirty_names)
+            if count > 0:
+                self.btn_save_cfg_dirty.configure(
+                    text=self.tr("btn_save_cfg_dirty_count").format(count)
+                )
+            else:
+                self.btn_save_cfg_dirty.configure(text=self.tr("btn_save_cfg_dirty"))
+            self.btn_save_cfg_dirty.configure(
+                state=("normal" if can_act else "disabled")
+            )
+        if hasattr(self, "btn_revert_cfg_dirty"):
+            count = len(dirty_names)
+            if count > 0:
+                self.btn_revert_cfg_dirty.configure(
+                    text=self.tr("btn_revert_cfg_dirty_count").format(count)
+                )
+            else:
+                self.btn_revert_cfg_dirty.configure(
+                    text=self.tr("btn_revert_cfg_dirty")
+                )
+            self.btn_revert_cfg_dirty.configure(
+                state=("normal" if can_act else "disabled")
+            )
+
+    def _focus_dirty_section(self, section_name):
+        if not hasattr(self, "cfg_tabs"):
+            return
+        if not self._cfg_tab_meta:
+            return
+        for section, tab_widget, _ in self._cfg_tab_meta:
+            if section == section_name:
+                try:
+                    self.cfg_tabs.select(tab_widget)
+                except Exception:
+                    pass
+                return
+
+    def _get_cfg_section_titles(self, section_names):
+        titles = []
+        section_set = set(section_names or [])
+        for section_name, _, label_key in self._cfg_tab_meta:
+            if section_name in section_set:
+                titles.append(self.tr(label_key))
+        return titles
+
+    def _apply_snapshot_sections_to_ui(self, snapshot, section_names):
+        snapshot = snapshot or {}
+        sections = set(section_names or [])
+        if "shared" in sections:
+            self.var_kill_mode.set(snapshot.get("kill_process_mode", KILL_MODE_AUTO))
+            self.var_log_folder.set(snapshot.get("log_folder", "./logs"))
+        if "convert" in sections:
+            self.var_timeout_seconds.set(str(snapshot.get("timeout_seconds", 60)))
+            self.var_pdf_wait_seconds.set(str(snapshot.get("pdf_wait_seconds", 15)))
+            self.var_ppt_timeout_seconds.set(
+                str(snapshot.get("ppt_timeout_seconds", 180))
+            )
+            self.var_ppt_pdf_wait_seconds.set(
+                str(snapshot.get("ppt_pdf_wait_seconds", 30))
+            )
+        if "ai" in sections:
+            self.var_enable_corpus_manifest.set(
+                1 if snapshot.get("enable_corpus_manifest", True) else 0
+            )
+            self.var_enable_markdown.set(1 if snapshot.get("enable_markdown", True) else 0)
+            self.var_markdown_strip_header_footer.set(
+                1 if snapshot.get("markdown_strip_header_footer", True) else 0
+            )
+            self.var_markdown_structured_headings.set(
+                1 if snapshot.get("markdown_structured_headings", True) else 0
+            )
+            self.var_enable_markdown_quality_report.set(
+                1 if snapshot.get("enable_markdown_quality_report", True) else 0
+            )
+            self.var_enable_excel_json.set(
+                1 if snapshot.get("enable_excel_json", False) else 0
+            )
+            self.var_enable_chromadb_export.set(
+                1 if snapshot.get("enable_chromadb_export", False) else 0
+            )
+        if "incremental" in sections:
+            self.var_enable_incremental_mode.set(
+                1 if snapshot.get("enable_incremental_mode", False) else 0
+            )
+            self.var_incremental_verify_hash.set(
+                1 if snapshot.get("incremental_verify_hash", False) else 0
+            )
+            self.var_incremental_reprocess_renamed.set(
+                1 if snapshot.get("incremental_reprocess_renamed", False) else 0
+            )
+            self.var_source_priority_skip_same_name_pdf.set(
+                1 if snapshot.get("source_priority_skip_same_name_pdf", False) else 0
+            )
+            self.var_global_md5_dedup.set(
+                1 if snapshot.get("global_md5_dedup", False) else 0
+            )
+            self.var_enable_update_package.set(
+                1 if snapshot.get("enable_update_package", True) else 0
+            )
+        if "merge" in sections:
+            self.var_enable_merge.set(1 if snapshot.get("enable_merge", True) else 0)
+            self.var_merge_mode.set(snapshot.get("merge_mode", MERGE_MODE_CATEGORY))
+            self.var_merge_source.set(snapshot.get("merge_source", "source"))
+            self.var_enable_merge_index.set(
+                1 if snapshot.get("enable_merge_index", False) else 0
+            )
+            self.var_enable_merge_excel.set(
+                1 if snapshot.get("enable_merge_excel", False) else 0
+            )
+            self.var_max_merge_size_mb.set(str(snapshot.get("max_merge_size_mb", 80)))
+        if "rules" in sections:
+            self._set_text_widget_lines(
+                self.txt_excluded_folders, snapshot.get("excluded_folders", [])
+            )
+            self._set_text_widget_lines(
+                self.txt_price_keywords, snapshot.get("price_keywords", [])
+            )
+        if "ui" in sections:
+            ui_snapshot = snapshot.get("ui", {}) if isinstance(snapshot.get("ui"), dict) else {}
+            self.var_tooltip_delay_ms.set(
+                str(ui_snapshot.get("tooltip_delay_ms", self.TOOLTIP_DEFAULTS["tooltip_delay_ms"]))
+            )
+            self.var_tooltip_font_size.set(
+                str(ui_snapshot.get("tooltip_font_size", self.TOOLTIP_DEFAULTS["tooltip_font_size"]))
+            )
+            self.var_tooltip_bg.set(
+                ui_snapshot.get("tooltip_bg", self.TOOLTIP_DEFAULTS["tooltip_bg"])
+            )
+            self.var_tooltip_fg.set(
+                ui_snapshot.get("tooltip_fg", self.TOOLTIP_DEFAULTS["tooltip_fg"])
+            )
+            self.var_tooltip_auto_theme.set(
+                1
+                if ui_snapshot.get(
+                    "tooltip_auto_theme", self.TOOLTIP_DEFAULTS["tooltip_auto_theme"]
+                )
+                else 0
+            )
+            self.var_confirm_revert_dirty.set(
+                1 if ui_snapshot.get("confirm_revert_dirty", True) else 0
+            )
+            self.apply_tooltip_settings(silent=True)
+            self.validate_tooltip_inputs(silent=True)
+
+    def _revert_dirty_config_sections(self, show_msg=True):
+        self._refresh_config_dirty_from_file()
+        dirty_sections = []
+        for section_name, _, _ in self._cfg_tab_meta:
+            if self._last_section_dirty.get(section_name, False):
+                dirty_sections.append(section_name)
+        if not dirty_sections:
+            msg = self.tr("msg_revert_dirty_none")
+            if show_msg:
+                messagebox.showinfo(self.tr("btn_revert_cfg_dirty"), msg)
+            if hasattr(self, "var_status"):
+                self.var_status.set(msg)
+            if hasattr(self, "var_locator_result"):
+                self.var_locator_result.set(msg)
+            return
+        section_titles = self._get_cfg_section_titles(dirty_sections)
+        section_text = ", ".join(section_titles)
+        need_confirm = (
+            hasattr(self, "var_confirm_revert_dirty")
+            and bool(self.var_confirm_revert_dirty.get())
+        )
+        if show_msg and need_confirm:
+            confirm = messagebox.askyesno(
+                self.tr("btn_revert_cfg_dirty"),
+                self.tr("msg_confirm_revert_dirty").format(section_text),
+            )
+            if not confirm:
+                return
+        self._suspend_cfg_dirty = True
+        try:
+            self._apply_snapshot_sections_to_ui(
+                self._baseline_config_snapshot, dirty_sections
+            )
+            self._on_toggle_incremental_mode()
+            self.validate_runtime_inputs(silent=True, scope="config")
+        finally:
+            self._suspend_cfg_dirty = False
+        self._refresh_config_dirty_state()
+        msg = self.tr("msg_revert_dirty_sections").format(section_text)
+        if show_msg:
+            messagebox.showinfo(self.tr("btn_revert_cfg_dirty"), msg)
+        if hasattr(self, "var_status"):
+            self.var_status.set(msg)
+        if hasattr(self, "var_locator_result"):
+            self.var_locator_result.set(msg)
+
+    def _focus_first_dirty_section(self):
+        if not hasattr(self, "cfg_tabs"):
+            return
+        if not self._cfg_tab_meta:
+            return
+        for section_name, tab_widget, _ in self._cfg_tab_meta:
+            if self._last_section_dirty.get(section_name, False):
+                self._focus_dirty_section(section_name)
+                return
+
+    def _refresh_config_dirty_state(self):
+        if self._suspend_cfg_dirty:
+            return
+        if not isinstance(self._baseline_config_snapshot, dict):
+            self._baseline_config_snapshot = {}
+        ui_snapshot = self._build_config_snapshot_from_ui()
+        section_dirty = self._compute_section_dirty(
+            ui_snapshot, self._baseline_config_snapshot
+        )
+        self._set_config_dirty(any(section_dirty.values()))
+        self._update_config_tab_dirty_markers(section_dirty)
+        self._update_config_dirty_summary(section_dirty)
+
+    def _mark_config_dirty(self):
+        if self._suspend_cfg_dirty:
+            return
+        self._refresh_config_dirty_state()
+
+    def _bind_config_dirty_var(self, var):
+        if var is None:
+            return
+        try:
+            var.trace_add("write", lambda *_: self._mark_config_dirty())
+        except Exception:
+            pass
+
+    def _bind_config_dirty_text(self, widget):
+        if widget is None:
+            return
+        for event_name in ("<KeyRelease>", "<<Paste>>", "<<Cut>>"):
+            try:
+                widget.bind(event_name, lambda *_: self._mark_config_dirty(), add="+")
+            except Exception:
+                pass
+
+    @staticmethod
+    def _safe_positive_int(raw, default):
+        try:
+            value = int(str(raw).strip())
+            return value if value > 0 else default
+        except Exception:
+            return default
+
+    @staticmethod
+    def _normalize_lines(lines):
+        return [str(x).strip() for x in (lines or []) if str(x).strip()]
+
+    def _read_text_lines(self, widget):
+        if widget is None:
+            return []
+        try:
+            raw = widget.get("1.0", "end").strip()
+        except Exception:
+            return []
+        return self._normalize_lines(raw.splitlines())
+
+    def _build_config_snapshot_from_ui(self):
+        return {
+            "kill_process_mode": self.var_kill_mode.get(),
+            "log_folder": self.var_log_folder.get().strip() or "./logs",
+            "timeout_seconds": self._safe_positive_int(
+                self.var_timeout_seconds.get(), 60
+            ),
+            "pdf_wait_seconds": self._safe_positive_int(
+                self.var_pdf_wait_seconds.get(), 15
+            ),
+            "ppt_timeout_seconds": self._safe_positive_int(
+                self.var_ppt_timeout_seconds.get(), 180
+            ),
+            "ppt_pdf_wait_seconds": self._safe_positive_int(
+                self.var_ppt_pdf_wait_seconds.get(), 30
+            ),
+            "enable_merge": bool(self.var_enable_merge.get()),
+            "merge_mode": self.var_merge_mode.get(),
+            "merge_source": self.var_merge_source.get(),
+            "enable_merge_index": bool(self.var_enable_merge_index.get()),
+            "enable_merge_excel": bool(self.var_enable_merge_excel.get()),
+            "max_merge_size_mb": self._safe_positive_int(
+                self.var_max_merge_size_mb.get(), 80
+            ),
+            "enable_corpus_manifest": bool(self.var_enable_corpus_manifest.get()),
+            "enable_markdown": bool(self.var_enable_markdown.get()),
+            "markdown_strip_header_footer": bool(
+                self.var_markdown_strip_header_footer.get()
+            ),
+            "markdown_structured_headings": bool(
+                self.var_markdown_structured_headings.get()
+            ),
+            "enable_markdown_quality_report": bool(
+                self.var_enable_markdown_quality_report.get()
+            ),
+            "enable_excel_json": bool(self.var_enable_excel_json.get()),
+            "enable_chromadb_export": bool(self.var_enable_chromadb_export.get()),
+            "enable_incremental_mode": bool(self.var_enable_incremental_mode.get()),
+            "incremental_verify_hash": bool(self.var_incremental_verify_hash.get()),
+            "incremental_reprocess_renamed": bool(
+                self.var_incremental_reprocess_renamed.get()
+            ),
+            "source_priority_skip_same_name_pdf": bool(
+                self.var_source_priority_skip_same_name_pdf.get()
+            ),
+            "global_md5_dedup": bool(self.var_global_md5_dedup.get()),
+            "enable_update_package": bool(self.var_enable_update_package.get()),
+            "excluded_folders": self._read_text_lines(self.txt_excluded_folders),
+            "price_keywords": self._read_text_lines(self.txt_price_keywords),
+            "ui": {
+                "tooltip_delay_ms": self._safe_positive_int(
+                    self.var_tooltip_delay_ms.get(),
+                    self.TOOLTIP_DEFAULTS["tooltip_delay_ms"],
+                ),
+                "tooltip_bg": str(self.var_tooltip_bg.get()).strip().upper()
+                or self.TOOLTIP_DEFAULTS["tooltip_bg"],
+                "tooltip_fg": str(self.var_tooltip_fg.get()).strip().upper()
+                or self.TOOLTIP_DEFAULTS["tooltip_fg"],
+                "tooltip_font_size": self._safe_positive_int(
+                    self.var_tooltip_font_size.get(),
+                    self.TOOLTIP_DEFAULTS["tooltip_font_size"],
+                ),
+                "tooltip_auto_theme": bool(self.var_tooltip_auto_theme.get()),
+                "confirm_revert_dirty": bool(self.var_confirm_revert_dirty.get()),
+            },
+        }
+
+    def _build_config_snapshot_from_cfg(self, cfg):
+        ui_cfg = cfg.get("ui", {}) if isinstance(cfg.get("ui"), dict) else {}
+        return {
+            "kill_process_mode": cfg.get("kill_process_mode", KILL_MODE_AUTO),
+            "log_folder": str(cfg.get("log_folder", "./logs")).strip() or "./logs",
+            "timeout_seconds": self._safe_positive_int(cfg.get("timeout_seconds", 60), 60),
+            "pdf_wait_seconds": self._safe_positive_int(
+                cfg.get("pdf_wait_seconds", 15), 15
+            ),
+            "ppt_timeout_seconds": self._safe_positive_int(
+                cfg.get("ppt_timeout_seconds", 180), 180
+            ),
+            "ppt_pdf_wait_seconds": self._safe_positive_int(
+                cfg.get("ppt_pdf_wait_seconds", 30), 30
+            ),
+            "enable_merge": bool(cfg.get("enable_merge", True)),
+            "merge_mode": cfg.get("merge_mode", MERGE_MODE_CATEGORY),
+            "merge_source": cfg.get("merge_source", "source"),
+            "enable_merge_index": bool(cfg.get("enable_merge_index", False)),
+            "enable_merge_excel": bool(cfg.get("enable_merge_excel", False)),
+            "max_merge_size_mb": self._safe_positive_int(
+                cfg.get("max_merge_size_mb", 80), 80
+            ),
+            "enable_corpus_manifest": bool(cfg.get("enable_corpus_manifest", True)),
+            "enable_markdown": bool(cfg.get("enable_markdown", True)),
+            "markdown_strip_header_footer": bool(
+                cfg.get("markdown_strip_header_footer", True)
+            ),
+            "markdown_structured_headings": bool(
+                cfg.get("markdown_structured_headings", True)
+            ),
+            "enable_markdown_quality_report": bool(
+                cfg.get("enable_markdown_quality_report", True)
+            ),
+            "enable_excel_json": bool(cfg.get("enable_excel_json", False)),
+            "enable_chromadb_export": bool(cfg.get("enable_chromadb_export", False)),
+            "enable_incremental_mode": bool(cfg.get("enable_incremental_mode", False)),
+            "incremental_verify_hash": bool(cfg.get("incremental_verify_hash", False)),
+            "incremental_reprocess_renamed": bool(
+                cfg.get("incremental_reprocess_renamed", False)
+            ),
+            "source_priority_skip_same_name_pdf": bool(
+                cfg.get("source_priority_skip_same_name_pdf", False)
+            ),
+            "global_md5_dedup": bool(cfg.get("global_md5_dedup", False)),
+            "enable_update_package": bool(cfg.get("enable_update_package", True)),
+            "excluded_folders": self._normalize_lines(cfg.get("excluded_folders", [])),
+            "price_keywords": self._normalize_lines(cfg.get("price_keywords", [])),
+            "ui": {
+                "tooltip_delay_ms": self._safe_positive_int(
+                    ui_cfg.get("tooltip_delay_ms", self.TOOLTIP_DEFAULTS["tooltip_delay_ms"]),
+                    self.TOOLTIP_DEFAULTS["tooltip_delay_ms"],
+                ),
+                "tooltip_bg": str(
+                    ui_cfg.get("tooltip_bg", self.TOOLTIP_DEFAULTS["tooltip_bg"])
+                ).strip().upper(),
+                "tooltip_fg": str(
+                    ui_cfg.get("tooltip_fg", self.TOOLTIP_DEFAULTS["tooltip_fg"])
+                ).strip().upper(),
+                "tooltip_font_size": self._safe_positive_int(
+                    ui_cfg.get("tooltip_font_size", self.TOOLTIP_DEFAULTS["tooltip_font_size"]),
+                    self.TOOLTIP_DEFAULTS["tooltip_font_size"],
+                ),
+                "tooltip_auto_theme": bool(
+                    ui_cfg.get("tooltip_auto_theme", self.TOOLTIP_DEFAULTS["tooltip_auto_theme"])
+                ),
+                "confirm_revert_dirty": bool(ui_cfg.get("confirm_revert_dirty", True)),
+            },
+        }
+
+    def _refresh_config_dirty_from_file(self):
+        if self._suspend_cfg_dirty:
+            return
+        if not os.path.exists(self.config_path):
+            return
+        try:
+            with open(self.config_path, "r", encoding="utf-8") as f:
+                cfg = json.load(f)
+        except Exception:
+            return
+        self._baseline_config_snapshot = self._build_config_snapshot_from_cfg(cfg)
+        self._refresh_config_dirty_state()
 
     def _to_halfwidth(self, text):
         if text is None:
@@ -1867,12 +3003,87 @@ class OfficeGUI(tb.Window):
                 self.var_locator_result.set(self.tr("msg_tooltip_invalid_number").format(invalid_label))
         return invalid_label is None
 
+    def _set_text_widget_lines(self, widget, lines):
+        if widget is None:
+            return
+        widget.delete("1.0", "end")
+        if lines:
+            widget.insert("1.0", "\n".join(lines))
+
+    def _reset_config_section_defaults(self, section_name):
+        section = str(section_name or "").strip().lower()
+        section_title_key = None
+
+        if section == "shared":
+            self.var_kill_mode.set(KILL_MODE_AUTO)
+            self.var_log_folder.set("./logs")
+            section_title_key = "grp_cfg_shared"
+        elif section == "convert":
+            self.var_timeout_seconds.set("60")
+            self.var_pdf_wait_seconds.set("15")
+            self.var_ppt_timeout_seconds.set("180")
+            self.var_ppt_pdf_wait_seconds.set("30")
+            section_title_key = "grp_cfg_convert"
+        elif section == "ai":
+            self.var_enable_corpus_manifest.set(1)
+            self.var_enable_markdown.set(1)
+            self.var_markdown_strip_header_footer.set(1)
+            self.var_markdown_structured_headings.set(1)
+            self.var_enable_markdown_quality_report.set(1)
+            self.var_enable_excel_json.set(0)
+            self.var_enable_chromadb_export.set(0)
+            section_title_key = "grp_cfg_ai"
+        elif section == "incremental":
+            self.var_enable_incremental_mode.set(0)
+            self.var_incremental_verify_hash.set(0)
+            self.var_incremental_reprocess_renamed.set(0)
+            self.var_source_priority_skip_same_name_pdf.set(0)
+            self.var_global_md5_dedup.set(0)
+            self.var_enable_update_package.set(1)
+            section_title_key = "grp_cfg_incremental"
+        elif section == "merge":
+            self.var_enable_merge.set(1)
+            self.var_merge_mode.set(MERGE_MODE_CATEGORY)
+            self.var_merge_source.set("source")
+            self.var_enable_merge_index.set(0)
+            self.var_enable_merge_excel.set(0)
+            self.var_max_merge_size_mb.set("80")
+            section_title_key = "grp_cfg_merge"
+        elif section == "ui":
+            self.reset_tooltip_settings()
+            section_title_key = "grp_cfg_ui"
+        elif section == "rules":
+            self._set_text_widget_lines(
+                self.txt_excluded_folders, ["temp", "backup", "archive"]
+            )
+            self._set_text_widget_lines(
+                self.txt_price_keywords, ["报价", "价格表", "Price", "Quotation"]
+            )
+            section_title_key = "grp_cfg_rules"
+        else:
+            return
+
+        self._on_run_mode_change()
+        self._on_toggle_sandbox()
+        self._on_toggle_incremental_mode()
+        self.validate_runtime_inputs(silent=True, scope="all")
+        self._refresh_config_dirty_state()
+
+        section_title = self.tr(section_title_key) if section_title_key else section
+        reset_message = self.tr("msg_cfg_section_reset").format(section_title)
+        if hasattr(self, "var_status"):
+            self.var_status.set(reset_message)
+        if hasattr(self, "var_locator_result"):
+            self.var_locator_result.set(reset_message)
+
     def reset_tooltip_settings(self):
         self.var_tooltip_delay_ms.set(str(self.TOOLTIP_DEFAULTS["tooltip_delay_ms"]))
         self.var_tooltip_font_size.set(str(self.TOOLTIP_DEFAULTS["tooltip_font_size"]))
         self.var_tooltip_bg.set(self.TOOLTIP_DEFAULTS["tooltip_bg"])
         self.var_tooltip_fg.set(self.TOOLTIP_DEFAULTS["tooltip_fg"])
         self.var_tooltip_auto_theme.set(1 if self.TOOLTIP_DEFAULTS["tooltip_auto_theme"] else 0)
+        if hasattr(self, "var_confirm_revert_dirty"):
+            self.var_confirm_revert_dirty.set(1)
         self.apply_tooltip_settings(silent=True)
         self.var_locator_result.set(self.tr("msg_tooltip_reset"))
 
@@ -1912,16 +3123,19 @@ class OfficeGUI(tb.Window):
         if not silent:
             self.var_locator_result.set(self.tr("msg_tooltip_applied"))
 
-    # ===================== 配置读写 =====================
+    # ===================== Config read/write =====================
 
     def _load_config_to_ui(self):
-        """启动时从 config.json 读取一次作为默认值"""
+        """Load values from config.json into UI controls."""
+        self._suspend_cfg_dirty = True
         if not os.path.exists(self.config_path):
+            self._suspend_cfg_dirty = False
             return
         try:
             with open(self.config_path, "r", encoding="utf-8") as f:
                 cfg = json.load(f)
         except Exception:
+            self._suspend_cfg_dirty = False
             return
 
         ui_cfg = cfg.get("ui", {}) if isinstance(cfg.get("ui", {}), dict) else {}
@@ -1935,6 +3149,10 @@ class OfficeGUI(tb.Window):
         self.tooltip_auto_theme = bool(ui_cfg.get("tooltip_auto_theme", True))
         if hasattr(self, "var_tooltip_auto_theme"):
             self.var_tooltip_auto_theme.set(1 if self.tooltip_auto_theme else 0)
+        if hasattr(self, "var_confirm_revert_dirty"):
+            self.var_confirm_revert_dirty.set(
+                1 if ui_cfg.get("confirm_revert_dirty", True) else 0
+            )
         if hasattr(self, "var_tooltip_delay_ms"):
             self.var_tooltip_delay_ms.set(str(self.tooltip_delay_ms))
         if hasattr(self, "var_tooltip_font_size"):
@@ -1946,7 +3164,7 @@ class OfficeGUI(tb.Window):
         self.apply_tooltip_settings(silent=True)
         self.validate_tooltip_inputs(silent=True)
 
-        # 运行参数
+        # Runtime parameters
         
         is_win = (sys.platform == "win32")
         is_mac = (sys.platform == "darwin")
@@ -1991,6 +3209,43 @@ class OfficeGUI(tb.Window):
         self.var_target_folder.set(_get_os_path("target_folder") or "")
         self.var_enable_sandbox.set(1 if cfg.get("enable_sandbox", True) else 0)
         self.var_temp_sandbox_root.set(_get_os_path("temp_sandbox_root") or "")
+        self.var_enable_corpus_manifest.set(
+            1 if cfg.get("enable_corpus_manifest", True) else 0
+        )
+        self.var_enable_markdown.set(1 if cfg.get("enable_markdown", True) else 0)
+        self.var_markdown_strip_header_footer.set(
+            1 if cfg.get("markdown_strip_header_footer", True) else 0
+        )
+        self.var_markdown_structured_headings.set(
+            1 if cfg.get("markdown_structured_headings", True) else 0
+        )
+        self.var_enable_markdown_quality_report.set(
+            1 if cfg.get("enable_markdown_quality_report", True) else 0
+        )
+        self.var_enable_excel_json.set(
+            1 if cfg.get("enable_excel_json", False) else 0
+        )
+        self.var_enable_chromadb_export.set(
+            1 if cfg.get("enable_chromadb_export", False) else 0
+        )
+        self.var_enable_incremental_mode.set(
+            1 if cfg.get("enable_incremental_mode", False) else 0
+        )
+        self.var_incremental_verify_hash.set(
+            1 if cfg.get("incremental_verify_hash", False) else 0
+        )
+        self.var_incremental_reprocess_renamed.set(
+            1 if cfg.get("incremental_reprocess_renamed", False) else 0
+        )
+        self.var_source_priority_skip_same_name_pdf.set(
+            1 if cfg.get("source_priority_skip_same_name_pdf", False) else 0
+        )
+        self.var_global_md5_dedup.set(
+            1 if cfg.get("global_md5_dedup", False) else 0
+        )
+        self.var_enable_update_package.set(
+            1 if cfg.get("enable_update_package", True) else 0
+        )
 
         self.var_enable_merge.set(1 if cfg.get("enable_merge", True) else 0)
         self.var_merge_mode.set(cfg.get("merge_mode", MERGE_MODE_CATEGORY))
@@ -2036,6 +3291,7 @@ class OfficeGUI(tb.Window):
         # 联动刷新
         self._on_run_mode_change()
         self._on_toggle_sandbox()
+        self._on_toggle_incremental_mode()
         self.refresh_locator_maps()
         self._normalize_numeric_var(self.var_timeout_seconds)
         self._normalize_numeric_var(self.var_pdf_wait_seconds)
@@ -2045,6 +3301,166 @@ class OfficeGUI(tb.Window):
         self._normalize_short_id_var(self.var_locator_short_id)
         self._normalize_date_var(self.var_date_str)
         self.validate_runtime_inputs(silent=True, scope="all")
+        self._suspend_cfg_dirty = False
+        self._refresh_config_dirty_from_file()
+
+    def _load_config_for_write(self):
+        cfg = {}
+        if os.path.exists(self.config_path):
+            try:
+                with open(self.config_path, "r", encoding="utf-8") as f:
+                    cfg = json.load(f)
+            except Exception:
+                cfg = {}
+        return cfg
+
+    def _write_config_sections_to_cfg(self, cfg, section_names):
+        sections = set(section_names or [])
+        if "shared" in sections:
+            cfg["kill_process_mode"] = self.var_kill_mode.get()
+            cfg["log_folder"] = self.var_log_folder.get().strip() or "./logs"
+
+        if "convert" in sections:
+            cfg["timeout_seconds"] = self._safe_positive_int(
+                self.var_timeout_seconds.get(), 60
+            )
+            cfg["pdf_wait_seconds"] = self._safe_positive_int(
+                self.var_pdf_wait_seconds.get(), 15
+            )
+            cfg["ppt_timeout_seconds"] = self._safe_positive_int(
+                self.var_ppt_timeout_seconds.get(), 180
+            )
+            cfg["ppt_pdf_wait_seconds"] = self._safe_positive_int(
+                self.var_ppt_pdf_wait_seconds.get(), 30
+            )
+
+        if "ai" in sections:
+            cfg["enable_corpus_manifest"] = bool(self.var_enable_corpus_manifest.get())
+            cfg["enable_markdown"] = bool(self.var_enable_markdown.get())
+            cfg["markdown_strip_header_footer"] = bool(
+                self.var_markdown_strip_header_footer.get()
+            )
+            cfg["markdown_structured_headings"] = bool(
+                self.var_markdown_structured_headings.get()
+            )
+            cfg["enable_markdown_quality_report"] = bool(
+                self.var_enable_markdown_quality_report.get()
+            )
+            cfg["enable_excel_json"] = bool(self.var_enable_excel_json.get())
+            cfg["enable_chromadb_export"] = bool(self.var_enable_chromadb_export.get())
+
+        if "incremental" in sections:
+            cfg["enable_incremental_mode"] = bool(self.var_enable_incremental_mode.get())
+            cfg["incremental_verify_hash"] = bool(self.var_incremental_verify_hash.get())
+            cfg["incremental_reprocess_renamed"] = bool(
+                self.var_incremental_reprocess_renamed.get()
+            )
+            cfg["source_priority_skip_same_name_pdf"] = bool(
+                self.var_source_priority_skip_same_name_pdf.get()
+            )
+            cfg["global_md5_dedup"] = bool(self.var_global_md5_dedup.get())
+            cfg["enable_update_package"] = bool(self.var_enable_update_package.get())
+
+        if "merge" in sections:
+            cfg["enable_merge"] = bool(self.var_enable_merge.get())
+            cfg["merge_mode"] = self.var_merge_mode.get()
+            cfg["merge_source"] = self.var_merge_source.get()
+            cfg["enable_merge_index"] = bool(self.var_enable_merge_index.get())
+            cfg["enable_merge_excel"] = bool(self.var_enable_merge_excel.get())
+            cfg["max_merge_size_mb"] = self._safe_positive_int(
+                self.var_max_merge_size_mb.get(), 80
+            )
+
+        if "rules" in sections:
+            cfg["excluded_folders"] = self._read_text_lines(self.txt_excluded_folders)
+            cfg["price_keywords"] = self._read_text_lines(self.txt_price_keywords)
+
+        if "ui" in sections:
+            self.apply_tooltip_settings(silent=True)
+            cfg["ui"] = {
+                "tooltip_delay_ms": self.tooltip_delay_ms,
+                "tooltip_bg": self.tooltip_bg,
+                "tooltip_fg": self.tooltip_fg,
+                "tooltip_font_family": self.tooltip_font_family,
+                "tooltip_font_size": self.tooltip_font_size,
+                "tooltip_auto_theme": self.tooltip_auto_theme,
+                "confirm_revert_dirty": bool(self.var_confirm_revert_dirty.get()),
+            }
+        return cfg
+
+    def _save_specific_config_section(self, section_name, show_msg=True):
+        section = str(section_name or "").strip().lower()
+        valid_sections = {
+            "shared",
+            "convert",
+            "ai",
+            "incremental",
+            "merge",
+            "ui",
+            "rules",
+        }
+        if section not in valid_sections:
+            return
+        cfg = self._load_config_for_write()
+        self._write_config_sections_to_cfg(cfg, [section])
+        try:
+            with open(self.config_path, "w", encoding="utf-8") as f:
+                json.dump(cfg, f, indent=4, ensure_ascii=False)
+            self._baseline_config_snapshot = self._build_config_snapshot_from_cfg(cfg)
+            self._refresh_config_dirty_state()
+            section_title = ", ".join(self._get_cfg_section_titles([section]))
+            msg = self.tr("msg_cfg_section_saved").format(section_title)
+            if show_msg:
+                messagebox.showinfo(self.tr("btn_save_cfg_section"), msg)
+            if hasattr(self, "var_status"):
+                self.var_status.set(msg)
+            if hasattr(self, "var_locator_result"):
+                self.var_locator_result.set(msg)
+        except Exception as e:
+            if show_msg:
+                messagebox.showerror(
+                    self.tr("btn_save_cfg_section"),
+                    self.tr("msg_save_fail").format(e),
+                )
+
+    def _save_dirty_config_sections(self, show_msg=True):
+        dirty_sections = []
+        for section_name, _, _ in self._cfg_tab_meta:
+            if self._last_section_dirty.get(section_name, False):
+                dirty_sections.append(section_name)
+        if not dirty_sections:
+            self._refresh_config_dirty_state()
+            msg = self.tr("msg_save_dirty_none")
+            if show_msg:
+                messagebox.showinfo(self.tr("btn_save_cfg_dirty"), msg)
+            if hasattr(self, "var_status"):
+                self.var_status.set(msg)
+            if hasattr(self, "var_locator_result"):
+                self.var_locator_result.set(msg)
+            return
+
+        cfg = self._load_config_for_write()
+        self._write_config_sections_to_cfg(cfg, dirty_sections)
+
+        try:
+            with open(self.config_path, "w", encoding="utf-8") as f:
+                json.dump(cfg, f, indent=4, ensure_ascii=False)
+            self._baseline_config_snapshot = self._build_config_snapshot_from_cfg(cfg)
+            self._refresh_config_dirty_state()
+            saved_sections_text = ", ".join(self._get_cfg_section_titles(dirty_sections))
+            msg = self.tr("msg_save_dirty_sections").format(saved_sections_text)
+            if show_msg:
+                messagebox.showinfo(self.tr("btn_save_cfg_dirty"), msg)
+            if hasattr(self, "var_status"):
+                self.var_status.set(msg)
+            if hasattr(self, "var_locator_result"):
+                self.var_locator_result.set(msg)
+        except Exception as e:
+            if show_msg:
+                messagebox.showerror(
+                    self.tr("btn_save_cfg_dirty"),
+                    self.tr("msg_save_fail").format(e),
+                )
 
     def _save_settings_to_file(self, show_msg=True, scope="all"):
         """保存当前 UI 参数到 config.json（作为默认值）"""
@@ -2077,20 +3493,49 @@ class OfficeGUI(tb.Window):
              cfg["source_folders_win"] = self.source_folders_list
              cfg["source_folder_win"] = self.source_folders_list[0] if self.source_folders_list else ""
              cfg["target_folder_win"] = self.var_target_folder.get().strip()
-             cfg["temp_sandbox_root_win"] = self.var_temp_sandbox_root.get().strip()
+             if write_convert:
+                 cfg["temp_sandbox_root_win"] = self.var_temp_sandbox_root.get().strip()
         elif is_mac:
              cfg["source_folders_mac"] = self.source_folders_list
              cfg["source_folder_mac"] = self.source_folders_list[0] if self.source_folders_list else ""
              cfg["target_folder_mac"] = self.var_target_folder.get().strip()
-             cfg["temp_sandbox_root_mac"] = self.var_temp_sandbox_root.get().strip()
+             if write_convert:
+                 cfg["temp_sandbox_root_mac"] = self.var_temp_sandbox_root.get().strip()
              
         # Also update generic keys as fallback/current
         cfg["source_folders"] = self.source_folders_list
         cfg["source_folder"] = self.source_folders_list[0] if self.source_folders_list else ""
         cfg["target_folder"] = self.var_target_folder.get().strip()
+        cfg["enable_corpus_manifest"] = bool(self.var_enable_corpus_manifest.get())
+        cfg["enable_markdown"] = bool(self.var_enable_markdown.get())
+        cfg["markdown_strip_header_footer"] = bool(
+            self.var_markdown_strip_header_footer.get()
+        )
+        cfg["markdown_structured_headings"] = bool(
+            self.var_markdown_structured_headings.get()
+        )
+        cfg["enable_markdown_quality_report"] = bool(
+            self.var_enable_markdown_quality_report.get()
+        )
+        cfg["enable_excel_json"] = bool(self.var_enable_excel_json.get())
+        cfg["enable_chromadb_export"] = bool(self.var_enable_chromadb_export.get())
         if write_convert:
             cfg["enable_sandbox"] = bool(self.var_enable_sandbox.get())
             cfg["temp_sandbox_root"] = self.var_temp_sandbox_root.get().strip()
+            cfg["enable_incremental_mode"] = bool(
+                self.var_enable_incremental_mode.get()
+            )
+            cfg["incremental_verify_hash"] = bool(
+                self.var_incremental_verify_hash.get()
+            )
+            cfg["incremental_reprocess_renamed"] = bool(
+                self.var_incremental_reprocess_renamed.get()
+            )
+            cfg["source_priority_skip_same_name_pdf"] = bool(
+                self.var_source_priority_skip_same_name_pdf.get()
+            )
+            cfg["global_md5_dedup"] = bool(self.var_global_md5_dedup.get())
+            cfg["enable_update_package"] = bool(self.var_enable_update_package.get())
 
         if write_merge:
             cfg["enable_merge"] = bool(self.var_enable_merge.get())
@@ -2164,11 +3609,14 @@ class OfficeGUI(tb.Window):
             "tooltip_font_family": self.tooltip_font_family,
             "tooltip_font_size": self.tooltip_font_size,
             "tooltip_auto_theme": self.tooltip_auto_theme,
+            "confirm_revert_dirty": bool(self.var_confirm_revert_dirty.get()),
         }
 
         try:
             with open(self.config_path, "w", encoding="utf-8") as f:
                 json.dump(cfg, f, indent=4, ensure_ascii=False)
+            self._baseline_config_snapshot = self._build_config_snapshot_from_cfg(cfg)
+            self._refresh_config_dirty_state()
             if show_msg:
                 title_key = "btn_save_cfg_mode" if scope == "mode" else "btn_save_cfg_all"
                 messagebox.showinfo(self.tr(title_key), self.tr("msg_save_ok"))
@@ -2190,6 +3638,7 @@ class OfficeGUI(tb.Window):
         self.after(200, self._poll_log_queue)
 
     def _set_running_ui_state(self, running: bool):
+        self._ui_running = bool(running)
         if running:
             if hasattr(self, "btn_start"): self.btn_start.configure(state="disabled")
             if hasattr(self, "btn_stop"): self.btn_stop.configure(state="normal")
@@ -2197,6 +3646,33 @@ class OfficeGUI(tb.Window):
             if hasattr(self, "btn_save_cfg_mode"): self.btn_save_cfg_mode.configure(state="disabled")
             if hasattr(self, "btn_save_cfg_tab"): self.btn_save_cfg_tab.configure(state="disabled")
             if hasattr(self, "btn_save_cfg_mode_tab"): self.btn_save_cfg_mode_tab.configure(state="disabled")
+            for btn_name in (
+                "btn_save_cfg_shared",
+                "btn_save_cfg_convert",
+                "btn_save_cfg_ai",
+                "btn_save_cfg_incremental",
+                "btn_save_cfg_merge",
+                "btn_save_cfg_ui",
+                "btn_save_cfg_rules",
+                "btn_reset_cfg_shared",
+                "btn_reset_cfg_convert",
+                "btn_reset_cfg_ai",
+                "btn_reset_cfg_incremental",
+                "btn_reset_cfg_merge",
+                "btn_reset_cfg_ui",
+                "btn_reset_cfg_rules",
+                "btn_save_cfg_dirty",
+                "btn_revert_cfg_dirty",
+                "btn_cfg_focus_dirty",
+            ):
+                if hasattr(self, btn_name):
+                    getattr(self, btn_name).configure(state="disabled")
+            if hasattr(self, "frm_cfg_dirty_links"):
+                for child in self.frm_cfg_dirty_links.winfo_children():
+                    try:
+                        child.configure(state="disabled")
+                    except Exception:
+                        pass
             self.progress["mode"] = "determinate"
             self.progress["value"] = 0
             self.var_status.set(self.tr("status_init") if hasattr(self, "tr") else "Initializing...")
@@ -2207,117 +3683,249 @@ class OfficeGUI(tb.Window):
             if hasattr(self, "btn_save_cfg_mode"): self.btn_save_cfg_mode.configure(state="normal")
             if hasattr(self, "btn_save_cfg_tab"): self.btn_save_cfg_tab.configure(state="normal")
             if hasattr(self, "btn_save_cfg_mode_tab"): self.btn_save_cfg_mode_tab.configure(state="normal")
+            for btn_name in (
+                "btn_save_cfg_shared",
+                "btn_save_cfg_convert",
+                "btn_save_cfg_ai",
+                "btn_save_cfg_incremental",
+                "btn_save_cfg_merge",
+                "btn_save_cfg_ui",
+                "btn_save_cfg_rules",
+                "btn_reset_cfg_shared",
+                "btn_reset_cfg_convert",
+                "btn_reset_cfg_ai",
+                "btn_reset_cfg_incremental",
+                "btn_reset_cfg_merge",
+                "btn_reset_cfg_ui",
+                "btn_reset_cfg_rules",
+            ):
+                if hasattr(self, btn_name):
+                    getattr(self, btn_name).configure(state="normal")
+            self._update_config_dirty_summary(getattr(self, "_last_section_dirty", {}))
             self.progress.stop()
             self.progress["value"] = 100
             self.var_status.set(self.tr("status_ready") if hasattr(self, "tr") else "Ready")
-
     def on_progress_update(self, current, total):
-        """Core 转换器在后台线程调用的回调"""
+        """Thread-safe callback invoked from converter worker thread."""
 
         def _update():
             if total > 0:
                 pct = (current / total) * 100
                 self.progress["value"] = pct
-                self.var_status.set(f"正在处理: {current}/{total} ({pct:.1f}%)")
+                self.var_status.set(
+                    self.tr("status_processing").format(current, total, pct)
+                )
             else:
                 self.progress["mode"] = "indeterminate"
                 self.progress.start(20)
-                self.var_status.set(f"正在处理: {current}/...")
+                self.var_status.set(
+                    self.tr("status_processing_unknown").format(current)
+                )
 
-        # 线程安全调用
+        # Thread-safe marshal to main UI loop.
         self.after(0, _update)
 
-    # ===================== 任务控制 =====================
+    def _build_artifact_summary_text(self, converter, step_index, total_steps):
+        if converter is None:
+            return ""
 
+        converted_count = len(getattr(converter, "generated_pdfs", []) or [])
+        merged_count = len(getattr(converter, "generated_merge_outputs", []) or [])
+        map_count = len(getattr(converter, "generated_map_outputs", []) or [])
+        markdown_count = len(
+            getattr(converter, "generated_markdown_outputs", []) or []
+        )
+        markdown_quality_count = len(
+            getattr(converter, "generated_markdown_quality_outputs", []) or []
+        )
+        excel_json_count = len(
+            getattr(converter, "generated_excel_json_outputs", []) or []
+        )
+        records_json_count = len(
+            getattr(converter, "generated_records_json_outputs", []) or []
+        )
+        chromadb_count = len(
+            getattr(converter, "generated_chromadb_outputs", []) or []
+        )
+
+        lines = [
+            self.tr("log_artifacts_title").format(step_index, total_steps),
+            self.tr("log_artifacts_counts").format(
+                converted_count, merged_count, map_count
+            ),
+            self.tr("log_artifacts_ai_counts").format(
+                markdown_count, excel_json_count, records_json_count
+            ),
+            self.tr("log_artifacts_ai_quality").format(markdown_quality_count),
+            self.tr("log_artifacts_ai_vector").format(chromadb_count),
+        ]
+
+        manifest_path = getattr(converter, "corpus_manifest_path", "")
+        if manifest_path:
+            lines.append(self.tr("log_artifacts_manifest").format(manifest_path))
+
+        convert_index = getattr(converter, "convert_index_path", "")
+        if convert_index:
+            lines.append(self.tr("log_artifacts_convert_index").format(convert_index))
+
+        collect_index = getattr(converter, "collect_index_path", "")
+        if collect_index:
+            lines.append(self.tr("log_artifacts_collect_index").format(collect_index))
+
+        merge_excel = getattr(converter, "merge_excel_path", "")
+        if merge_excel:
+            lines.append(self.tr("log_artifacts_merge_excel").format(merge_excel))
+
+        for md_path in (getattr(converter, "generated_markdown_outputs", []) or [])[:2]:
+            lines.append(self.tr("log_artifacts_markdown").format(md_path))
+        for q_path in (
+            getattr(converter, "generated_markdown_quality_outputs", []) or []
+        )[:2]:
+            lines.append(self.tr("log_artifacts_markdown_quality").format(q_path))
+        for excel_json_path in (
+            getattr(converter, "generated_excel_json_outputs", []) or []
+        )[:2]:
+            lines.append(self.tr("log_artifacts_excel_json").format(excel_json_path))
+        for js_path in (
+            getattr(converter, "generated_records_json_outputs", []) or []
+        )[:2]:
+            lines.append(self.tr("log_artifacts_records_json").format(js_path))
+        for vec_path in (getattr(converter, "generated_chromadb_outputs", []) or [])[:2]:
+            lines.append(self.tr("log_artifacts_chromadb").format(vec_path))
+        update_manifest = getattr(converter, "update_package_manifest_path", "")
+        if update_manifest:
+            lines.append(self.tr("log_artifacts_update_package").format(update_manifest))
+        inc_ctx = getattr(converter, "_incremental_context", None) or {}
+        if inc_ctx.get("enabled"):
+            lines.append(
+                self.tr("log_artifacts_incremental").format(
+                    inc_ctx.get("added_count", 0),
+                    inc_ctx.get("modified_count", 0),
+                    inc_ctx.get("renamed_count", 0),
+                    inc_ctx.get("unchanged_count", 0),
+                    inc_ctx.get("deleted_count", 0),
+                )
+            )
+
+        return "\n".join(lines)
+
+    # ===================== 任务控制 =====================
     def _on_click_start(self):
         if self.worker_thread and self.worker_thread.is_alive():
-            messagebox.showinfo("提示", "已有任务在运行，请先停止或等待完成。")
+            messagebox.showinfo(self.tr("btn_start"), self.tr("msg_task_already_running"))
             return
         if not self.validate_runtime_inputs(silent=False, scope="all"):
             messagebox.showerror(self.tr("btn_start"), self.tr("msg_validation_fix_before_run"))
             return
 
-        # Prepare source folders
         clean_sources = []
         for s in self.source_folders_list:
             s = s.strip().strip('"').strip("'")
             if os.path.isdir(s):
                 clean_sources.append(s)
-        
-        # Compatibility backup
+
         if not clean_sources:
-             fallback = self.var_source_folder.get().strip().strip('"').strip("'")
-             if fallback and os.path.isdir(fallback):
-                 clean_sources.append(fallback)
+            fallback = self.var_source_folder.get().strip().strip('"').strip("'")
+            if fallback and os.path.isdir(fallback):
+                clean_sources.append(fallback)
 
         target = self.var_target_folder.get().strip().strip('"').strip("'")
         self.var_target_folder.set(target)
 
         if not clean_sources:
-            messagebox.showerror("错误", "请先添加有效的【源文件夹】。")
+            messagebox.showerror(self.tr("btn_start"), self.tr("msg_source_folder_required"))
             return
         if not target:
-            messagebox.showerror("错误", "请先设置有效的【目标文件夹】。")
+            messagebox.showerror(self.tr("btn_start"), self.tr("msg_target_folder_required"))
             return
 
         self.stop_requested = False
-        self.txt_log.insert("end", "\n========== GUI 后台任务启动 ==========\n")
+        self.txt_log.insert("end", f"\n========== {self.tr('log_start')} ==========\n")
         self.txt_log.see("end")
 
         def worker():
             try:
                 base_mode = self.var_run_mode.get()
                 steps = []
-                
-                # 1. Build Execution Steps
+
                 if base_mode == MODE_COLLECT_ONLY:
                     for src in clean_sources:
-                        steps.append({"source": src, "mode": MODE_COLLECT_ONLY, "desc": f"归集: {src}"})
-                
+                        steps.append(
+                            {
+                                "source": src,
+                                "mode": MODE_COLLECT_ONLY,
+                                "desc": f"Collect: {src}",
+                            }
+                        )
+
                 elif base_mode == MODE_MERGE_ONLY:
-                     # If merge_source is 'target', run once. If 'source', run for each (though arguably ambiguous).
-                     # Safe default: run for each if source-based, else run once.
-                     m_src = self.var_merge_source.get()
-                     if m_src == "target":
-                         steps.append({"source": clean_sources[0], "mode": MODE_MERGE_ONLY, "desc": "合并 (基于目标目录)"})
-                     else:
-                         for src in clean_sources:
-                             steps.append({"source": src, "mode": MODE_MERGE_ONLY, "desc": f"合并 (基于源: {src})"})
-                
+                    m_src = self.var_merge_source.get()
+                    if m_src == "target":
+                        steps.append(
+                            {
+                                "source": clean_sources[0],
+                                "mode": MODE_MERGE_ONLY,
+                                "desc": "Merge (target-based)",
+                            }
+                        )
+                    else:
+                        for src in clean_sources:
+                            steps.append(
+                                {
+                                    "source": src,
+                                    "mode": MODE_MERGE_ONLY,
+                                    "desc": f"Merge (source-based: {src})",
+                                }
+                            )
+
                 else:
-                    # Convert Only or Convert Then Merge
-                    # Phase 1: Convert All
                     for src in clean_sources:
-                        steps.append({"source": src, "mode": MODE_CONVERT_ONLY, "desc": f"转换: {src}"})
-                    
-                    # Phase 2: Merge (if needed)
+                        steps.append(
+                            {
+                                "source": src,
+                                "mode": MODE_CONVERT_ONLY,
+                                "desc": f"Convert: {src}",
+                            }
+                        )
+
                     if base_mode == MODE_CONVERT_THEN_MERGE and self.var_enable_merge.get():
-                         m_src = self.var_merge_source.get()
-                         if m_src == "target":
-                             steps.append({"source": clean_sources[0], "mode": MODE_MERGE_ONLY, "desc": "合并 (基于目标目录)"})
-                         else:
-                             for src in clean_sources:
-                                 steps.append({"source": src, "mode": MODE_MERGE_ONLY, "desc": f"合并 (基于源: {src})"})
+                        m_src = self.var_merge_source.get()
+                        if m_src == "target":
+                            steps.append(
+                                {
+                                    "source": clean_sources[0],
+                                    "mode": MODE_MERGE_ONLY,
+                                    "desc": "Merge (target-based)",
+                                }
+                            )
+                        else:
+                            for src in clean_sources:
+                                steps.append(
+                                    {
+                                        "source": src,
+                                        "mode": MODE_MERGE_ONLY,
+                                        "desc": f"Merge (source-based: {src})",
+                                    }
+                                )
 
                 total_steps = len(steps)
-                print(f"[GUI] 总步骤数: {total_steps}")
-                
+                print(f"[GUI] total steps: {total_steps}")
+
                 for idx, step in enumerate(steps, 1):
                     if self.stop_requested:
-                        print("[GUI] 停止请求已接收，跳过后续步骤。")
+                        print("[GUI] stop request accepted; remaining steps skipped.")
                         break
 
                     step_desc = step["desc"]
-                    print(f"\n[GUI] >>> 执行步骤 {idx}/{total_steps}: {step_desc}")
-                    self.txt_log.insert("end", f"\n>>> 步骤 {idx}/{total_steps}: {step_desc}\n")
+                    print(f"\n[GUI] >>> step {idx}/{total_steps}: {step_desc}")
+                    self.txt_log.insert("end", f"\n>>> step {idx}/{total_steps}: {step_desc}\n")
                     self.txt_log.see("end")
 
-                    print(f"[GUI] 使用配置文件: {self.config_path}")
+                    print(f"[GUI] using config file: {self.config_path}")
                     converter = GUIOfficeConverter(self.config_path)
                     converter.progress_callback = self.on_progress_update
                     self.current_converter = converter
 
-                    # Override Config
                     cfg = converter.config
                     cfg["source_folder"] = step["source"]
                     cfg["target_folder"] = target
@@ -2328,6 +3936,19 @@ class OfficeGUI(tb.Window):
                     cfg["merge_source"] = self.var_merge_source.get()
                     cfg["enable_merge_index"] = bool(self.var_enable_merge_index.get())
                     cfg["enable_merge_excel"] = bool(self.var_enable_merge_excel.get())
+                    cfg["enable_corpus_manifest"] = bool(self.var_enable_corpus_manifest.get())
+                    cfg["enable_markdown"] = bool(self.var_enable_markdown.get())
+                    cfg["markdown_strip_header_footer"] = bool(self.var_markdown_strip_header_footer.get())
+                    cfg["markdown_structured_headings"] = bool(self.var_markdown_structured_headings.get())
+                    cfg["enable_markdown_quality_report"] = bool(self.var_enable_markdown_quality_report.get())
+                    cfg["enable_excel_json"] = bool(self.var_enable_excel_json.get())
+                    cfg["enable_chromadb_export"] = bool(self.var_enable_chromadb_export.get())
+                    cfg["enable_incremental_mode"] = bool(self.var_enable_incremental_mode.get())
+                    cfg["incremental_verify_hash"] = bool(self.var_incremental_verify_hash.get())
+                    cfg["incremental_reprocess_renamed"] = bool(self.var_incremental_reprocess_renamed.get())
+                    cfg["source_priority_skip_same_name_pdf"] = bool(self.var_source_priority_skip_same_name_pdf.get())
+                    cfg["global_md5_dedup"] = bool(self.var_global_md5_dedup.get())
+                    cfg["enable_update_package"] = bool(self.var_enable_update_package.get())
                     cfg["kill_process_mode"] = self.var_kill_mode.get()
                     cfg["default_engine"] = self.var_engine.get()
 
@@ -2339,16 +3960,14 @@ class OfficeGUI(tb.Window):
                     converter.enable_merge_index = bool(self.var_enable_merge_index.get())
                     converter.enable_merge_excel = bool(self.var_enable_merge_excel.get())
 
-                    # Date Filter
                     if self.var_enable_date_filter.get():
                         date_str = self.var_date_str.get().strip()
                         try:
                             converter.filter_date = datetime.strptime(date_str, "%Y-%m-%d")
                             converter.filter_mode = self.var_filter_mode.get()
                         except ValueError:
-                             pass
+                            pass
 
-                    # Path init logic (Duplicated from original worker but necessary)
                     temp_root = cfg.get("temp_sandbox_root", "").strip()
                     if temp_root:
                         if not os.path.isabs(temp_root):
@@ -2365,15 +3984,22 @@ class OfficeGUI(tb.Window):
                     os.makedirs(converter.merge_output_dir, exist_ok=True)
 
                     converter.run()
-                
-                print("[GUI] 所有任务已完成。")
-                self.txt_log.insert("end", "\n========== 任务结束 ==========\n")
+                    artifact_summary = self._build_artifact_summary_text(converter, idx, total_steps)
+                    if artifact_summary:
+                        self.txt_log.insert("end", f"{artifact_summary}\n")
+                        self.txt_log.see("end")
+
+                print("[GUI] all tasks completed.")
+                self.txt_log.insert("end", f"\n========== {self.tr('log_stop')} ==========\n")
                 self.txt_log.see("end")
 
             except Exception as e:
-                print(f"[GUI] 运行出错: {e}")
+                print(f"[GUI] runtime error: {e}")
                 print(traceback.format_exc())
-                messagebox.showerror("运行错误", f"任务运行出错：\n{e}")
+                messagebox.showerror(
+                    self.tr("msg_runtime_error_title"),
+                    self.tr("msg_runtime_error_body").format(e),
+                )
             finally:
                 self.current_converter = None
                 self.stop_requested = False
@@ -2387,11 +4013,11 @@ class OfficeGUI(tb.Window):
     def _on_click_stop(self):
         if self.current_converter is None:
             return
-        if messagebox.askyesno("停止任务", "确定要请求停止当前任务吗？"):
+        if messagebox.askyesno(self.tr("btn_stop"), self.tr("msg_confirm_stop")):
             self.stop_requested = True
             self.current_converter.is_running = False
-            print("[GUI] 已请求停止任务，正在等待当前步骤结束...")
-            self.var_status.set("已请求停止，等待当前文件处理结束...")
+            print("[GUI] stop requested; waiting for current step to finish...")
+            self.var_status.set(self.tr("status_stop_wait"))
 
     # ===================== 程序入口 =====================
 
