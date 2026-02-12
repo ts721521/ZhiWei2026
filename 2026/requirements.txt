@@ -1,0 +1,10 @@
+# GUI
+ttkbootstrap>=1.10.0
+
+# Office 转换与文档处理（按需安装）
+# pywin32  # Windows 上用 COM 调 Word/Excel/PPT，打包 exe 时必须
+# pypdf    # PDF 合并与解析
+# openpyxl # Excel 索引/导出
+# python-docx  # 若 converter 中有 docx 相关逻辑
+# beautifulsoup4  # HTML/MSHelp 解析
+# chromadb  # 若启用 ChromaDB 导出

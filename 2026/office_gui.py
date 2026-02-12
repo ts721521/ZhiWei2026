@@ -1,15 +1,15 @@
-# -*- coding: utf-8 -*-
+﻿# -*- coding: utf-8 -*-
 """
-office_gui.py - Office 文档批量转换 & 梳理工具 GUI 版
+office_gui.py - Office 鏂囨。鎵归噺杞崲 & 姊崇悊宸ュ叿 GUI 鐗?
 
-说明：
-- 依赖 office_converter.py 中的 OfficeConverter（已更新到 v5.15.6）
-- GUI 中含：
-    * "运行参数"页：选择源/目标目录、运行模式、内容策略、合并模式、沙箱等
-    * "配置管理"页：直接编辑 config.json 的部分配置（日志目录、排除目录、关键字、超时参数等）
-- "保存配置"按钮：写入 config.json
-- "开始运行"按钮：用当前界面参数启动转换/梳理（不会自动改 config.json）
-- "停止"按钮：设置 converter.is_running=False，优雅停止
+璇存槑锛?
+- 渚濊禆 office_converter.py 涓殑 OfficeConverter锛堝凡鏇存柊鍒?v5.15.6锛?
+- GUI 涓惈锛?
+    * "杩愯鍙傛暟"椤碉細閫夋嫨婧?鐩爣鐩綍銆佽繍琛屾ā寮忋€佸唴瀹圭瓥鐣ャ€佸悎骞舵ā寮忋€佹矙绠辩瓑
+    * "閰嶇疆绠＄悊"椤碉細鐩存帴缂栬緫 config.json 鐨勯儴鍒嗛厤缃紙鏃ュ織鐩綍銆佹帓闄ょ洰褰曘€佸叧閿瓧銆佽秴鏃跺弬鏁扮瓑锛?
+- "淇濆瓨閰嶇疆"鎸夐挳锛氬啓鍏?config.json
+- "寮€濮嬭繍琛?鎸夐挳锛氱敤褰撳墠鐣岄潰鍙傛暟鍚姩杞崲/姊崇悊锛堜笉浼氳嚜鍔ㄦ敼 config.json锛?
+- "鍋滄"鎸夐挳锛氳缃?converter.is_running=False锛屼紭闆呭仠姝?
 """
 
 import os
@@ -161,6 +161,8 @@ from office_converter import (
     MODE_CONVERT_THEN_MERGE,
     MODE_COLLECT_ONLY,
     MODE_MSHELP_ONLY,
+    MERGE_CONVERT_SUBMODE_MERGE_ONLY,
+    MERGE_CONVERT_SUBMODE_PDF_TO_MD,
     COLLECT_MODE_COPY_AND_INDEX,
     COLLECT_MODE_INDEX_ONLY,
     MERGE_MODE_CATEGORY,
@@ -325,50 +327,50 @@ class HoverTip:
             self.tipwindow = None
 
 
-# ========= GUI 专用 Converter 子类：屏蔽 CLI 输入 =========
+# ========= GUI 涓撶敤 Converter 瀛愮被锛氬睆钄?CLI 杈撳叆 =========
 
 
 class GUIOfficeConverter(OfficeConverter):
     """GUI-only converter: disable interactive CLI prompts."""
 
     def print_welcome(self):
-        # GUI 环境下不需要在控制台打印欢迎界面（日志里会有头部）
+        # GUI 鐜涓嬩笉闇€瑕佸湪鎺у埗鍙版墦鍗版杩庣晫闈紙鏃ュ織閲屼細鏈夊ご閮級
         pass
 
     def confirm_config_in_terminal(self):
-        # 不在 GUI 环境下再次询问源/目标目录
+        # 涓嶅湪 GUI 鐜涓嬪啀娆¤闂簮/鐩爣鐩綍
         pass
 
     def ask_for_subfolder(self):
-        # GUI 中不做"子目录"询问；如需子目录可直接在目标路径里体现
+        # GUI 涓笉鍋?瀛愮洰褰?璇㈤棶锛涘闇€瀛愮洰褰曞彲鐩存帴鍦ㄧ洰鏍囪矾寰勯噷浣撶幇
         pass
 
     def select_run_mode(self):
-        # 运行模式由 GUI 设置
+        # 杩愯妯″紡鐢?GUI 璁剧疆
         pass
 
     def select_collect_mode(self):
-        # 梳理子模式由 GUI 设置
+        # 姊崇悊瀛愭ā寮忕敱 GUI 璁剧疆
         pass
 
     def select_merge_mode(self):
-        # 合并模式由 GUI 设置（配置或界面 Radio）
+        # 鍚堝苟妯″紡鐢?GUI 璁剧疆锛堥厤缃垨鐣岄潰 Radio锛?
         pass
 
     def select_content_strategy(self):
-        # 内容策略由 GUI 设置
+        # 鍐呭绛栫暐鐢?GUI 璁剧疆
         pass
 
     def select_engine_mode(self):
-        # 引擎类型由 GUI 设置
+        # 寮曟搸绫诲瀷鐢?GUI 璁剧疆
         pass
 
     def print_runtime_summary(self):
-        # 简化：GUI 环境下不打印 CLI 风格总览，日志由 GUI 捕获 print 即可
+        # 绠€鍖栵細GUI 鐜涓嬩笉鎵撳嵃 CLI 椋庢牸鎬昏锛屾棩蹇楃敱 GUI 鎹曡幏 print 鍗冲彲
         pass
 
 
-# ========= 主窗口=========
+# ========= 涓荤獥鍙?========
 
 
 class OfficeGUI(tb.Window):
@@ -387,7 +389,7 @@ class OfficeGUI(tb.Window):
         self.current_lang = "zh"  # Default language
         self.title(f"{self.tr('title')} v{__version__}")
 
-        # 窗口默认尺寸与屏幕自适应
+        # 绐楀彛榛樿灏哄涓庡睆骞曡嚜閫傚簲
         screen_w = self.winfo_screenwidth()
         screen_h = self.winfo_screenheight()
         if screen_h >= 1080:
@@ -413,7 +415,7 @@ class OfficeGUI(tb.Window):
         self.load_profile_tree = None
         self._load_profile_tree_rows = {}
 
-        # 当前任务线程 & 转换器实例
+        # 褰撳墠浠诲姟绾跨▼ & 杞崲鍣ㄥ疄渚?
         self.worker_thread = None
         self.current_converter = None
         self.stop_requested = False
@@ -434,33 +436,33 @@ class OfficeGUI(tb.Window):
         self.tooltip_font_size = self.TOOLTIP_DEFAULTS["tooltip_font_size"]
         self.tooltip_auto_theme = self.TOOLTIP_DEFAULTS["tooltip_auto_theme"]
 
-        # 把 stdout/stderr 重定向到 GUI 日志窗口
+        # 鎶?stdout/stderr 閲嶅畾鍚戝埌 GUI 鏃ュ織绐楀彛
         # sys.stdout = TkLogHandler()
         # sys.stderr = TkLogHandler()
 
         if not os.path.exists(self.config_path):
             success = create_default_config(self.config_path)
             if success:
-                info_title = "Info" if self.current_lang == "en" else "提示"
+                info_title = "Info" if self.current_lang == "en" else "鎻愮ず"
                 messagebox.showinfo(info_title, self.tr("msg_no_config"))
 
         self._build_ui()
         self._load_config_to_ui()
         self.locator_short_id_index = {}
 
-        # 记住窗口关闭前的尺寸与位置
+        # 璁颁綇绐楀彛鍏抽棴鍓嶇殑灏哄涓庝綅缃?
         try:
             self.protocol("WM_DELETE_WINDOW", self._on_close_main_window)
         except Exception:
             pass
 
-        # 定时刷新日志
+        # 瀹氭椂鍒锋柊鏃ュ織
         self.after(200, self._poll_log_queue)
 
 
-    # ===================== UI 鏋勫缓 =====================
+    # ===================== UI 閺嬪嫬缂?=====================
 
-    # ===================== UI 鏋勫缓 (Modern Layout) =====================
+    # ===================== UI 閺嬪嫬缂?(Modern Layout) =====================
 
     def tr(self, key):
         """Translate key to current language"""
@@ -635,7 +637,7 @@ class OfficeGUI(tb.Window):
         self._tooltips = []
         self._tooltip_widget_ids = set()
 
-        # 保存当前 UI 状态以便重建后恢复
+        # 淇濆瓨褰撳墠 UI 鐘舵€佷互渚块噸寤哄悗鎭㈠
         _saved_tab_idx = None
         try:
             _saved_tab_idx = self.main_notebook.index(self.main_notebook.select())
@@ -651,14 +653,14 @@ class OfficeGUI(tb.Window):
         self._build_ui()
         self._load_config_to_ui()
 
-        # 恢复之前的 tab 选中状态
+        # 鎭㈠涔嬪墠鐨?tab 閫変腑鐘舵€?
         if _saved_tab_idx is not None:
             try:
                 self.main_notebook.select(_saved_tab_idx)
             except Exception:
                 pass
 
-    # ===================== UI 鏋勫缓 =====================
+    # ===================== UI 閺嬪嫬缂?=====================
 
     def _build_ui(self):
         self._tooltips = []
@@ -729,7 +731,7 @@ class OfficeGUI(tb.Window):
         self.main_notebook = tb.Notebook(self.config_container)
         self.main_notebook.pack(fill=BOTH, expand=YES)
 
-        # ── 单层 tab 结构：按功能域划分，去掉「运行参数 / 配置管理」二分法 ──
+        # 鈹€鈹€ 鍗曞眰 tab 缁撴瀯锛氭寜鍔熻兘鍩熷垝鍒嗭紝鍘绘帀銆岃繍琛屽弬鏁?/ 閰嶇疆绠＄悊銆嶄簩鍒嗘硶 鈹€鈹€
         self.tab_run_shared = tb.Frame(self.main_notebook)
         self.tab_run_convert = tb.Frame(self.main_notebook)
         self.tab_run_merge = tb.Frame(self.main_notebook)
@@ -738,8 +740,8 @@ class OfficeGUI(tb.Window):
         self.tab_run_output = tb.Frame(self.main_notebook)
         self.tab_settings = tb.Frame(self.main_notebook)
 
-        # 顶层 7 个功能 tab：
-        # 1) 模式与路径  2) 转换选项  3) 合并/梳理  4) MSHelp  5) 定位  6) 成果文件  7) 高级设置
+        # 椤跺眰 7 涓姛鑳?tab锛?
+        # 1) 妯″紡涓庤矾寰? 2) 杞崲閫夐」  3) 鍚堝苟/姊崇悊  4) MSHelp  5) 瀹氫綅  6) 鎴愭灉鏂囦欢  7) 楂樼骇璁剧疆
         self.main_notebook.add(self.tab_run_shared, text=self.tr("grp_shared_runtime"))
         self.main_notebook.add(self.tab_run_convert, text=self.tr("grp_convert_runtime"))
         self.main_notebook.add(
@@ -751,7 +753,7 @@ class OfficeGUI(tb.Window):
         self.main_notebook.add(self.tab_run_output, text=self.tr("grp_output_files"))
         self.main_notebook.add(self.tab_settings, text=self.tr("tab_config_center"))
 
-        # 记录原始 tab 顺序，用于隐藏后恢复
+        # 璁板綍鍘熷 tab 椤哄簭锛岀敤浜庨殣钘忓悗鎭㈠
         self._all_tabs = [
             self.tab_run_shared,
             self.tab_run_convert,
@@ -762,7 +764,7 @@ class OfficeGUI(tb.Window):
             self.tab_settings,
         ]
 
-        # 每个 tab 独立可滚动
+        # 姣忎釜 tab 鐙珛鍙粴鍔?
         self._scroll_shared = self._create_scrollable_page(self.tab_run_shared)
         self._scroll_convert = self._create_scrollable_page(self.tab_run_convert)
         self._scroll_merge = self._create_scrollable_page(self.tab_run_merge)
@@ -771,7 +773,7 @@ class OfficeGUI(tb.Window):
         self._scroll_output = self._create_scrollable_page(self.tab_run_output)
         self._scroll_settings = self._create_scrollable_page(self.tab_settings)
 
-        # 为 _build_config_tab_content 设置别名：配置内容直接追加到对应功能 tab
+        # 涓?_build_config_tab_content 璁剧疆鍒悕锛氶厤缃唴瀹圭洿鎺ヨ拷鍔犲埌瀵瑰簲鍔熻兘 tab
         self.tab_cfg_shared = self._scroll_shared
         self.tab_cfg_convert = self._scroll_convert
         self.tab_cfg_merge = self._scroll_merge
@@ -783,7 +785,7 @@ class OfficeGUI(tb.Window):
         self._build_config_tab_content(self._scroll_settings)
         self.main_notebook.select(0)
 
-        # 日志面板：固定高度的底部面板，默认隐藏，点按钮才显示
+        # 鏃ュ織闈㈡澘锛氬浐瀹氶珮搴︾殑搴曢儴闈㈡澘锛岄粯璁ら殣钘忥紝鐐规寜閽墠鏄剧ず
         self.log_pane = tb.Frame(body_frame)
         self.txt_log = ScrolledText(
             self.log_pane, height=6, font=("Consolas", 9), bootstyle="primary-round"
@@ -795,7 +797,7 @@ class OfficeGUI(tb.Window):
         self.txt_log.text.tag_config("ERROR", foreground="#dc3545")
         self.txt_log.text.tag_config("DIM", foreground="#6c757d")
         self._log_visible = False
-        # 不 pack，启动时日志完全隐藏
+        # 涓?pack锛屽惎鍔ㄦ椂鏃ュ織瀹屽叏闅愯棌
 
         self._on_run_mode_change()
         self._on_toggle_sandbox()
@@ -934,9 +936,63 @@ class OfficeGUI(tb.Window):
         grid_frame.columnconfigure(0, weight=1)
         grid_frame.columnconfigure(1, weight=1)
 
-        # Tab 框架和滚动页面已在 _build_ui 中创建，不再需要子 Notebook
+        # Global output controls (prominent and mode-agnostic)
+        lf_output = tb.Labelframe(parent, text=self.tr("grp_output_controls"), padding=6)
+        lf_output.pack(fill=X, pady=3)
+        self.var_output_enable_pdf = tk.IntVar(value=1)
+        self.var_output_enable_md = tk.IntVar(value=1)
+        self.var_output_enable_merged = tk.IntVar(value=1)
+        self.var_output_enable_independent = tk.IntVar(value=0)
+        tb.Checkbutton(
+            lf_output,
+            text=self.tr("chk_output_pdf"),
+            variable=self.var_output_enable_pdf,
+        ).pack(anchor="w")
+        tb.Checkbutton(
+            lf_output,
+            text=self.tr("chk_output_md"),
+            variable=self.var_output_enable_md,
+        ).pack(anchor="w")
+        tb.Checkbutton(
+            lf_output,
+            text=self.tr("chk_output_merged"),
+            variable=self.var_output_enable_merged,
+        ).pack(anchor="w", pady=(4, 0))
+        tb.Checkbutton(
+            lf_output,
+            text=self.tr("chk_output_independent"),
+            variable=self.var_output_enable_independent,
+        ).pack(anchor="w")
 
-        # 「梳理」选项与合并选项合并到同一页，减少空白
+        # Merge & convert sub-function
+        frm_merge_submode = tb.Frame(lf_output)
+        frm_merge_submode.pack(fill=X, pady=(6, 0))
+        tb.Label(
+            frm_merge_submode,
+            text=self.tr("lbl_merge_convert_submode"),
+            font=("System", 9, "bold"),
+        ).pack(anchor="w")
+        self.var_merge_convert_submode = tk.StringVar(
+            value=MERGE_CONVERT_SUBMODE_MERGE_ONLY
+        )
+        self.rb_merge_submode_merge = tb.Radiobutton(
+            frm_merge_submode,
+            text=self.tr("rad_merge_convert_merge_only"),
+            variable=self.var_merge_convert_submode,
+            value=MERGE_CONVERT_SUBMODE_MERGE_ONLY,
+        )
+        self.rb_merge_submode_merge.pack(anchor="w")
+        self.rb_merge_submode_pdf_to_md = tb.Radiobutton(
+            frm_merge_submode,
+            text=self.tr("rad_merge_convert_pdf_to_md"),
+            variable=self.var_merge_convert_submode,
+            value=MERGE_CONVERT_SUBMODE_PDF_TO_MD,
+        )
+        self.rb_merge_submode_pdf_to_md.pack(anchor="w")
+
+        # Tab 妗嗘灦鍜屾粴鍔ㄩ〉闈㈠凡鍦?_build_ui 涓垱寤猴紝涓嶅啀闇€瑕佸瓙 Notebook
+
+        # 銆屾⒊鐞嗐€嶉€夐」涓庡悎骞堕€夐」鍚堝苟鍒板悓涓€椤碉紝鍑忓皯绌虹櫧
         lf_collect = tb.Labelframe(self._scroll_merge, text=self.tr("grp_collect_runtime"), padding=6)
         lf_collect.pack(fill=X, pady=3)
         tb.Label(lf_collect, text=self.tr("lbl_collect_mode"), font=("System", 9, "bold")).pack(anchor="w")
@@ -1051,12 +1107,12 @@ class OfficeGUI(tb.Window):
         self.chk_corpus_manifest.pack(anchor="w", pady=(6, 0))
         self._attach_tooltip(self.chk_corpus_manifest, "tip_toggle_corpus_manifest")
 
-        # Section 3: feature-specific runtime options（转换选项：左右双列布局）
+        # Section 3: feature-specific runtime options锛堣浆鎹㈤€夐」锛氬乏鍙冲弻鍒楀竷灞€锛?
         lf_settings = tb.Labelframe(self._scroll_convert, text=self.tr("grp_convert_runtime"), padding=6)
         lf_settings.pack(fill=BOTH, pady=3)
         self._add_section_help(lf_settings, "tip_section_run_advanced")
 
-        # 双列容器：左列（引擎/沙盒/筛选），右列（AI 导出 + LLM Hub + 增量）
+        # 鍙屽垪瀹瑰櫒锛氬乏鍒楋紙寮曟搸/娌欑洅/绛涢€夛級锛屽彸鍒楋紙AI 瀵煎嚭 + LLM Hub + 澧為噺锛?
         frm_convert_cols = tb.Frame(lf_settings)
         frm_convert_cols.pack(fill=BOTH, expand=YES)
 
@@ -1154,7 +1210,7 @@ class OfficeGUI(tb.Window):
         tb.Radiobutton(frm_m_src, text=self.tr("rad_src_dir"), variable=self.var_merge_source, value="source").pack(side=LEFT)
         tb.Radiobutton(frm_m_src, text=self.tr("rad_tgt_dir"), variable=self.var_merge_source, value="target").pack(side=LEFT, padx=10)
 
-        # Section 4: conversion strategy + date filter（左列）
+        # Section 4: conversion strategy + date filter锛堝乏鍒楋級
         lf_convert_content = tb.Labelframe(
             col_left, text=self.tr("sec_filters"), padding=6
         )
@@ -1171,7 +1227,7 @@ class OfficeGUI(tb.Window):
         )
         self.cb_strat.pack(fill=X, pady=(0, 5))
 
-        # Section 5: AI export (convert-specific，右列)
+        # Section 5: AI export (convert-specific锛屽彸鍒?
         lf_ai_export = tb.Labelframe(
             col_right, text=self.tr("grp_ai_runtime"), padding=(8, 6)
         )
@@ -1186,7 +1242,7 @@ class OfficeGUI(tb.Window):
             command=self._on_toggle_markdown_master,
         )
         self.chk_export_markdown.pack(anchor="w")
-        # Markdown 子选项缩进显示，受主开关联动灰化
+        # Markdown 瀛愰€夐」缂╄繘鏄剧ず锛屽彈涓诲紑鍏宠仈鍔ㄧ伆鍖?
         self._frm_markdown_sub = tb.Frame(frm_ai_export)
         self._frm_markdown_sub.pack(fill=X, padx=(16, 0))
         self.var_markdown_strip_header_footer = tk.IntVar(value=1)
@@ -1243,8 +1299,15 @@ class OfficeGUI(tb.Window):
         self._attach_tooltip(
             self.chk_chromadb_export, "tip_toggle_chromadb_export"
         )
+        try:
+            self.var_output_enable_md.trace_add(
+                "write", lambda *_: self._sync_markdown_master_with_global_output()
+            )
+        except Exception:
+            pass
+        self._sync_markdown_master_with_global_output()
 
-        # Section: LLM delivery hub → moved to Output Files tab
+        # Section: LLM delivery hub 鈫?moved to Output Files tab
         lf_llm_hub = tb.Labelframe(
             self._scroll_output, text=self.tr("grp_llm_hub_runtime"), padding=(8, 6)
         )
@@ -1257,7 +1320,7 @@ class OfficeGUI(tb.Window):
             command=self._on_toggle_llm_hub_master,
         )
         self.chk_enable_llm_delivery_hub.pack(anchor="w")
-        # LLM hub 子选项缩进，受主开关联动
+        # LLM hub 瀛愰€夐」缂╄繘锛屽彈涓诲紑鍏宠仈鍔?
         self._frm_llm_hub_sub = tb.Frame(lf_llm_hub)
         self._frm_llm_hub_sub.pack(fill=X, padx=(16, 0))
         self.var_llm_delivery_root = tk.StringVar()
@@ -1343,7 +1406,7 @@ class OfficeGUI(tb.Window):
         self.chk_upload_dedup_merged.pack(anchor="w")
         self._attach_tooltip(self.chk_upload_dedup_merged, "tip_toggle_upload_dedup_merged")
 
-        # Section 7: incremental / dedup (convert-specific，右列)
+        # Section 7: incremental / dedup (convert-specific锛屽彸鍒?
         lf_incremental = tb.Labelframe(
             col_right, text=self.tr("grp_incremental_runtime"), padding=(8, 6)
         )
@@ -1356,7 +1419,7 @@ class OfficeGUI(tb.Window):
             command=self._on_toggle_incremental_mode,
         )
         self.chk_incremental_mode.pack(anchor="w")
-        # 增量子选项缩进，受主开关联动
+        # 澧為噺瀛愰€夐」缂╄繘锛屽彈涓诲紑鍏宠仈鍔?
         self._frm_incremental_sub = tb.Frame(lf_incremental)
         self._frm_incremental_sub.pack(fill=X, padx=(16, 0))
         self.var_incremental_verify_hash = tk.IntVar(value=0)
@@ -1439,7 +1502,7 @@ class OfficeGUI(tb.Window):
         self.rb_filter_before = tb.Radiobutton(frm_dt_mode, text=self.tr("rad_before"), variable=self.var_filter_mode, value="before")
         self.rb_filter_before.pack(side=LEFT, padx=10)
 
-        # Section 5: NotebookLM locator (runtime) —— 与 MSHelp 合并到同一 tab
+        # Section 5: NotebookLM locator (runtime) 鈥斺€?涓?MSHelp 鍚堝苟鍒板悓涓€ tab
         lf_locator = tb.Labelframe(self._scroll_locator, text=self.tr("sec_locator"), padding=10)
         lf_locator.pack(fill=X, pady=5)
         self._add_section_help(lf_locator, "tip_section_run_locator")
@@ -1538,8 +1601,8 @@ class OfficeGUI(tb.Window):
         self._attach_tooltip(self.btn_save_cfg_dirty, "tip_save_config_dirty")
         self._set_config_dirty(False)
 
-        # tab_cfg_* 已在 _build_ui 中设为别名（指向对应的功能 tab 滚动页面）
-        # cfg_tabs 子 Notebook 已移除，配置内容直接追加到对应功能 tab
+        # tab_cfg_* 宸插湪 _build_ui 涓涓哄埆鍚嶏紙鎸囧悜瀵瑰簲鐨勫姛鑳?tab 婊氬姩椤甸潰锛?
+        # cfg_tabs 瀛?Notebook 宸茬Щ闄わ紝閰嶇疆鍐呭鐩存帴杩藉姞鍒板搴斿姛鑳?tab
         self._cfg_tab_meta = [
             ("shared", self.tab_run_shared, "grp_shared_runtime"),
             ("convert", self.tab_run_convert, "grp_convert_runtime"),
@@ -1551,9 +1614,9 @@ class OfficeGUI(tb.Window):
         ]
         self._update_config_tab_dirty_markers({})
 
-        # 高级设置 tab 采用左右双列布局：
-        # 左列：共享配置（路径 / 进程 / 日志）+ 转换超时
-        # 右列：合并输出 + MSHelp + UI + 规则
+        # 楂樼骇璁剧疆 tab 閲囩敤宸﹀彸鍙屽垪甯冨眬锛?
+        # 宸﹀垪锛氬叡浜厤缃紙璺緞 / 杩涚▼ / 鏃ュ織锛? 杞崲瓒呮椂
+        # 鍙冲垪锛氬悎骞惰緭鍑?+ MSHelp + UI + 瑙勫垯
         settings_cols = tb.Frame(parent)
         settings_cols.pack(fill=BOTH, expand=YES, pady=(4, 0))
 
@@ -1566,14 +1629,14 @@ class OfficeGUI(tb.Window):
         settings_cols.columnconfigure(0, weight=1)
         settings_cols.columnconfigure(1, weight=1)
 
-        # Shared defaults: paths（左列）
+        # Shared defaults: paths锛堝乏鍒楋級
         lf_cfg_path = tb.Labelframe(settings_left, text=self.tr("sec_paths"), padding=6)
         lf_cfg_path.pack(fill=X, pady=3)
         self._add_section_help(lf_cfg_path, "tip_section_cfg_paths")
         self.var_config_path = tk.StringVar(value=self.config_path)
         self._create_path_row(lf_cfg_path, "lbl_config", self.var_config_path, self.open_config_folder, None)
 
-        # Shared defaults: process strategy（左列）
+        # Shared defaults: process strategy锛堝乏鍒楋級
         lf_proc_shared = tb.Labelframe(settings_left, text=self.tr("grp_cfg_shared_process"), padding=6)
         lf_proc_shared.pack(fill=X, pady=3)
         self._add_section_help(lf_proc_shared, "tip_section_cfg_process")
@@ -1584,7 +1647,7 @@ class OfficeGUI(tb.Window):
         tb.Radiobutton(frm_kill, text=self.tr("rad_auto_kill"), variable=self.var_kill_mode, value=KILL_MODE_AUTO).pack(side=LEFT)
         tb.Radiobutton(frm_kill, text=self.tr("rad_keep_running"), variable=self.var_kill_mode, value=KILL_MODE_KEEP).pack(side=LEFT, padx=10)
 
-        # Shared defaults: log output（左列）
+        # Shared defaults: log output锛堝乏鍒楋級
         lf_cfg_log = tb.Labelframe(settings_left, text=self.tr("grp_cfg_shared_log"), padding=6)
         lf_cfg_log.pack(fill=X, pady=3)
         tb.Label(lf_cfg_log, text=self.tr("lbl_log_folder"), font=("System", 9)).pack(anchor="w", pady=(0, 0))
@@ -1603,7 +1666,7 @@ class OfficeGUI(tb.Window):
             self.btn_reset_cfg_shared,
         ) = self._add_cfg_section_reset_action(settings_left, "shared")
 
-        # Convert defaults（左列）
+        # Convert defaults锛堝乏鍒楋級
         lf_proc_convert = tb.Labelframe(settings_left, text=self.tr("grp_cfg_convert"), padding=6)
         lf_proc_convert.pack(fill=X, pady=3)
         self._add_section_help(lf_proc_convert, "tip_section_cfg_process")
@@ -1688,7 +1751,7 @@ class OfficeGUI(tb.Window):
             self.btn_reset_cfg_convert,
         ) = self._add_cfg_section_reset_action(settings_left, "convert")
 
-        # 合并行为类开关已在运行设置中统一控制，这里仅保留部分输出相关默认值，避免重复控件（右列）
+        # 鍚堝苟琛屼负绫诲紑鍏冲凡鍦ㄨ繍琛岃缃腑缁熶竴鎺у埗锛岃繖閲屼粎淇濈暀閮ㄥ垎杈撳嚭鐩稿叧榛樿鍊硷紝閬垮厤閲嶅鎺т欢锛堝彸鍒楋級
         lf_proc_merge_output = tb.Labelframe(
             settings_right, text=self.tr("grp_cfg_merge_output"), padding=6
         )
@@ -1722,7 +1785,7 @@ class OfficeGUI(tb.Window):
             self.btn_reset_cfg_merge,
         ) = self._add_cfg_section_reset_action(settings_right, "merge")
 
-        # MSHelp 配置设置（右列）
+        # MSHelp 閰嶇疆璁剧疆锛堝彸鍒楋級
         lf_cfg_ai_mshelp = tb.Labelframe(
             settings_right, text=self.tr("grp_mshelp_runtime"), padding=6
         )
@@ -1756,14 +1819,14 @@ class OfficeGUI(tb.Window):
             self.btn_reset_cfg_ai,
         ) = self._add_cfg_section_reset_action(settings_right, "ai")
 
-        # 增量配置在运行参数转换 tab 中已展示，不再单独占用页面
+        # 澧為噺閰嶇疆鍦ㄨ繍琛屽弬鏁拌浆鎹?tab 涓凡灞曠ず锛屼笉鍐嶅崟鐙崰鐢ㄩ〉闈?
 
-        # UI / tooltip 配置（右列）
+        # UI / tooltip 閰嶇疆锛堝彸鍒楋級
         lf_proc_ui = tb.Labelframe(settings_right, text=self.tr("grp_cfg_ui"), padding=6)
         lf_proc_ui.pack(fill=X, pady=3)
         self._add_section_help(lf_proc_ui, "tip_section_cfg_process")
         tb.Label(lf_proc_ui, text=self.tr("lbl_tooltip_cfg"), font=("System", 9, "bold")).pack(anchor="w")
-        # Tooltip 高级设置折叠区域
+        # Tooltip 楂樼骇璁剧疆鎶樺彔鍖哄煙
         self.var_show_tooltip_advanced = tk.IntVar(value=0)
         frm_tip_toggle = tb.Frame(lf_proc_ui)
         frm_tip_toggle.pack(fill=X, pady=(4, 0))
@@ -1791,7 +1854,7 @@ class OfficeGUI(tb.Window):
         )
         self.var_tooltip_delay_ms = tk.StringVar(value="300")
         tb.Label(frm_tip, text=self.tr("lbl_tooltip_delay")).grid(row=0, column=1, sticky="e")
-        # tooltip 数值输入也采用 Spinbox
+        # tooltip 鏁板€艰緭鍏ヤ篃閲囩敤 Spinbox
         self.ent_tooltip_delay = spinbox_cls(
             frm_tip,
             textvariable=self.var_tooltip_delay_ms,
@@ -1844,7 +1907,7 @@ class OfficeGUI(tb.Window):
             self.btn_reset_cfg_ui,
         ) = self._add_cfg_section_reset_action(settings_right, "ui")
 
-        # Rules defaults: excluded folders（右列）
+        # Rules defaults: excluded folders锛堝彸鍒楋級
         lf_rules_excluded = tb.Labelframe(
             settings_right, text=self.tr("grp_cfg_rules_excluded"), padding=6
         )
@@ -1856,7 +1919,7 @@ class OfficeGUI(tb.Window):
         )
         self.txt_excluded_folders.pack(fill=X, pady=(0, 5))
 
-        # Rules defaults: keyword strategy（右列）
+        # Rules defaults: keyword strategy锛堝彸鍒楋級
         lf_rules_keywords = tb.Labelframe(
             settings_right, text=self.tr("grp_cfg_rules_keywords"), padding=6
         )
@@ -1872,7 +1935,7 @@ class OfficeGUI(tb.Window):
             self.btn_reset_cfg_rules,
         ) = self._add_cfg_section_reset_action(settings_right, "rules")
 
-        # Emphasized save in config tab（底部横向按钮区，跨两列）
+        # Emphasized save in config tab锛堝簳閮ㄦí鍚戞寜閽尯锛岃法涓ゅ垪锛?
         cfg_actions = tb.Frame(parent)
         cfg_actions.pack(fill=X, pady=(8, 12))
         self.btn_save_cfg_tab = tb.Button(
@@ -1938,6 +2001,11 @@ class OfficeGUI(tb.Window):
             self.var_office_reuse_app,
             self.var_office_restart_every_n_files,
             self.var_enable_merge,
+            self.var_output_enable_pdf,
+            self.var_output_enable_md,
+            self.var_output_enable_merged,
+            self.var_output_enable_independent,
+            self.var_merge_convert_submode,
             self.var_merge_mode,
             self.var_merge_source,
             self.var_enable_merge_index,
@@ -1970,7 +2038,7 @@ class OfficeGUI(tb.Window):
             self._bind_config_dirty_var(_dirty_var)
 
     def _build_footer(self, parent):
-        """Footer actions + status.  精简版：只保留核心操作按钮，配置管理按钮已移到配置 tab 内。"""
+        """Build footer actions and status widgets."""
         parent.columnconfigure(1, weight=1)  # Spacer between status and buttons
 
         # Status Label (Left)
@@ -1981,7 +2049,7 @@ class OfficeGUI(tb.Window):
             row=0, column=0, padx=10, sticky="w"
         )
 
-        # 中部按钮组：保存 / 加载 / 日志切换（全局可见）
+        # 涓儴鎸夐挳缁勶細淇濆瓨 / 鍔犺浇 / 鏃ュ織鍒囨崲锛堝叏灞€鍙锛?
         mid_btn_frame = tb.Frame(parent)
         mid_btn_frame.grid(row=0, column=2, padx=5)
 
@@ -2012,7 +2080,7 @@ class OfficeGUI(tb.Window):
         self.btn_toggle_logs.pack(side=LEFT)
         self._attach_tooltip(self.btn_toggle_logs, "tip_toggle_logs")
 
-        # Start — 视觉最突出，加宽
+        # Start 鈥?瑙嗚鏈€绐佸嚭锛屽姞瀹?
         self.btn_start = tb.Button(
             parent,
             text=self.tr("btn_start"),
@@ -2035,7 +2103,7 @@ class OfficeGUI(tb.Window):
         self._attach_tooltip(self.btn_stop, "tip_stop_task")
         self._auto_attach_action_tooltips(parent)
 
-        # 注：保存/加载/管理方案按钮已移至配置管理 tab 底部，不再在 Footer 重复显示
+        # 娉細淇濆瓨/鍔犺浇/绠＄悊鏂规鎸夐挳宸茬Щ鑷抽厤缃鐞?tab 搴曢儴锛屼笉鍐嶅湪 Footer 閲嶅鏄剧ず
 
     def _toggle_logs(self):
         """Toggle log pane visibility (pack/pack_forget)."""
@@ -2057,22 +2125,22 @@ class OfficeGUI(tb.Window):
             self._set_widget_tree_state(child, state)
 
     def _set_run_tab_state(self, tab, state):
-        """设置 tab 的可见/隐藏状态。state='normal' 显示, 'hidden' 或 'disabled' 隐藏。"""
+        """Set run tab visibility state."""
         try:
             if state in ("disabled", "hidden"):
                 self.main_notebook.hide(tab)
             else:
-                # 重新添加到原始位置（如果尚未显示）
+                # 閲嶆柊娣诲姞鍒板師濮嬩綅缃紙濡傛灉灏氭湭鏄剧ず锛?
                 try:
                     self.main_notebook.index(tab)
                 except Exception:
-                    # tab 已被隐藏，需要重新添加到正确位置
+                    # tab 宸茶闅愯棌锛岄渶瑕侀噸鏂版坊鍔犲埌姝ｇ‘浣嶇疆
                     self._restore_tab(tab)
         except Exception:
             pass
 
     def _restore_tab(self, tab):
-        """将隐藏的 tab 恢复到其在 _all_tabs 中的正确位置。"""
+        """Restore a hidden tab to its original index."""
         if not hasattr(self, "_all_tabs"):
             return
         target_idx = 0
@@ -2087,7 +2155,7 @@ class OfficeGUI(tb.Window):
         self.main_notebook.insert(target_idx, tab)
 
     def _set_cfg_tab_state(self, tab, state):
-        """向后兼容：配置 tab 也使用主 notebook 的隐藏/显示。"""
+        """Backward-compatible wrapper for config tab visibility."""
         self._set_run_tab_state(tab, state)
 
     def _on_run_mode_change(self):
@@ -2098,19 +2166,19 @@ class OfficeGUI(tb.Window):
         is_merge_related = mode in (MODE_CONVERT_THEN_MERGE, MODE_MERGE_ONLY)
         is_rules_related = is_convert or is_collect
 
-        # Enable only tabs relevant to the current mode（合并/梳理、MSHelp/定位 为聚合 tab）
+        # Enable only tabs relevant to the current mode锛堝悎骞?姊崇悊銆丮SHelp/瀹氫綅 涓鸿仛鍚?tab锛?
         self._set_run_tab_state(self.tab_run_shared, "normal")
         self._set_run_tab_state(self.tab_run_convert, "normal" if is_convert else "disabled")
-        # 「合并 / 梳理」：任意合并相关或梳理模式时显示
+        # 銆屽悎骞?/ 姊崇悊銆嶏細浠绘剰鍚堝苟鐩稿叧鎴栨⒊鐞嗘ā寮忔椂鏄剧ず
         self._set_run_tab_state(
             self.tab_run_merge,
             "normal" if (is_merge_related or is_collect) else "disabled",
         )
-        # MSHelp：仅在 mshelp 模式显示
+        # MSHelp锛氫粎鍦?mshelp 妯″紡鏄剧ず
         self._set_run_tab_state(self.tab_run_mshelp, "normal" if is_mshelp else "disabled")
-        # 定位工具：始终可用
+        # 瀹氫綅宸ュ叿锛氬缁堝彲鐢?
         self._set_run_tab_state(self.tab_run_locator, "normal")
-        # 成果文件：始终可用
+        # 鎴愭灉鏂囦欢锛氬缁堝彲鐢?
         self._set_run_tab_state(self.tab_run_output, "normal")
 
         # Collect options
@@ -2119,10 +2187,10 @@ class OfficeGUI(tb.Window):
         else:
             self._set_widget_tree_state(self.frm_collect_opts, "disabled")
 
-        # 自动选中对应的顶层 tab（合并了梳理、MSHelp/定位）
+        # 鑷姩閫変腑瀵瑰簲鐨勯《灞?tab锛堝悎骞朵簡姊崇悊銆丮SHelp/瀹氫綅锛?
         try:
             if is_collect:
-                # 梳理模式使用「合并 / 梳理」聚合页
+                # 姊崇悊妯″紡浣跨敤銆屽悎骞?/ 姊崇悊銆嶈仛鍚堥〉
                 self.main_notebook.select(self.tab_run_merge)
             elif is_mshelp:
                 self.main_notebook.select(self.tab_run_mshelp)
@@ -2151,7 +2219,7 @@ class OfficeGUI(tb.Window):
         except Exception:
             pass
         try:
-            self.chk_export_markdown.configure(state=state_exec)
+            self._sync_markdown_master_with_global_output()
         except Exception:
             pass
         try:
@@ -2195,6 +2263,12 @@ class OfficeGUI(tb.Window):
         self.lbl_merge.configure(state=state_merge)
         self.chk_enable_merge.configure(state=state_merge)
         self._set_widget_tree_state(self.frm_merge_opts, state_merge)
+        merge_submode_state = "normal" if mode == MODE_MERGE_ONLY else "disabled"
+        try:
+            self.rb_merge_submode_merge.configure(state=merge_submode_state)
+            self.rb_merge_submode_pdf_to_md.configure(state=merge_submode_state)
+        except Exception:
+            pass
 
     def _on_toggle_date_filter(self):
         enabled = bool(self.var_enable_date_filter.get())
@@ -2257,20 +2331,38 @@ class OfficeGUI(tb.Window):
             pass
 
     def _on_toggle_markdown_master(self):
-        """Markdown 主开关联动：关闭时灰化子选项。"""
+        """Toggle state of markdown sub-options."""
         enabled = bool(self.var_enable_markdown.get())
         state = "normal" if enabled else "disabled"
         if hasattr(self, "_frm_markdown_sub"):
             self._set_widget_tree_state(self._frm_markdown_sub, state)
 
+    def _sync_markdown_master_with_global_output(self):
+        """Keep legacy markdown master aligned with global MD output switch."""
+        if not hasattr(self, "var_output_enable_md") or not hasattr(
+            self, "var_enable_markdown"
+        ):
+            return
+        md_enabled = bool(self.var_output_enable_md.get())
+        try:
+            self.var_enable_markdown.set(1 if md_enabled else 0)
+        except Exception:
+            pass
+        if hasattr(self, "chk_export_markdown"):
+            try:
+                self.chk_export_markdown.configure(state="disabled")
+            except Exception:
+                pass
+        self._on_toggle_markdown_master()
+
     def _on_toggle_llm_hub_master(self):
-        """LLM 交付中心主开关联动：关闭时灰化子选项。"""
+        """Toggle state of LLM hub sub-options."""
         enabled = bool(self.var_enable_llm_delivery_hub.get())
         state = "normal" if enabled else "disabled"
         if hasattr(self, "_frm_llm_hub_sub"):
             self._set_widget_tree_state(self._frm_llm_hub_sub, state)
 
-    # ===================== 鐩綍/按钮动作 =====================
+    # ===================== 閻╊喖缍?鎸夐挳鍔ㄤ綔 =====================
 
     def add_source_folder(self):
         path = filedialog.askdirectory(title=self.tr("tip_add_source_folder"))
@@ -2308,7 +2400,7 @@ class OfficeGUI(tb.Window):
 
 
     def browse_target(self):
-        path = filedialog.askdirectory(title="选择目标目录")
+        path = filedialog.askdirectory(title="閫夋嫨鐩爣鐩綍")
         if path:
             self.var_target_folder.set(path)
             self.refresh_locator_maps()
@@ -2335,10 +2427,10 @@ class OfficeGUI(tb.Window):
         self._open_path(folder)
 
     def _toggle_tooltip_advanced(self):
-        """显示/隐藏 tooltip 高级设置区域。"""
+        """Show or hide advanced tooltip settings."""
         if not hasattr(self, "frm_tooltip_advanced"):
             return
-        # 先移除，再按需要重新 pack
+        # 鍏堢Щ闄わ紝鍐嶆寜闇€瑕侀噸鏂?pack
         try:
             self.frm_tooltip_advanced.pack_forget()
         except Exception:
@@ -2369,7 +2461,7 @@ class OfficeGUI(tb.Window):
         self.var_llm_delivery_root.set("")
 
     def browse_log_folder(self):
-        path = filedialog.askdirectory(title="选择日志目录")
+        path = filedialog.askdirectory(title="閫夋嫨鏃ュ織鐩綍")
         if path:
             self.var_log_folder.set(path)
 
@@ -3515,7 +3607,7 @@ class OfficeGUI(tb.Window):
         if not self._cfg_tab_meta:
             return
         section_dirty = section_dirty or {}
-        # 多个 section 可能映射到同一个物理 tab，聚合 dirty 状态
+        # 澶氫釜 section 鍙兘鏄犲皠鍒板悓涓€涓墿鐞?tab锛岃仛鍚?dirty 鐘舵€?
         tab_dirty = {}
         tab_labels = {}
         for section_name, tab_widget, label_key in self._cfg_tab_meta:
@@ -3576,6 +3668,11 @@ class OfficeGUI(tb.Window):
             ],
             "merge": [
                 "enable_merge",
+                "output_enable_pdf",
+                "output_enable_md",
+                "output_enable_merged",
+                "output_enable_independent",
+                "merge_convert_submode",
                 "merge_mode",
                 "merge_source",
                 "enable_merge_index",
@@ -3753,6 +3850,24 @@ class OfficeGUI(tb.Window):
             )
         if "merge" in sections:
             self.var_enable_merge.set(1 if snapshot.get("enable_merge", True) else 0)
+            self.var_output_enable_pdf.set(
+                1 if snapshot.get("output_enable_pdf", True) else 0
+            )
+            self.var_output_enable_md.set(
+                1 if snapshot.get("output_enable_md", True) else 0
+            )
+            self.var_output_enable_merged.set(
+                1 if snapshot.get("output_enable_merged", True) else 0
+            )
+            self.var_output_enable_independent.set(
+                1 if snapshot.get("output_enable_independent", False) else 0
+            )
+            self.var_merge_convert_submode.set(
+                snapshot.get(
+                    "merge_convert_submode",
+                    MERGE_CONVERT_SUBMODE_MERGE_ONLY,
+                )
+            )
             self.var_merge_mode.set(snapshot.get("merge_mode", MERGE_MODE_CATEGORY))
             self.var_merge_source.set(snapshot.get("merge_source", "source"))
             self.var_enable_merge_index.set(
@@ -3795,6 +3910,7 @@ class OfficeGUI(tb.Window):
             )
             self.apply_tooltip_settings(silent=True)
             self.validate_tooltip_inputs(silent=True)
+        self._sync_markdown_master_with_global_output()
 
     def _revert_dirty_config_sections(self, show_msg=True):
         self._refresh_config_dirty_from_file()
@@ -3935,6 +4051,13 @@ class OfficeGUI(tb.Window):
             ),
             "sandbox_low_space_policy": self.var_sandbox_low_space_policy.get() or "block",
             "enable_merge": bool(self.var_enable_merge.get()),
+            "output_enable_pdf": bool(self.var_output_enable_pdf.get()),
+            "output_enable_md": bool(self.var_output_enable_md.get()),
+            "output_enable_merged": bool(self.var_output_enable_merged.get()),
+            "output_enable_independent": bool(
+                self.var_output_enable_independent.get()
+            ),
+            "merge_convert_submode": self.var_merge_convert_submode.get(),
             "merge_mode": self.var_merge_mode.get(),
             "merge_source": self.var_merge_source.get(),
             "enable_merge_index": bool(self.var_enable_merge_index.get()),
@@ -3943,7 +4066,7 @@ class OfficeGUI(tb.Window):
                 self.var_max_merge_size_mb.get(), 80
             ),
             "enable_corpus_manifest": bool(self.var_enable_corpus_manifest.get()),
-            "enable_markdown": bool(self.var_enable_markdown.get()),
+            "enable_markdown": bool(self.var_output_enable_md.get()),
             "markdown_strip_header_footer": bool(
                 self.var_markdown_strip_header_footer.get()
             ),
@@ -4028,6 +4151,18 @@ class OfficeGUI(tb.Window):
             ),
             "sandbox_low_space_policy": str(cfg.get("sandbox_low_space_policy", "block")).strip() or "block",
             "enable_merge": bool(cfg.get("enable_merge", True)),
+            "output_enable_pdf": bool(cfg.get("output_enable_pdf", True)),
+            "output_enable_md": bool(cfg.get("output_enable_md", True)),
+            "output_enable_merged": bool(cfg.get("output_enable_merged", True)),
+            "output_enable_independent": bool(
+                cfg.get("output_enable_independent", False)
+            ),
+            "merge_convert_submode": str(
+                cfg.get(
+                    "merge_convert_submode",
+                    MERGE_CONVERT_SUBMODE_MERGE_ONLY,
+                )
+            ),
             "merge_mode": cfg.get("merge_mode", MERGE_MODE_CATEGORY),
             "merge_source": cfg.get("merge_source", "source"),
             "enable_merge_index": bool(cfg.get("enable_merge_index", False)),
@@ -4036,7 +4171,7 @@ class OfficeGUI(tb.Window):
                 cfg.get("max_merge_size_mb", 80), 80
             ),
             "enable_corpus_manifest": bool(cfg.get("enable_corpus_manifest", True)),
-            "enable_markdown": bool(cfg.get("enable_markdown", True)),
+            "enable_markdown": bool(cfg.get("output_enable_md", cfg.get("enable_markdown", True))),
             "markdown_strip_header_footer": bool(
                 cfg.get("markdown_strip_header_footer", True)
             ),
@@ -4366,6 +4501,11 @@ class OfficeGUI(tb.Window):
             section_title_key = "grp_cfg_incremental"
         elif section == "merge":
             self.var_enable_merge.set(1)
+            self.var_output_enable_pdf.set(1)
+            self.var_output_enable_md.set(1)
+            self.var_output_enable_merged.set(1)
+            self.var_output_enable_independent.set(0)
+            self.var_merge_convert_submode.set(MERGE_CONVERT_SUBMODE_MERGE_ONLY)
             self.var_merge_mode.set(MERGE_MODE_CATEGORY)
             self.var_merge_source.set("source")
             self.var_enable_merge_index.set(0)
@@ -4489,7 +4629,7 @@ class OfficeGUI(tb.Window):
         self.apply_tooltip_settings(silent=True)
         self.validate_tooltip_inputs(silent=True)
 
-        # 恢复窗口尺寸与位置（如果已保存）
+        # 鎭㈠绐楀彛灏哄涓庝綅缃紙濡傛灉宸蹭繚瀛橈級
         try:
             win_geo = ui_cfg.get("window_geometry")
             if isinstance(win_geo, str) and win_geo:
@@ -4585,6 +4725,7 @@ class OfficeGUI(tb.Window):
         self.var_enable_chromadb_export.set(
             1 if cfg.get("enable_chromadb_export", False) else 0
         )
+        self._sync_markdown_master_with_global_output()
         self.var_mshelpviewer_folder_name.set(
             str(cfg.get("mshelpviewer_folder_name", "MSHelpViewer") or "MSHelpViewer")
         )
@@ -4617,17 +4758,30 @@ class OfficeGUI(tb.Window):
         )
 
         self.var_enable_merge.set(1 if cfg.get("enable_merge", True) else 0)
+        self.var_output_enable_pdf.set(1 if cfg.get("output_enable_pdf", True) else 0)
+        self.var_output_enable_md.set(1 if cfg.get("output_enable_md", True) else 0)
+        self.var_output_enable_merged.set(
+            1 if cfg.get("output_enable_merged", True) else 0
+        )
+        self.var_output_enable_independent.set(
+            1 if cfg.get("output_enable_independent", False) else 0
+        )
+        self.var_merge_convert_submode.set(
+            cfg.get(
+                "merge_convert_submode", MERGE_CONVERT_SUBMODE_MERGE_ONLY
+            )
+        )
         self.var_merge_mode.set(cfg.get("merge_mode", MERGE_MODE_CATEGORY))
         self.var_merge_source.set(cfg.get("merge_source", "source"))
         self.var_enable_merge_index.set(1 if cfg.get("enable_merge_index", False) else 0)
         self.var_enable_merge_excel.set(1 if cfg.get("enable_merge_excel", False) else 0)
 
-        # 运行模式 / 子模式 / 策略（作为默认）
+        # 杩愯妯″紡 / 瀛愭ā寮?/ 绛栫暐锛堜綔涓洪粯璁わ級
         self.var_run_mode.set(cfg.get("run_mode", MODE_CONVERT_THEN_MERGE))
         self.var_collect_mode.set(cfg.get("collect_mode", COLLECT_MODE_COPY_AND_INDEX))
         self.var_strategy.set(cfg.get("content_strategy", "standard"))
 
-        # 引擎 & 进程策略
+        # 寮曟搸 & 杩涚▼绛栫暐
         default_engine = cfg.get("default_engine", ENGINE_WPS)
         if default_engine not in (ENGINE_WPS, ENGINE_MS):
             default_engine = ENGINE_WPS
@@ -4638,7 +4792,7 @@ class OfficeGUI(tb.Window):
             kill_mode = KILL_MODE_AUTO
         self.var_kill_mode.set(kill_mode)
 
-        # 配置管理页
+        # 閰嶇疆绠＄悊椤?
         self.var_log_folder.set(cfg.get("log_folder", "./logs"))
 
         excluded = cfg.get("excluded_folders", [])
@@ -4661,7 +4815,7 @@ class OfficeGUI(tb.Window):
         )
         self.var_max_merge_size_mb.set(str(cfg.get("max_merge_size_mb", 80)))
 
-        # 联动刷新
+        # 鑱斿姩鍒锋柊
         self._on_run_mode_change()
         self._on_toggle_sandbox()
         self._on_toggle_incremental_mode()
@@ -4724,7 +4878,7 @@ class OfficeGUI(tb.Window):
 
         if "ai" in sections:
             cfg["enable_corpus_manifest"] = bool(self.var_enable_corpus_manifest.get())
-            cfg["enable_markdown"] = bool(self.var_enable_markdown.get())
+            cfg["enable_markdown"] = bool(self.var_output_enable_md.get())
             cfg["markdown_strip_header_footer"] = bool(
                 self.var_markdown_strip_header_footer.get()
             )
@@ -4763,6 +4917,15 @@ class OfficeGUI(tb.Window):
 
         if "merge" in sections:
             cfg["enable_merge"] = bool(self.var_enable_merge.get())
+            cfg["output_enable_pdf"] = bool(self.var_output_enable_pdf.get())
+            cfg["output_enable_md"] = bool(self.var_output_enable_md.get())
+            cfg["output_enable_merged"] = bool(
+                self.var_output_enable_merged.get()
+            )
+            cfg["output_enable_independent"] = bool(
+                self.var_output_enable_independent.get()
+            )
+            cfg["merge_convert_submode"] = self.var_merge_convert_submode.get()
             cfg["merge_mode"] = self.var_merge_mode.get()
             cfg["merge_source"] = self.var_merge_source.get()
             cfg["enable_merge_index"] = bool(self.var_enable_merge_index.get())
@@ -4785,7 +4948,7 @@ class OfficeGUI(tb.Window):
                 "tooltip_font_size": self.tooltip_font_size,
                 "tooltip_auto_theme": self.tooltip_auto_theme,
                 "confirm_revert_dirty": bool(self.var_confirm_revert_dirty.get()),
-                # 记忆窗口尺寸与位置
+                # 璁板繂绐楀彛灏哄涓庝綅缃?
                 "window_geometry": self.geometry(),
                 "window_state": self.state(),
             }
@@ -4827,7 +4990,7 @@ class OfficeGUI(tb.Window):
                 )
 
     def _on_close_main_window(self):
-        """在关闭前记忆窗口尺寸/位置到配置文件，然后安全关闭。"""
+        """Persist UI geometry settings and close the window."""
         try:
             cfg = self._load_config_for_write()
             self._write_config_sections_to_cfg(cfg, ["ui"])
@@ -4914,8 +5077,15 @@ class OfficeGUI(tb.Window):
         cfg["source_folders"] = self.source_folders_list
         cfg["source_folder"] = self.source_folders_list[0] if self.source_folders_list else ""
         cfg["target_folder"] = self.var_target_folder.get().strip()
+        cfg["output_enable_pdf"] = bool(self.var_output_enable_pdf.get())
+        cfg["output_enable_md"] = bool(self.var_output_enable_md.get())
+        cfg["output_enable_merged"] = bool(self.var_output_enable_merged.get())
+        cfg["output_enable_independent"] = bool(
+            self.var_output_enable_independent.get()
+        )
+        cfg["merge_convert_submode"] = self.var_merge_convert_submode.get()
         cfg["enable_corpus_manifest"] = bool(self.var_enable_corpus_manifest.get())
-        cfg["enable_markdown"] = bool(self.var_enable_markdown.get())
+        cfg["enable_markdown"] = bool(self.var_output_enable_md.get())
         cfg["markdown_strip_header_footer"] = bool(
             self.var_markdown_strip_header_footer.get()
         )
@@ -4971,6 +5141,15 @@ class OfficeGUI(tb.Window):
 
         if write_merge:
             cfg["enable_merge"] = bool(self.var_enable_merge.get())
+            cfg["output_enable_pdf"] = bool(self.var_output_enable_pdf.get())
+            cfg["output_enable_md"] = bool(self.var_output_enable_md.get())
+            cfg["output_enable_merged"] = bool(
+                self.var_output_enable_merged.get()
+            )
+            cfg["output_enable_independent"] = bool(
+                self.var_output_enable_independent.get()
+            )
+            cfg["merge_convert_submode"] = self.var_merge_convert_submode.get()
             cfg["merge_mode"] = self.var_merge_mode.get()
             cfg["merge_source"] = self.var_merge_source.get()
             cfg["enable_merge_index"] = bool(self.var_enable_merge_index.get())
@@ -5096,7 +5275,7 @@ class OfficeGUI(tb.Window):
                     self.tr("msg_load_fail").format(e),
                 )
 
-    # ===================== 日志 & 状态=====================
+    # ===================== 鏃ュ織 & 鐘舵€?====================
     def _poll_log_queue(self):
         try:
             while True:
@@ -5191,6 +5370,9 @@ class OfficeGUI(tb.Window):
 
         converted_count = len(getattr(converter, "generated_pdfs", []) or [])
         merged_count = len(getattr(converter, "generated_merge_outputs", []) or [])
+        merged_md_count = len(
+            getattr(converter, "generated_merge_markdown_outputs", []) or []
+        )
         map_count = len(getattr(converter, "generated_map_outputs", []) or [])
         markdown_count = len(
             getattr(converter, "generated_markdown_outputs", []) or []
@@ -5212,7 +5394,7 @@ class OfficeGUI(tb.Window):
         lines = [
             self.tr("log_artifacts_title").format(step_index, total_steps),
             self.tr("log_artifacts_counts").format(
-                converted_count, merged_count, map_count
+                converted_count, merged_count + merged_md_count, map_count
             ),
             self.tr("log_artifacts_ai_counts").format(
                 markdown_count, excel_json_count, records_json_count
@@ -5257,6 +5439,10 @@ class OfficeGUI(tb.Window):
             lines.append(self.tr("log_artifacts_chromadb").format(vec_path))
         for mshelp_path in (getattr(converter, "generated_mshelp_outputs", []) or [])[:2]:
             lines.append(self.tr("log_artifacts_markdown").format(mshelp_path))
+        for merged_md_path in (
+            getattr(converter, "generated_merge_markdown_outputs", []) or []
+        )[:2]:
+            lines.append(self.tr("log_artifacts_markdown").format(merged_md_path))
         update_manifest = getattr(converter, "update_package_manifest_path", "")
         if update_manifest:
             lines.append(self.tr("log_artifacts_update_package").format(update_manifest))
@@ -5277,7 +5463,36 @@ class OfficeGUI(tb.Window):
 
         return "\n".join(lines)
 
-    # ===================== 任务控制 =====================
+    def _scan_first_file_with_ext(self, roots, ext):
+        ext = str(ext or "").lower()
+        for root in roots or []:
+            if not root or not os.path.isdir(root):
+                continue
+            for cur, _, files in os.walk(root):
+                for name in files:
+                    if name.lower().endswith(ext):
+                        return os.path.join(cur, name)
+        return ""
+
+    def _should_continue_when_md_merge_missing(self, clean_sources, target):
+        if self.var_run_mode.get() != MODE_MERGE_ONLY:
+            return True
+        if self.var_merge_convert_submode.get() != MERGE_CONVERT_SUBMODE_MERGE_ONLY:
+            return True
+        if not bool(self.var_output_enable_merged.get()):
+            return True
+        if not bool(self.var_output_enable_md.get()):
+            return True
+        roots = [target] if self.var_merge_source.get() == "target" else list(clean_sources or [])
+        if self._scan_first_file_with_ext(roots, ".md"):
+            return True
+        msg = (
+            "已选择“仅合并 + MD合并”，但未找到可合并的 .md 文件。\n\n"
+            "选择“是”将继续执行并跳过MD合并；选择“否”将退出本次任务。"
+        )
+        return bool(messagebox.askyesno(self.tr("btn_start"), msg))
+
+    # ===================== 浠诲姟鎺у埗 =====================
     def _on_click_start(self):
         if self.worker_thread and self.worker_thread.is_alive():
             messagebox.showinfo(self.tr("btn_start"), self.tr("msg_task_already_running"))
@@ -5305,6 +5520,8 @@ class OfficeGUI(tb.Window):
             return
         if not target:
             messagebox.showerror(self.tr("btn_start"), self.tr("msg_target_folder_required"))
+            return
+        if not self._should_continue_when_md_merge_missing(clean_sources, target):
             return
 
         self.stop_requested = False
@@ -5366,7 +5583,11 @@ class OfficeGUI(tb.Window):
                             }
                         )
 
-                    if base_mode == MODE_CONVERT_THEN_MERGE and self.var_enable_merge.get():
+                    if (
+                        base_mode == MODE_CONVERT_THEN_MERGE
+                        and self.var_enable_merge.get()
+                        and self.var_output_enable_merged.get()
+                    ):
                         m_src = self.var_merge_source.get()
                         if m_src == "target":
                             steps.append(
@@ -5421,12 +5642,19 @@ class OfficeGUI(tb.Window):
                     cfg["enable_upload_json_manifest"] = bool(self.var_enable_upload_json_manifest.get())
                     cfg["upload_dedup_merged"] = bool(self.var_upload_dedup_merged.get())
                     cfg["enable_merge"] = bool(self.var_enable_merge.get())
+                    cfg["output_enable_pdf"] = bool(self.var_output_enable_pdf.get())
+                    cfg["output_enable_md"] = bool(self.var_output_enable_md.get())
+                    cfg["output_enable_merged"] = bool(self.var_output_enable_merged.get())
+                    cfg["output_enable_independent"] = bool(
+                        self.var_output_enable_independent.get()
+                    )
+                    cfg["merge_convert_submode"] = self.var_merge_convert_submode.get()
                     cfg["merge_mode"] = self.var_merge_mode.get()
                     cfg["merge_source"] = self.var_merge_source.get()
                     cfg["enable_merge_index"] = bool(self.var_enable_merge_index.get())
                     cfg["enable_merge_excel"] = bool(self.var_enable_merge_excel.get())
                     cfg["enable_corpus_manifest"] = bool(self.var_enable_corpus_manifest.get())
-                    cfg["enable_markdown"] = bool(self.var_enable_markdown.get())
+                    cfg["enable_markdown"] = bool(self.var_output_enable_md.get())
                     cfg["markdown_strip_header_footer"] = bool(self.var_markdown_strip_header_footer.get())
                     cfg["markdown_structured_headings"] = bool(self.var_markdown_structured_headings.get())
                     cfg["enable_markdown_quality_report"] = bool(self.var_enable_markdown_quality_report.get())
@@ -5524,7 +5752,7 @@ class OfficeGUI(tb.Window):
             print("[GUI] stop requested; waiting for current step to finish...")
             self.var_status.set(self.tr("status_stop_wait"))
 
-    # ===================== 程序入口 =====================
+    # ===================== 绋嬪簭鍏ュ彛 =====================
 
 
 if __name__ == "__main__":
@@ -5533,4 +5761,5 @@ if __name__ == "__main__":
         app.mainloop()
     except Exception:
         traceback.print_exc()
+
 

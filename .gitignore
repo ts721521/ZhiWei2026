@@ -1,4 +1,4 @@
-﻿# OS / editor
+# OS / editor
 .DS_Store
 Thumbs.db
 .vscode/
@@ -46,3 +46,12 @@ log/
 # Project-local noisy outputs
 2026/logs/
 2026/log/
+
+# PyInstaller
+2026/build/
+2026/dist/
+2026/*.spec
+
+# Repo-root temp scripts (e.g. _patch_*.py, _fix_*.py)
+_*.py
+_*.txt

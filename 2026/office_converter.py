@@ -149,6 +149,10 @@ MODE_CONVERT_THEN_MERGE = "convert_then_merge"
 MODE_COLLECT_ONLY = "collect_only"  # collect and deduplicate mode
 MODE_MSHELP_ONLY = "mshelp_only"  # dedicated mode for MSHelpViewer API docs
 
+# Merge & convert sub-modes under MODE_MERGE_ONLY
+MERGE_CONVERT_SUBMODE_MERGE_ONLY = "merge_only"
+MERGE_CONVERT_SUBMODE_PDF_TO_MD = "pdf_to_md"
+
 # collect_only sub-modes
 COLLECT_MODE_COPY_AND_INDEX = "copy_and_index"  # dedup + copy + Excel
 COLLECT_MODE_INDEX_ONLY = "index_only"  # Excel only, no copying
@@ -333,6 +337,7 @@ class OfficeConverter:
         self.progress_callback = None  # GUI callback hook: func(current, total)
         self.generated_pdfs = []
         self.generated_merge_outputs = []
+        self.generated_merge_markdown_outputs = []
         self.generated_map_outputs = []
         self.generated_markdown_outputs = []
         self.generated_markdown_quality_outputs = []
@@ -493,6 +498,60 @@ class OfficeConverter:
         }
         return m.get(self.merge_mode, self.merge_mode)
 
+    @staticmethod
+    def compute_convert_output_plan(run_mode, cfg):
+        cfg = cfg or {}
+        want_pdf = bool(cfg.get("output_enable_pdf", True))
+        want_md = bool(cfg.get("output_enable_md", True))
+        want_merged = bool(cfg.get("output_enable_merged", True))
+        want_independent = bool(cfg.get("output_enable_independent", False))
+        enable_merge = bool(cfg.get("enable_merge", True))
+
+        merge_in_convert_phase = (
+            run_mode == MODE_CONVERT_THEN_MERGE and want_merged and enable_merge
+        )
+        need_pdf_for_merge = merge_in_convert_phase and want_pdf
+        need_pdf_independent = want_independent and want_pdf
+        need_markdown_for_merge = merge_in_convert_phase and want_md
+        need_markdown_independent = want_independent and want_md
+
+        return {
+            "want_pdf": want_pdf,
+            "want_md": want_md,
+            "want_merged": want_merged,
+            "want_independent": want_independent,
+            "need_pdf_for_merge": need_pdf_for_merge,
+            "need_pdf_independent": need_pdf_independent,
+            "need_final_pdf": need_pdf_for_merge or need_pdf_independent,
+            "need_markdown_for_merge": need_markdown_for_merge,
+            "need_markdown_independent": need_markdown_independent,
+            "need_markdown": need_markdown_for_merge or need_markdown_independent,
+        }
+
+    def _get_output_pref(self):
+        return {
+            "pdf": bool(self.config.get("output_enable_pdf", True)),
+            "md": bool(self.config.get("output_enable_md", True)),
+            "merged": bool(self.config.get("output_enable_merged", True)),
+            "independent": bool(
+                self.config.get("output_enable_independent", False)
+            ),
+        }
+
+    def _get_merge_convert_submode(self):
+        raw = str(
+            self.config.get(
+                "merge_convert_submode", MERGE_CONVERT_SUBMODE_MERGE_ONLY
+            )
+            or MERGE_CONVERT_SUBMODE_MERGE_ONLY
+        ).strip()
+        if raw not in (
+            MERGE_CONVERT_SUBMODE_MERGE_ONLY,
+            MERGE_CONVERT_SUBMODE_PDF_TO_MD,
+        ):
+            return MERGE_CONVERT_SUBMODE_MERGE_ONLY
+        return raw
+
     def print_runtime_summary(self):
         print("\n" + "=" * 60)
         print(" Runtime Summary")
@@ -501,6 +560,12 @@ class OfficeConverter:
         print(f"  target_folder : {self.config.get('target_folder', '')}")
         print(f"  run_mode      : {self.run_mode}")
         print(f"  merge_mode    : {self.merge_mode}")
+        pref = self._get_output_pref()
+        print(
+            f"  output        : pdf={pref['pdf']} md={pref['md']} merged={pref['merged']} independent={pref['independent']}"
+        )
+        if self.run_mode == MODE_MERGE_ONLY:
+            print(f"  merge_submode : {self._get_merge_convert_submode()}")
         print(f"  strategy      : {self.content_strategy}")
         print(f"  reuse_office  : {self._should_reuse_office_app()}")
         print(f"  restart_every : {self._get_office_restart_every()}")
@@ -635,6 +700,13 @@ class OfficeConverter:
         cfg.setdefault("ppt_pdf_wait_seconds", cfg.get("pdf_wait_seconds", 15))
         cfg.setdefault("enable_merge", True)
         cfg.setdefault("max_merge_size_mb", 80)
+        cfg.setdefault("output_enable_pdf", True)
+        cfg.setdefault("output_enable_md", True)
+        cfg.setdefault("output_enable_merged", True)
+        cfg.setdefault("output_enable_independent", False)
+        cfg.setdefault(
+            "merge_convert_submode", MERGE_CONVERT_SUBMODE_MERGE_ONLY
+        )
         cfg.setdefault("temp_sandbox_root", "")
         cfg.setdefault("sandbox_min_free_gb", 10)
         cfg.setdefault("sandbox_low_space_policy", "block")
@@ -855,7 +927,7 @@ class OfficeConverter:
     def select_run_mode(self):
         self.print_step_title("Step 3/4: Select Run Mode")
         print("  [1] Convert only")
-        print("  [2] Merge only")
+        print("  [2] Merge & convert")
         print("  [3] Convert then merge (recommended)")
         print("  [4] Collect / deduplicate only")
         print("  [5] MSHelp API docs (CAB->MD, merged package)")
@@ -2170,6 +2242,7 @@ class OfficeConverter:
             "scan_aborted": False,
             "skip_scan": is_filename_match,
         }
+        output_plan = self.compute_convert_output_plan(self.run_mode, self.config)
 
         if is_filename_match:
             final_target_path = self.get_target_path(
@@ -2273,18 +2346,43 @@ class OfficeConverter:
                     self._add_perf_seconds(
                         "pdf_wait_seconds", time.perf_counter() - wait_pdf_start
                     )
-                    result_status, final_path_res = self.handle_file_conflict(
-                        sandbox_pdf, final_target_path
-                    )
-                    self.generated_pdfs.append(final_path_res)
+                    final_path_res = ""
+                    md_path_res = ""
+                    if output_plan.get("need_final_pdf"):
+                        result_status, final_path_res = self.handle_file_conflict(
+                            sandbox_pdf, final_target_path
+                        )
+                        self.generated_pdfs.append(final_path_res)
+                    else:
+                        result_status = (
+                            "success_no_output"
+                            if not output_plan.get("need_markdown")
+                            else "success_md_only"
+                        )
+
+                    if output_plan.get("need_markdown"):
+                        markdown_start = time.perf_counter()
+                        if final_path_res and os.path.exists(final_path_res):
+                            md_path_res = self._export_pdf_markdown(final_path_res) or ""
+                        else:
+                            md_path_res = (
+                                self._export_pdf_markdown(
+                                    sandbox_pdf, source_path_hint=file_path
+                                )
+                                or ""
+                            )
+                        self._add_perf_seconds(
+                            "markdown_seconds",
+                            time.perf_counter() - markdown_start,
+                        )
 
                     tag_info = ""
                     if is_filename_match:
                         tag_info = " [name_hit]"
                     elif result_context["is_price"]:
                         tag_info = " [content_hit]"
-
-                    return f"{result_status}{tag_info}", final_path_res
+                    final_output_path = final_path_res or md_path_res
+                    return f"{result_status}{tag_info}", final_output_path
                 time.sleep(0.5)
 
             self._add_perf_seconds(
@@ -2370,11 +2468,6 @@ class OfficeConverter:
                     if is_pdf_output:
                         self._append_conversion_index_record(
                             logical_source, final_path, status
-                        )
-                        markdown_start = time.perf_counter()
-                        self._export_pdf_markdown(final_path)
-                        self._add_perf_seconds(
-                            "markdown_seconds", time.perf_counter() - markdown_start
                         )
                     results.append(
                         {
@@ -3047,6 +3140,195 @@ class OfficeConverter:
                     print(f"  - {p}")
 
         return generated_outputs
+
+    def _scan_merge_candidates_by_ext(self, ext):
+        ext = str(ext or "").lower()
+        if not ext.startswith("."):
+            ext = "." + ext
+
+        scan_folder = self.config["target_folder"]
+        scan_source_type = "target"
+        if self.run_mode == MODE_MERGE_ONLY:
+            scan_source_type = self.config.get("merge_source", "source")
+
+        if scan_source_type == "source":
+            scan_folder = self.config["source_folder"]
+
+        files = []
+        exclude_abs_paths = set(
+            map(os.path.abspath, [self.failed_dir, self.merge_output_dir])
+        )
+        if scan_source_type == "source":
+            exclude_abs_paths.add(os.path.abspath(self.config["target_folder"]))
+
+        for root, dirs, names in os.walk(scan_folder):
+            dirs[:] = [
+                d
+                for d in dirs
+                if os.path.abspath(os.path.join(root, d)) not in exclude_abs_paths
+            ]
+            if os.path.abspath(root) in exclude_abs_paths:
+                continue
+            for name in names:
+                if name.lower().endswith(ext):
+                    files.append(os.path.join(root, name))
+
+        files.sort()
+        return files
+
+    def _build_markdown_merge_tasks(self, md_files):
+        if not md_files:
+            return []
+        tasks = []
+        if self.merge_mode == MERGE_MODE_ALL_IN_ONE:
+            ts = datetime.now().strftime("%Y%m%d_%H%M%S")
+            tasks.append((f"Merged_All_{ts}.md", md_files))
+            return tasks
+
+        categories = {
+            "Price": "Price_",
+            "Word": "Word_",
+            "Excel": "Excel_",
+            "PPT": "PPT_",
+            "PDF": "PDF_",
+        }
+        matched = set()
+        ts = datetime.now().strftime("%Y%m%d_%H%M%S")
+        for cat_label, prefix in categories.items():
+            group = [
+                p for p in md_files if os.path.basename(p).startswith(prefix)
+            ]
+            if not group:
+                continue
+            matched.update(group)
+            tasks.append((f"Merged_{cat_label}_{ts}_001.md", group))
+
+        others = [p for p in md_files if p not in matched]
+        if others:
+            tasks.append((f"Merged_Markdown_{ts}_001.md", others))
+        return tasks
+
+    def merge_markdowns(self, candidates=None):
+        md_files = list(candidates or [])
+        if not md_files:
+            md_files = self._scan_merge_candidates_by_ext(".md")
+        if not md_files:
+            return []
+
+        tasks = self._build_markdown_merge_tasks(md_files)
+        if not tasks:
+            return []
+
+        generated = []
+        for output_name, group in tasks:
+            lines = [
+                f"# {output_name}",
+                "",
+                f"- generated_at: {datetime.now().isoformat(timespec='seconds')}",
+                f"- source_count: {len(group)}",
+                "",
+                "## Source Map",
+                "",
+            ]
+            for idx, path in enumerate(group, 1):
+                lines.append(f"{idx}. {path}")
+            lines.extend(["", "## Documents", ""])
+
+            for idx, path in enumerate(group, 1):
+                try:
+                    with open(path, "r", encoding="utf-8", errors="ignore") as f:
+                        content = f.read().strip()
+                except Exception as e:
+                    logging.warning(f"skip markdown in merge {path}: {e}")
+                    continue
+                lines.extend(
+                    [
+                        f"### [{idx}] {os.path.basename(path)}",
+                        "",
+                        f"- source_markdown: {os.path.abspath(path)}",
+                        "",
+                        "---",
+                        "",
+                        content,
+                        "",
+                    ]
+                )
+
+            out_path = os.path.join(self.merge_output_dir, output_name)
+            with open(out_path, "w", encoding="utf-8") as f:
+                f.write("\n".join(lines).rstrip() + "\n")
+            generated.append(out_path)
+            logging.info(f"merged markdown generated: {out_path}")
+
+        self.generated_merge_markdown_outputs = list(generated)
+        return generated
+
+    def _confirm_continue_missing_md_merge(self):
+        msg = (
+            "\n[WARN] Markdown merge requested but no .md files were found. "
+            "Continue with remaining tasks? [Y/n]: "
+        )
+        if self.interactive:
+            try:
+                ans = input(msg).strip().lower()
+                return ans in ("", "y", "yes")
+            except Exception:
+                return False
+        # GUI/non-interactive: continue by default; GUI precheck can override.
+        logging.warning(
+            "Markdown merge requested but no .md files found. Continue by default in non-interactive mode."
+        )
+        return True
+
+    def _run_merge_mode_pipeline(self, batch_results):
+        pref = self._get_output_pref()
+        merged_outputs = []
+        submode = self._get_merge_convert_submode()
+
+        if submode == MERGE_CONVERT_SUBMODE_PDF_TO_MD:
+            pdf_files = self._scan_merge_candidates_by_ext(".pdf")
+            need_markdown = pref["md"] and (pref["independent"] or pref["merged"])
+            if need_markdown:
+                for p in pdf_files:
+                    md_path = self._export_pdf_markdown(p, source_path_hint=p)
+                    batch_results.append(
+                        {
+                            "source_path": os.path.abspath(p),
+                            "status": "success_non_pdf" if md_path else "failed",
+                            "detail": "pdf_to_md" if md_path else "pdf_to_md_failed",
+                            "final_path": md_path or "",
+                            "elapsed": 0.0,
+                        }
+                    )
+
+            if pref["merged"]:
+                if pref["pdf"] and self.config.get("enable_merge", True):
+                    merged_outputs.extend(self.merge_pdfs() or [])
+                if pref["md"]:
+                    md_candidates = (
+                        [p for p in self.generated_markdown_outputs if os.path.exists(p)]
+                        or self._scan_merge_candidates_by_ext(".md")
+                    )
+                    if not md_candidates:
+                        if not self._confirm_continue_missing_md_merge():
+                            raise RuntimeError("Markdown merge canceled by user.")
+                    else:
+                        merged_outputs.extend(self.merge_markdowns(md_candidates) or [])
+            return merged_outputs
+
+        # default: merge existing artifacts
+        if pref["merged"]:
+            if pref["pdf"] and self.config.get("enable_merge", True):
+                merged_outputs.extend(self.merge_pdfs() or [])
+            if pref["md"]:
+                md_candidates = self._scan_merge_candidates_by_ext(".md")
+                if not md_candidates:
+                    if not self._confirm_continue_missing_md_merge():
+                        raise RuntimeError("Markdown merge canceled by user.")
+                    logging.info("Markdown merge skipped: no .md files found.")
+                else:
+                    merged_outputs.extend(self.merge_markdowns(md_candidates) or [])
+        return merged_outputs
 
 
     # =============== File indexing and dedup ==================
@@ -3759,7 +4041,7 @@ class OfficeConverter:
         names.sort(key=lambda x: (x.get("name", ""), x.get("local_sheet_id") or -1))
         return names
 
-    def _export_pdf_markdown(self, pdf_path):
+    def _export_pdf_markdown(self, pdf_path, source_path_hint=None):
         if not self.config.get("enable_markdown", True):
             return None
         if not HAS_PYPDF:
@@ -3767,7 +4049,12 @@ class OfficeConverter:
         if not pdf_path or not os.path.exists(pdf_path):
             return None
 
-        md_path = self._build_ai_output_path(pdf_path, "Markdown", ".md")
+        if source_path_hint:
+            md_path = self._build_ai_output_path_from_source(
+                source_path_hint, "Markdown", ".md"
+            )
+        else:
+            md_path = self._build_ai_output_path(pdf_path, "Markdown", ".md")
         if not md_path:
             return None
 
@@ -3834,9 +4121,14 @@ class OfficeConverter:
                 f.write("\n".join(lines).rstrip() + "\n")
 
             self.generated_markdown_outputs.append(md_path)
+            source_pdf_for_meta = (
+                os.path.abspath(source_path_hint)
+                if source_path_hint
+                else os.path.abspath(pdf_path)
+            )
             self.markdown_quality_records.append(
                 {
-                    "source_pdf": os.path.abspath(pdf_path),
+                    "source_pdf": source_pdf_for_meta,
                     "markdown_path": os.path.abspath(md_path),
                     "page_count": page_count,
                     "non_empty_page_count": non_empty_pages,
@@ -4574,6 +4866,7 @@ class OfficeConverter:
         # Kind whitelist: only include content files useful for LLM ingestion
         _LLM_CONTENT_KINDS = {
             "markdown_export",        # Converted Markdown from Office/PDF
+            "merged_markdown",        # General merged markdown packages
             "mshelp_merged_markdown", # MSHelp merged documentation
             "excel_structured_json",  # Structured Excel data (JSON)
         }
@@ -4586,6 +4879,7 @@ class OfficeConverter:
         # ---- Merge dedup: if merged docs exist, skip individual sources ----
         dedup_enabled = self.config.get("upload_dedup_merged", True)
         has_merged_pdf = dedup_enabled and any(a.get("kind") == "merged_pdf" for a in artifacts)
+        has_merged_md = dedup_enabled and any(a.get("kind") == "merged_markdown" for a in artifacts)
         has_mshelp_merged = dedup_enabled and any(a.get("kind") == "mshelp_merged_markdown" for a in artifacts)
 
         # Collect paths of individual MSHelp markdowns (they are in _AI/MSHelp/ but NOT in Merged/)
@@ -4611,6 +4905,10 @@ class OfficeConverter:
 
             # Skip individual converted PDFs when merged PDFs exist
             if has_merged_pdf and kind == "converted_pdf":
+                continue
+
+            # Skip individual markdown exports when merged markdown packages exist
+            if has_merged_md and kind == "markdown_export":
                 continue
 
             # Skip individual MSHelp markdown sources when merged packages exist
@@ -4723,6 +5021,8 @@ class OfficeConverter:
                 readme_lines.append("--- Notes ---")
                 if has_merged_pdf:
                     readme_lines.append("* Individual converted PDFs are excluded (already in merged volumes).")
+                if has_merged_md:
+                    readme_lines.append("* Individual markdown files are excluded (already in merged markdown packages).")
                 if has_mshelp_merged:
                     readme_lines.append("* Individual MSHelp markdowns are excluded (already in merged packages).")
                 readme_lines.append("* Metadata files (manifests, quality reports, index) are excluded.")
@@ -4782,7 +5082,13 @@ class OfficeConverter:
         for p in self.generated_pdfs:
             _append("converted_pdf", p)
         for p in (merge_outputs or self.generated_merge_outputs or []):
-            _append("merged_pdf", p)
+            p_low = str(p).lower()
+            if p_low.endswith(".md"):
+                _append("merged_markdown", p)
+            else:
+                _append("merged_pdf", p)
+        for p in self.generated_merge_markdown_outputs:
+            _append("merged_markdown", p)
         for p in self.generated_map_outputs:
             if str(p).lower().endswith(".map.csv"):
                 _append("merge_map_csv", p)
@@ -4851,7 +5157,14 @@ class OfficeConverter:
             "merge_records": self.merge_index_records,
             "summary": {
                 "converted_pdf_count": len(self.generated_pdfs),
-                "merged_pdf_count": len(merge_outputs or self.generated_merge_outputs or []),
+                "merged_pdf_count": len(
+                    [
+                        p
+                        for p in (merge_outputs or self.generated_merge_outputs or [])
+                        if not str(p).lower().endswith(".md")
+                    ]
+                ),
+                "merged_markdown_count": len(self.generated_merge_markdown_outputs),
                 "merge_map_count": len(self.generated_map_outputs),
                 "markdown_count": len(self.generated_markdown_outputs),
                 "markdown_quality_report_count": len(
@@ -5983,6 +6296,7 @@ class OfficeConverter:
         batch_results = []
         self.generated_pdfs = []
         self.generated_merge_outputs = []
+        self.generated_merge_markdown_outputs = []
         self.generated_map_outputs = []
         self.generated_markdown_outputs = []
         self.generated_markdown_quality_outputs = []
@@ -6164,11 +6478,27 @@ class OfficeConverter:
                     logging.error(f"failed to generate update package: {e}")
 
             elif self.run_mode == MODE_MERGE_ONLY:
-                print("Current mode is merge_only. Conversion step skipped.")
-
-            if self.run_mode in (MODE_CONVERT_THEN_MERGE, MODE_MERGE_ONLY) and self.config.get("enable_merge", True):
+                print("Current mode is merge_and_convert. Conversion step skipped.")
                 merge_start = time.perf_counter()
-                merge_outputs = self.merge_pdfs() or []
+                merge_outputs = self._run_merge_mode_pipeline(batch_results) or []
+                self._add_perf_seconds(
+                    "merge_seconds", time.perf_counter() - merge_start
+                )
+
+            if (
+                self.run_mode == MODE_CONVERT_THEN_MERGE
+                and self.config.get("enable_merge", True)
+                and bool(self.config.get("output_enable_merged", True))
+            ):
+                merge_start = time.perf_counter()
+                merge_outputs = []
+                if bool(self.config.get("output_enable_pdf", True)):
+                    merge_outputs.extend(self.merge_pdfs() or [])
+                if bool(self.config.get("output_enable_md", True)):
+                    md_outputs = self.merge_markdowns(
+                        candidates=self.generated_markdown_outputs
+                    ) or []
+                    merge_outputs.extend(md_outputs)
                 self._add_perf_seconds("merge_seconds", time.perf_counter() - merge_start)
 
             summary = (
@@ -6262,6 +6592,11 @@ def create_default_config(config_path):
             "ppt_timeout_seconds": 180,
             "ppt_pdf_wait_seconds": 30,
             "enable_merge": True,
+            "output_enable_pdf": True,
+            "output_enable_md": True,
+            "output_enable_merged": True,
+            "output_enable_independent": False,
+            "merge_convert_submode": MERGE_CONVERT_SUBMODE_MERGE_ONLY,
             "enable_corpus_manifest": True,
             "enable_markdown": True,
             "markdown_strip_header_footer": True,
