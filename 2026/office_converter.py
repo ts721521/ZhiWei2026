@@ -4584,8 +4584,9 @@ class OfficeConverter:
         }
 
         # ---- Merge dedup: if merged docs exist, skip individual sources ----
-        has_merged_pdf = any(a.get("kind") == "merged_pdf" for a in artifacts)
-        has_mshelp_merged = any(a.get("kind") == "mshelp_merged_markdown" for a in artifacts)
+        dedup_enabled = self.config.get("upload_dedup_merged", True)
+        has_merged_pdf = dedup_enabled and any(a.get("kind") == "merged_pdf" for a in artifacts)
+        has_mshelp_merged = dedup_enabled and any(a.get("kind") == "mshelp_merged_markdown" for a in artifacts)
 
         # Collect paths of individual MSHelp markdowns (they are in _AI/MSHelp/ but NOT in Merged/)
         _mshelp_source_paths = set()
@@ -4690,12 +4691,14 @@ class OfficeConverter:
             "summary": counts,
         }
 
-        manifest_path = os.path.join(llm_root, "llm_upload_manifest.json")
-        try:
-            with open(manifest_path, "w", encoding="utf-8") as f:
-                json.dump(manifest, f, ensure_ascii=False, indent=2)
-        except Exception as e:
-            logging.error(f"failed to write LLM hub manifest {manifest_path}: {e}")
+        manifest_path = None
+        if self.config.get("enable_upload_json_manifest", True):
+            manifest_path = os.path.join(llm_root, "llm_upload_manifest.json")
+            try:
+                with open(manifest_path, "w", encoding="utf-8") as f:
+                    json.dump(manifest, f, ensure_ascii=False, indent=2)
+            except Exception as e:
+                logging.error(f"failed to write LLM hub manifest {manifest_path}: {e}")
 
         # ---- Generate readable text manifest (清单, gated by config) ----
         if self.config.get("enable_upload_readme", True):
