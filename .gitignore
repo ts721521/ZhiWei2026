@@ -46,6 +46,14 @@ log/
 # Project-local noisy outputs
 2026/logs/
 2026/log/
+2026/.tmp_test_work/
+2026/__pycache__/
+2026/.pytest_cache/
+2026/.mypy_cache/
+2026/.ruff_cache/
+2026/.coverage
+2026/.coverage.*
+2026/config_profiles/*.json
 
 # PyInstaller
 2026/build/

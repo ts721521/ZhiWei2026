@@ -175,6 +175,13 @@ from office_converter import (
     get_app_path,
     create_default_config,
 )
+from task_manager import (
+    TaskStore,
+    build_task_runtime_config,
+    create_checkpoint,
+    mark_checkpoint_file_done,
+    remove_task_registry_if_exists,
+)
 
 LOG_QUEUE = queue.Queue()
 
@@ -418,6 +425,8 @@ class OfficeGUI(tb.Window):
         # 褰撳墠浠诲姟绾跨▼ & 杞崲鍣ㄥ疄渚?
         self.worker_thread = None
         self.current_converter = None
+        self.current_task_id = None
+        self.current_run_context = "manual"
         self.stop_requested = False
         self._tooltips = []
         self._tooltip_widget_ids = set()
@@ -435,6 +444,7 @@ class OfficeGUI(tb.Window):
         self.tooltip_font_family = "System"
         self.tooltip_font_size = self.TOOLTIP_DEFAULTS["tooltip_font_size"]
         self.tooltip_auto_theme = self.TOOLTIP_DEFAULTS["tooltip_auto_theme"]
+        self.task_store = TaskStore(self.script_dir)
 
         # 鎶?stdout/stderr 閲嶅畾鍚戝埌 GUI 鏃ュ織绐楀彛
         # sys.stdout = TkLogHandler()
@@ -738,6 +748,7 @@ class OfficeGUI(tb.Window):
         self.tab_run_mshelp = tb.Frame(self.main_notebook)
         self.tab_run_locator = tb.Frame(self.main_notebook)
         self.tab_run_output = tb.Frame(self.main_notebook)
+        self.tab_run_tasks = tb.Frame(self.main_notebook)
         self.tab_settings = tb.Frame(self.main_notebook)
 
         # 椤跺眰 7 涓姛鑳?tab锛?
@@ -751,6 +762,7 @@ class OfficeGUI(tb.Window):
         self.main_notebook.add(self.tab_run_mshelp, text=self.tr("grp_mshelp_runtime"))
         self.main_notebook.add(self.tab_run_locator, text=self.tr("grp_locator_tools"))
         self.main_notebook.add(self.tab_run_output, text=self.tr("grp_output_files"))
+        self.main_notebook.add(self.tab_run_tasks, text=self.tr("grp_task_runtime"))
         self.main_notebook.add(self.tab_settings, text=self.tr("tab_config_center"))
 
         # 璁板綍鍘熷 tab 椤哄簭锛岀敤浜庨殣钘忓悗鎭㈠
@@ -761,6 +773,7 @@ class OfficeGUI(tb.Window):
             self.tab_run_mshelp,
             self.tab_run_locator,
             self.tab_run_output,
+            self.tab_run_tasks,
             self.tab_settings,
         ]
 
@@ -771,6 +784,7 @@ class OfficeGUI(tb.Window):
         self._scroll_mshelp = self._create_scrollable_page(self.tab_run_mshelp)
         self._scroll_locator = self._create_scrollable_page(self.tab_run_locator)
         self._scroll_output = self._create_scrollable_page(self.tab_run_output)
+        self._scroll_tasks = self._create_scrollable_page(self.tab_run_tasks)
         self._scroll_settings = self._create_scrollable_page(self.tab_settings)
 
         # 涓?_build_config_tab_content 璁剧疆鍒悕锛氶厤缃唴瀹圭洿鎺ヨ拷鍔犲埌瀵瑰簲鍔熻兘 tab
@@ -1558,6 +1572,7 @@ class OfficeGUI(tb.Window):
         self._auto_attach_action_tooltips(lf_ai_export)
         self._auto_attach_action_tooltips(lf_incremental)
         self._auto_attach_action_tooltips(lf_locator)
+        self._build_task_tab_content()
         self._attach_tooltip(self.entry_temp_sandbox_root, "tip_input_sandbox_root")
         self._attach_tooltip(self.cb_strat, "tip_input_strategy")
         self._attach_tooltip(self.ent_date, "tip_input_date")
@@ -1565,6 +1580,489 @@ class OfficeGUI(tb.Window):
         self._bind_var_validation(self.var_locator_short_id, lambda: self._normalize_then_validate(self.var_locator_short_id, self._normalize_short_id_var, "locator"))
         self._bind_var_validation(self.var_date_str, lambda: self._normalize_then_validate(self.var_date_str, self._normalize_date_var, "run"))
         self._bind_var_validation(self.var_enable_date_filter, lambda: self.validate_runtime_inputs(silent=False, scope="run"))
+
+    def _build_task_tab_content(self):
+        parent = self._scroll_tasks
+        lf_tasks = tb.Labelframe(parent, text=self.tr("grp_task_runtime"), padding=8)
+        lf_tasks.pack(fill=BOTH, expand=YES, pady=3)
+
+        self.lst_tasks = tk.Listbox(
+            lf_tasks, height=12, selectmode=SINGLE, font=("Consolas", 9)
+        )
+        self.lst_tasks.pack(fill=BOTH, expand=YES, side=LEFT)
+        scr = tb.Scrollbar(lf_tasks, orient="vertical", command=self.lst_tasks.yview)
+        scr.pack(side=LEFT, fill=Y)
+        self.lst_tasks.configure(yscrollcommand=scr.set)
+        self.lst_tasks.bind("<<ListboxSelect>>", lambda _e: self._on_task_select())
+
+        btn_col = tb.Frame(lf_tasks)
+        btn_col.pack(side=LEFT, fill=Y, padx=(8, 0))
+
+        self.btn_task_create = tb.Button(
+            btn_col,
+            text=self.tr("btn_task_create"),
+            command=self._on_click_task_create,
+            bootstyle="success-outline",
+            width=12,
+        )
+        self.btn_task_create.pack(pady=2, fill=X)
+
+        self.btn_task_edit = tb.Button(
+            btn_col,
+            text=self.tr("btn_task_edit"),
+            command=self._on_click_task_edit,
+            bootstyle="secondary-outline",
+            width=12,
+        )
+        self.btn_task_edit.pack(pady=2, fill=X)
+
+        self.btn_task_delete = tb.Button(
+            btn_col,
+            text=self.tr("btn_task_delete"),
+            command=self._on_click_task_delete,
+            bootstyle="danger-outline",
+            width=12,
+        )
+        self.btn_task_delete.pack(pady=2, fill=X)
+
+        self.btn_task_refresh = tb.Button(
+            btn_col,
+            text=self.tr("btn_task_refresh"),
+            command=self._refresh_task_list_ui,
+            bootstyle="info-outline",
+            width=12,
+        )
+        self.btn_task_refresh.pack(pady=(2, 8), fill=X)
+
+        self.btn_task_run = tb.Button(
+            btn_col,
+            text=self.tr("btn_task_run"),
+            command=lambda: self._on_click_task_run(resume=False),
+            bootstyle="success",
+            width=12,
+        )
+        self.btn_task_run.pack(pady=2, fill=X)
+
+        self.btn_task_resume = tb.Button(
+            btn_col,
+            text=self.tr("btn_task_resume"),
+            command=lambda: self._on_click_task_run(resume=True),
+            bootstyle="warning-outline",
+            width=12,
+        )
+        self.btn_task_resume.pack(pady=2, fill=X)
+
+        self.btn_task_stop = tb.Button(
+            btn_col,
+            text=self.tr("btn_task_stop"),
+            command=self._on_click_stop,
+            bootstyle="danger-outline",
+            width=12,
+            state="disabled",
+        )
+        self.btn_task_stop.pack(pady=(2, 8), fill=X)
+
+        self.var_task_force_full_rebuild = tk.IntVar(value=0)
+        self.chk_task_force_full_rebuild = tb.Checkbutton(
+            btn_col,
+            text=self.tr("chk_task_force_full_rebuild"),
+            variable=self.var_task_force_full_rebuild,
+            bootstyle="round-toggle",
+        )
+        self.chk_task_force_full_rebuild.pack(anchor="w", pady=(4, 2))
+
+        self.var_task_detail = tk.StringVar(value=self.tr("msg_task_none_selected"))
+        tb.Label(
+            parent,
+            textvariable=self.var_task_detail,
+            bootstyle="secondary",
+            justify=LEFT,
+            wraplength=900,
+        ).pack(fill=X, pady=(6, 0))
+
+        self._task_row_ids = []
+        self._refresh_task_list_ui()
+
+    def _get_selected_task_id(self):
+        if not hasattr(self, "lst_tasks"):
+            return None
+        sel = self.lst_tasks.curselection()
+        if not sel:
+            return None
+        idx = int(sel[0])
+        if idx < 0 or idx >= len(self._task_row_ids):
+            return None
+        return self._task_row_ids[idx]
+
+    def _refresh_task_list_ui(self):
+        if not hasattr(self, "lst_tasks"):
+            return
+        selected_id = self._get_selected_task_id()
+        self.lst_tasks.delete(0, END)
+        self._task_row_ids = []
+        tasks = self.task_store.list_tasks()
+        for task in tasks:
+            task_id = str(task.get("id", ""))
+            name = str(task.get("name", ""))
+            status = str(task.get("status", "idle"))
+            mode = "INC" if bool(task.get("run_incremental", True)) else "FULL"
+            has_cp = " (resume)" if bool(task.get("has_checkpoint")) else ""
+            row = f"[{status}] {name} [{mode}]{has_cp}"
+            self.lst_tasks.insert(END, row)
+            self._task_row_ids.append(task_id)
+
+        if selected_id and selected_id in self._task_row_ids:
+            idx = self._task_row_ids.index(selected_id)
+            self.lst_tasks.selection_set(idx)
+            self.lst_tasks.activate(idx)
+        self._on_task_select()
+
+    def _on_task_select(self):
+        task_id = self._get_selected_task_id()
+        task = self.task_store.get_task(task_id) if task_id else None
+        if not task:
+            if hasattr(self, "var_task_detail"):
+                self.var_task_detail.set(self.tr("msg_task_none_selected"))
+            if hasattr(self, "btn_task_resume"):
+                self.btn_task_resume.configure(state="disabled")
+            return
+
+        cp = self.task_store.load_checkpoint(task_id)
+        planned = len((cp or {}).get("planned_files", []) or [])
+        done = len((cp or {}).get("completed_files", []) or [])
+        run_mode = ""
+        try:
+            runtime_preview = build_task_runtime_config(
+                self._load_config_for_write(), task, force_full_rebuild=False
+            )
+            run_mode = str(runtime_preview.get("run_mode", ""))
+        except Exception:
+            run_mode = str(task.get("config_overrides", {}).get("run_mode", ""))
+        text = self.tr("msg_task_detail").format(
+            task.get("name", ""),
+            task.get("source_folder", ""),
+            task.get("target_folder", ""),
+            run_mode or "-",
+            "ON" if task.get("run_incremental", True) else "OFF",
+            task.get("status", "idle"),
+            done,
+            planned,
+        )
+        self.var_task_detail.set(text)
+        can_resume = bool(cp and done < planned)
+        self.btn_task_resume.configure(state="normal" if can_resume else "disabled")
+
+    def _normalize_task_cfg_for_compare(self, cfg):
+        normalized = dict(cfg if isinstance(cfg, dict) else {})
+        if "output_enable_md" not in normalized:
+            normalized["output_enable_md"] = bool(
+                normalized.get("enable_markdown", True)
+            )
+        normalized["enable_markdown"] = bool(normalized.get("output_enable_md", True))
+        if normalized.get("run_mode") == MODE_CONVERT_THEN_MERGE:
+            normalized["merge_source"] = "target"
+        return normalized
+
+    def _build_task_overrides_from_ui(self, project_cfg=None, only_diff=True):
+        mode = self.var_run_mode.get()
+        merge_source = (
+            "target" if mode == MODE_CONVERT_THEN_MERGE else self.var_merge_source.get()
+        )
+        current = {
+            "run_mode": mode,
+            "collect_mode": self.var_collect_mode.get(),
+            "content_strategy": self.var_strategy.get(),
+            "default_engine": self.var_engine.get(),
+            "kill_process_mode": self.var_kill_mode.get(),
+            "enable_merge": bool(self.var_enable_merge.get()),
+            "output_enable_pdf": bool(self.var_output_enable_pdf.get()),
+            "output_enable_md": bool(self.var_output_enable_md.get()),
+            "output_enable_merged": bool(self.var_output_enable_merged.get()),
+            "output_enable_independent": bool(self.var_output_enable_independent.get()),
+            "merge_convert_submode": self.var_merge_convert_submode.get(),
+            "merge_mode": self.var_merge_mode.get(),
+            "merge_source": merge_source,
+            "enable_merge_index": bool(self.var_enable_merge_index.get()),
+            "enable_merge_excel": bool(self.var_enable_merge_excel.get()),
+            "enable_sandbox": bool(self.var_enable_sandbox.get()),
+            "sandbox_min_free_gb": self._safe_positive_int(
+                self.var_sandbox_min_free_gb.get(), 10
+            ),
+            "sandbox_low_space_policy": self.var_sandbox_low_space_policy.get()
+            or "block",
+            "enable_markdown_quality_report": bool(
+                self.var_enable_markdown_quality_report.get()
+            ),
+            "enable_excel_json": bool(self.var_enable_excel_json.get()),
+            "enable_chromadb_export": bool(self.var_enable_chromadb_export.get()),
+            "incremental_verify_hash": bool(self.var_incremental_verify_hash.get()),
+            "incremental_reprocess_renamed": bool(
+                self.var_incremental_reprocess_renamed.get()
+            ),
+            "source_priority_skip_same_name_pdf": bool(
+                self.var_source_priority_skip_same_name_pdf.get()
+            ),
+            "global_md5_dedup": bool(self.var_global_md5_dedup.get()),
+            "enable_update_package": bool(self.var_enable_update_package.get()),
+        }
+        current = self._normalize_task_cfg_for_compare(current)
+        if not only_diff:
+            return current
+
+        base = self._normalize_task_cfg_for_compare(
+            project_cfg if isinstance(project_cfg, dict) else self._load_config_for_write()
+        )
+        overrides = {}
+        for key, value in current.items():
+            if base.get(key) != value:
+                overrides[key] = value
+        return overrides
+
+    def _new_task_id(self):
+        return datetime.now().strftime("task_%Y%m%d_%H%M%S_%f")
+
+    def _on_click_task_create(self):
+        name = simpledialog.askstring(
+            self.tr("win_task_create"),
+            self.tr("msg_task_input_name"),
+            parent=self,
+        )
+        if not name:
+            return
+        name = name.strip()
+        if not name:
+            messagebox.showinfo(self.tr("win_task_create"), self.tr("msg_task_input_name"))
+            return
+        source = filedialog.askdirectory(title=self.tr("msg_task_pick_source"))
+        if not source:
+            return
+        target = filedialog.askdirectory(title=self.tr("msg_task_pick_target"))
+        if not target:
+            return
+        run_incremental = messagebox.askyesno(
+            self.tr("win_task_create"),
+            self.tr("msg_task_incremental_prompt"),
+            parent=self,
+        )
+        project_cfg = self._load_config_for_write()
+        task = {
+            "id": self._new_task_id(),
+            "name": name,
+            "source_folder": source,
+            "target_folder": target,
+            "run_incremental": bool(run_incremental),
+            "config_overrides": self._build_task_overrides_from_ui(
+                project_cfg=project_cfg, only_diff=True
+            ),
+            "status": "idle",
+        }
+        try:
+            self.task_store.save_task(task)
+        except Exception as e:
+            messagebox.showerror(self.tr("win_task_create"), str(e))
+            return
+        self._refresh_task_list_ui()
+
+    def _on_click_task_edit(self):
+        task_id = self._get_selected_task_id()
+        if not task_id:
+            messagebox.showinfo(
+                self.tr("grp_task_runtime"), self.tr("msg_task_select_required")
+            )
+            return
+        task = self.task_store.get_task(task_id)
+        if not task:
+            return
+        name = simpledialog.askstring(
+            self.tr("win_task_edit"),
+            self.tr("msg_task_input_name"),
+            initialvalue=task.get("name", ""),
+            parent=self,
+        )
+        if not name:
+            return
+        name = name.strip()
+        if not name:
+            messagebox.showinfo(self.tr("win_task_edit"), self.tr("msg_task_input_name"))
+            return
+        source = task.get("source_folder", "")
+        target = task.get("target_folder", "")
+        if messagebox.askyesno(
+            self.tr("win_task_edit"),
+            self.tr("msg_task_change_source"),
+            parent=self,
+        ):
+            picked = filedialog.askdirectory(title=self.tr("msg_task_pick_source"))
+            if picked:
+                source = picked
+        if messagebox.askyesno(
+            self.tr("win_task_edit"),
+            self.tr("msg_task_change_target"),
+            parent=self,
+        ):
+            picked = filedialog.askdirectory(title=self.tr("msg_task_pick_target"))
+            if picked:
+                target = picked
+        run_incremental = messagebox.askyesno(
+            self.tr("win_task_edit"),
+            self.tr("msg_task_incremental_prompt"),
+            parent=self,
+        )
+        project_cfg = self._load_config_for_write()
+        task["name"] = name
+        task["source_folder"] = source
+        task["target_folder"] = target
+        task["run_incremental"] = bool(run_incremental)
+        task["config_overrides"] = self._build_task_overrides_from_ui(
+            project_cfg=project_cfg, only_diff=True
+        )
+        try:
+            self.task_store.save_task(task)
+        except Exception as e:
+            messagebox.showerror(self.tr("win_task_edit"), str(e))
+            return
+        self._refresh_task_list_ui()
+
+    def _on_click_task_delete(self):
+        task_id = self._get_selected_task_id()
+        if not task_id:
+            messagebox.showinfo(
+                self.tr("grp_task_runtime"), self.tr("msg_task_select_required")
+            )
+            return
+        task = self.task_store.get_task(task_id) or {}
+        if not messagebox.askyesno(
+            self.tr("btn_task_delete"),
+            self.tr("msg_task_delete_confirm").format(task.get("name", task_id)),
+            parent=self,
+        ):
+            return
+        self.task_store.delete_task(task_id)
+        self._refresh_task_list_ui()
+
+    def _apply_runtime_cfg_to_converter(self, converter, runtime_cfg):
+        converter.config = dict(runtime_cfg)
+        converter._apply_config_defaults()
+        converter._init_paths_from_config()
+        converter.run_mode = converter.config.get("run_mode", converter.run_mode)
+        converter.collect_mode = converter.config.get("collect_mode", converter.collect_mode)
+        converter.content_strategy = converter.config.get(
+            "content_strategy", converter.content_strategy
+        )
+        converter.merge_mode = converter.config.get("merge_mode", converter.merge_mode)
+        converter.enable_merge_index = bool(
+            converter.config.get("enable_merge_index", converter.enable_merge_index)
+        )
+        converter.enable_merge_excel = bool(
+            converter.config.get("enable_merge_excel", converter.enable_merge_excel)
+        )
+        converter.engine_type = converter.config.get("default_engine", self.var_engine.get())
+
+    def _on_click_task_run(self, resume=False):
+        if self.worker_thread and self.worker_thread.is_alive():
+            messagebox.showinfo(self.tr("btn_start"), self.tr("msg_task_already_running"))
+            return
+        task_id = self._get_selected_task_id()
+        if not task_id:
+            messagebox.showinfo(
+                self.tr("grp_task_runtime"), self.tr("msg_task_select_required")
+            )
+            return
+        task = self.task_store.get_task(task_id)
+        if not task:
+            return
+
+        checkpoint = self.task_store.load_checkpoint(task_id)
+        resume_list = None
+        if resume:
+            if not checkpoint:
+                messagebox.showinfo(
+                    self.tr("btn_task_resume"), self.tr("msg_task_resume_not_ready")
+                )
+                return
+            planned = checkpoint.get("planned_files", []) or []
+            completed = set(checkpoint.get("completed_files", []) or [])
+            resume_list = [p for p in planned if p not in completed]
+            if not resume_list:
+                self.task_store.clear_checkpoint(task_id)
+                self.task_store.update_task_runtime(task_id, status="idle")
+                self._refresh_task_list_ui()
+                messagebox.showinfo(
+                    self.tr("btn_task_resume"), self.tr("msg_task_resume_empty")
+                )
+                return
+
+        project_cfg = self._load_config_for_write()
+        force_full_rebuild = bool(self.var_task_force_full_rebuild.get()) and not resume
+        runtime_cfg = build_task_runtime_config(
+            project_cfg, task, force_full_rebuild=force_full_rebuild
+        )
+        if force_full_rebuild:
+            remove_task_registry_if_exists(task_id, runtime_cfg.get("target_folder", ""))
+            self.task_store.clear_checkpoint(task_id)
+
+        self.stop_requested = False
+        self.current_task_id = task_id
+        self.current_run_context = "task"
+        self.task_store.update_task_runtime(task_id, status="running", last_error="")
+
+        def worker():
+            try:
+                converter = GUIOfficeConverter(self.config_path)
+                converter.progress_callback = self.on_progress_update
+                self._apply_runtime_cfg_to_converter(converter, runtime_cfg)
+
+                def on_plan(files):
+                    if resume:
+                        return
+                    cp = create_checkpoint(task_id, files)
+                    self.task_store.save_checkpoint(task_id, cp)
+
+                def on_done(record):
+                    cp = self.task_store.load_checkpoint(task_id)
+                    if not cp:
+                        seed = resume_list if resume else []
+                        cp = create_checkpoint(task_id, seed)
+                    cp = mark_checkpoint_file_done(cp, record.get("source_path", ""))
+                    self.task_store.save_checkpoint(task_id, cp)
+
+                converter.file_plan_callback = on_plan
+                converter.file_done_callback = on_done
+                self.current_converter = converter
+                converter.run(resume_file_list=resume_list)
+
+                now = datetime.now().isoformat(timespec="seconds")
+                if self.stop_requested:
+                    self.task_store.update_task_runtime(task_id, status="paused")
+                else:
+                    self.task_store.clear_checkpoint(task_id)
+                    self.task_store.update_task_runtime(
+                        task_id, status="idle", last_run_at=now, last_error=""
+                    )
+            except Exception as e:
+                self.task_store.update_task_runtime(
+                    task_id,
+                    status="paused" if self.stop_requested else "error",
+                    last_error=str(e),
+                )
+                self.after(
+                    0,
+                    lambda err=str(e): messagebox.showerror(
+                        self.tr("msg_runtime_error_title"),
+                        self.tr("msg_runtime_error_body").format(err),
+                    ),
+                )
+            finally:
+                self.current_converter = None
+                self.current_task_id = None
+                self.current_run_context = "manual"
+                self.stop_requested = False
+                self.after(0, lambda: self._set_running_ui_state(False))
+                self.after(0, self._refresh_task_list_ui)
+
+        self.worker_thread = threading.Thread(target=worker, daemon=True)
+        self.worker_thread.start()
+        self._set_running_ui_state(True)
 
     def _build_config_tab_content(self, parent):
         self.lbl_cfg_defaults_hint = tb.Label(
@@ -2165,6 +2663,8 @@ class OfficeGUI(tb.Window):
         is_convert = mode in (MODE_CONVERT_ONLY, MODE_CONVERT_THEN_MERGE)
         is_merge_related = mode in (MODE_CONVERT_THEN_MERGE, MODE_MERGE_ONLY)
         is_rules_related = is_convert or is_collect
+        if mode == MODE_CONVERT_THEN_MERGE:
+            self.var_merge_source.set("target")
 
         # Enable only tabs relevant to the current mode锛堝悎骞?姊崇悊銆丮SHelp/瀹氫綅 涓鸿仛鍚?tab锛?
         self._set_run_tab_state(self.tab_run_shared, "normal")
@@ -2180,6 +2680,8 @@ class OfficeGUI(tb.Window):
         self._set_run_tab_state(self.tab_run_locator, "normal")
         # 鎴愭灉鏂囦欢锛氬缁堝彲鐢?
         self._set_run_tab_state(self.tab_run_output, "normal")
+        # 任务管理页始终可见
+        self._set_run_tab_state(self.tab_run_tasks, "normal")
 
         # Collect options
         if is_collect:
@@ -4709,7 +5211,9 @@ class OfficeGUI(tb.Window):
         self.var_enable_corpus_manifest.set(
             1 if cfg.get("enable_corpus_manifest", True) else 0
         )
-        self.var_enable_markdown.set(1 if cfg.get("enable_markdown", True) else 0)
+        self.var_enable_markdown.set(
+            1 if cfg.get("output_enable_md", cfg.get("enable_markdown", True)) else 0
+        )
         self.var_markdown_strip_header_footer.set(
             1 if cfg.get("markdown_strip_header_footer", True) else 0
         )
@@ -4878,7 +5382,7 @@ class OfficeGUI(tb.Window):
 
         if "ai" in sections:
             cfg["enable_corpus_manifest"] = bool(self.var_enable_corpus_manifest.get())
-            cfg["enable_markdown"] = bool(self.var_output_enable_md.get())
+            cfg.pop("enable_markdown", None)
             cfg["markdown_strip_header_footer"] = bool(
                 self.var_markdown_strip_header_footer.get()
             )
@@ -4927,7 +5431,11 @@ class OfficeGUI(tb.Window):
             )
             cfg["merge_convert_submode"] = self.var_merge_convert_submode.get()
             cfg["merge_mode"] = self.var_merge_mode.get()
-            cfg["merge_source"] = self.var_merge_source.get()
+            cfg["merge_source"] = (
+                "target"
+                if self.var_run_mode.get() == MODE_CONVERT_THEN_MERGE
+                else self.var_merge_source.get()
+            )
             cfg["enable_merge_index"] = bool(self.var_enable_merge_index.get())
             cfg["enable_merge_excel"] = bool(self.var_enable_merge_excel.get())
             cfg["max_merge_size_mb"] = self._safe_positive_int(
@@ -5085,7 +5593,7 @@ class OfficeGUI(tb.Window):
         )
         cfg["merge_convert_submode"] = self.var_merge_convert_submode.get()
         cfg["enable_corpus_manifest"] = bool(self.var_enable_corpus_manifest.get())
-        cfg["enable_markdown"] = bool(self.var_output_enable_md.get())
+        cfg.pop("enable_markdown", None)
         cfg["markdown_strip_header_footer"] = bool(
             self.var_markdown_strip_header_footer.get()
         )
@@ -5151,7 +5659,11 @@ class OfficeGUI(tb.Window):
             )
             cfg["merge_convert_submode"] = self.var_merge_convert_submode.get()
             cfg["merge_mode"] = self.var_merge_mode.get()
-            cfg["merge_source"] = self.var_merge_source.get()
+            cfg["merge_source"] = (
+                "target"
+                if mode == MODE_CONVERT_THEN_MERGE
+                else self.var_merge_source.get()
+            )
             cfg["enable_merge_index"] = bool(self.var_enable_merge_index.get())
             cfg["enable_merge_excel"] = bool(self.var_enable_merge_excel.get())
 
@@ -5291,10 +5803,23 @@ class OfficeGUI(tb.Window):
         if running:
             if hasattr(self, "btn_start"): self.btn_start.configure(state="disabled")
             if hasattr(self, "btn_stop"): self.btn_stop.configure(state="normal")
+            if hasattr(self, "btn_task_stop"): self.btn_task_stop.configure(state="normal")
             if hasattr(self, "btn_save_cfg"): self.btn_save_cfg.configure(state="disabled")
             if hasattr(self, "btn_load_cfg"): self.btn_load_cfg.configure(state="disabled")
             if hasattr(self, "btn_manage_profiles"): self.btn_manage_profiles.configure(state="disabled")
             if hasattr(self, "btn_manage_profiles"): self.btn_manage_profiles.configure(state="disabled")
+            for btn_name in (
+                "btn_task_create",
+                "btn_task_edit",
+                "btn_task_delete",
+                "btn_task_run",
+                "btn_task_resume",
+                "btn_task_refresh",
+            ):
+                if hasattr(self, btn_name):
+                    getattr(self, btn_name).configure(state="disabled")
+            if hasattr(self, "chk_task_force_full_rebuild"):
+                self.chk_task_force_full_rebuild.configure(state="disabled")
             for btn_name in (
                 "btn_save_cfg_shared",
                 "btn_save_cfg_convert",
@@ -5318,9 +5843,21 @@ class OfficeGUI(tb.Window):
         else:
             if hasattr(self, "btn_start"): self.btn_start.configure(state="normal")
             if hasattr(self, "btn_stop"): self.btn_stop.configure(state="disabled")
+            if hasattr(self, "btn_task_stop"): self.btn_task_stop.configure(state="disabled")
             if hasattr(self, "btn_save_cfg"): self.btn_save_cfg.configure(state="normal")
             if hasattr(self, "btn_load_cfg"): self.btn_load_cfg.configure(state="normal")
             if hasattr(self, "btn_manage_profiles"): self.btn_manage_profiles.configure(state="normal")
+            for btn_name in (
+                "btn_task_create",
+                "btn_task_edit",
+                "btn_task_delete",
+                "btn_task_run",
+                "btn_task_refresh",
+            ):
+                if hasattr(self, btn_name):
+                    getattr(self, btn_name).configure(state="normal")
+            if hasattr(self, "chk_task_force_full_rebuild"):
+                self.chk_task_force_full_rebuild.configure(state="normal")
             for btn_name in (
                 "btn_save_cfg_shared",
                 "btn_save_cfg_convert",
@@ -5338,6 +5875,8 @@ class OfficeGUI(tb.Window):
                 if hasattr(self, btn_name):
                     getattr(self, btn_name).configure(state="normal")
             self._update_config_dirty_summary(getattr(self, "_last_section_dirty", {}))
+            if hasattr(self, "_on_task_select"):
+                self._on_task_select()
             self.progress.stop()
             self.progress["value"] = 100
             self.var_status.set(self.tr("status_ready") if hasattr(self, "tr") else "Ready")
@@ -5525,6 +6064,8 @@ class OfficeGUI(tb.Window):
             return
 
         self.stop_requested = False
+        self.current_task_id = None
+        self.current_run_context = "manual"
         self.txt_log.insert("end", f"\n========== {self.tr('log_start')} ==========\n")
         self.txt_log.see("end")
 
@@ -5588,24 +6129,13 @@ class OfficeGUI(tb.Window):
                         and self.var_enable_merge.get()
                         and self.var_output_enable_merged.get()
                     ):
-                        m_src = self.var_merge_source.get()
-                        if m_src == "target":
-                            steps.append(
-                                {
-                                    "source": clean_sources[0],
-                                    "mode": MODE_MERGE_ONLY,
-                                    "desc": "Merge (target-based)",
-                                }
-                            )
-                        else:
-                            for src in clean_sources:
-                                steps.append(
-                                    {
-                                        "source": src,
-                                        "mode": MODE_MERGE_ONLY,
-                                        "desc": f"Merge (source-based: {src})",
-                                    }
-                                )
+                        steps.append(
+                            {
+                                "source": clean_sources[0],
+                                "mode": MODE_MERGE_ONLY,
+                                "desc": "Merge (target-based)",
+                            }
+                        )
 
                 total_steps = len(steps)
                 print(f"[GUI] total steps: {total_steps}")
@@ -5650,11 +6180,15 @@ class OfficeGUI(tb.Window):
                     )
                     cfg["merge_convert_submode"] = self.var_merge_convert_submode.get()
                     cfg["merge_mode"] = self.var_merge_mode.get()
-                    cfg["merge_source"] = self.var_merge_source.get()
+                    cfg["merge_source"] = (
+                        "target"
+                        if base_mode == MODE_CONVERT_THEN_MERGE
+                        else self.var_merge_source.get()
+                    )
                     cfg["enable_merge_index"] = bool(self.var_enable_merge_index.get())
                     cfg["enable_merge_excel"] = bool(self.var_enable_merge_excel.get())
                     cfg["enable_corpus_manifest"] = bool(self.var_enable_corpus_manifest.get())
-                    cfg["enable_markdown"] = bool(self.var_output_enable_md.get())
+                    cfg.pop("enable_markdown", None)
                     cfg["markdown_strip_header_footer"] = bool(self.var_markdown_strip_header_footer.get())
                     cfg["markdown_structured_headings"] = bool(self.var_markdown_structured_headings.get())
                     cfg["enable_markdown_quality_report"] = bool(self.var_enable_markdown_quality_report.get())
@@ -5761,5 +6295,3 @@ if __name__ == "__main__":
         app.mainloop()
     except Exception:
         traceback.print_exc()
-
-

@@ -11,6 +11,10 @@
     "ppt_timeout_seconds": 180,
     "ppt_pdf_wait_seconds": 30,
     "enable_merge": true,
+    "output_enable_pdf": true,
+    "output_enable_md": true,
+    "output_enable_merged": true,
+    "output_enable_independent": false,
     "max_merge_size_mb": 80,
     "price_keywords": [
         "报价",
@@ -81,11 +85,10 @@
     "source_folders": [
         "E:\\21_SE_Doc\\BaiduNetdiskWorkspace\\SynologyDrive\\5_投标\\2026"
     ],
-    "merge_source": "source",
+    "merge_source": "target",
     "enable_merge_index": true,
     "enable_merge_excel": true,
     "enable_corpus_manifest": true,
-    "enable_markdown": true,
     "markdown_strip_header_footer": true,
     "markdown_structured_headings": true,
     "enable_markdown_quality_report": true,
