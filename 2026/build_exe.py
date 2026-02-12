@@ -1,6 +1,6 @@
 # -*- coding: utf-8 -*-
 """
-一键打包：将 office_gui 打成 exe（单目录模式）。
+一键打包：将 office_gui 打成 exe（单文件模式）。
 使用前安装: pip install pyinstaller
 在本目录执行: python build_exe.py
 """
@@ -46,10 +46,16 @@ def main():
     if not ensure_pyinstaller_installed():
         return 1
 
+    dist_root = os.path.join(root, "dist")
+    legacy_onedir_dir = os.path.join(dist_root, APP_NAME)
+    if os.path.isdir(legacy_onedir_dir):
+        shutil.rmtree(legacy_onedir_dir, ignore_errors=True)
+        print("已清理旧版 onedir 目录: dist\\" + APP_NAME + "\\")
+
     cmd = [
         sys.executable, "-m", "PyInstaller",
         "--name", APP_NAME,
-        "--onedir",
+        "--onefile",
         "--windowed",
         "--noconfirm",
         "--clean",
@@ -70,18 +76,19 @@ def main():
     if r != 0:
         return r
 
-    dist_dir = os.path.join(root, "dist", APP_NAME)
+    dist_dir = dist_root
+    exe_path = os.path.join(dist_dir, APP_NAME + ".exe")
     config_src = os.path.join(root, "config.json")
     config_dst = os.path.join(dist_dir, "config.json")
-    if os.path.isfile(config_src) and os.path.isdir(dist_dir):
+    if os.path.isfile(config_src) and os.path.isfile(exe_path):
         shutil.copy2(config_src, config_dst)
-        print("已复制 config.json 到 exe 同目录。")
+        print("已复制 config.json 到 dist（与 exe 同目录）。")
 
     print("")
     print("打包完成。")
-    print("  可执行文件: dist\\" + APP_NAME + "\\" + APP_NAME + ".exe")
+    print("  可执行文件: dist\\" + APP_NAME + ".exe")
     print("  重要: 请从 dist 目录运行 exe，不要从 build 目录运行（build 为临时目录，会报错）。")
-    print("  分发时请压缩整个 dist\\" + APP_NAME + " 文件夹。")
+    print("  分发时至少发送该 exe；如需预置配置，请同时发送同目录 config.json。")
     return 0
 
 

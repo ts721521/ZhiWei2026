@@ -335,6 +335,8 @@ class OfficeConverter:
         self.enable_merge_excel = False
 
         self.progress_callback = None  # GUI callback hook: func(current, total)
+        self.file_plan_callback = None  # Hook: func(file_list)
+        self.file_done_callback = None  # Hook: func(result_record)
         self.generated_pdfs = []
         self.generated_merge_outputs = []
         self.generated_merge_markdown_outputs = []
@@ -667,7 +669,8 @@ class OfficeConverter:
     def _apply_config_defaults(self):
         cfg = self.config
         cfg.setdefault("enable_corpus_manifest", True)
-        cfg.setdefault("enable_markdown", True)
+        if "output_enable_md" not in cfg and "enable_markdown" in cfg:
+            cfg["output_enable_md"] = bool(cfg.get("enable_markdown", True))
         cfg.setdefault("markdown_strip_header_footer", True)
         cfg.setdefault("markdown_structured_headings", True)
         cfg.setdefault("enable_markdown_quality_report", True)
@@ -704,6 +707,8 @@ class OfficeConverter:
         cfg.setdefault("output_enable_md", True)
         cfg.setdefault("output_enable_merged", True)
         cfg.setdefault("output_enable_independent", False)
+        # Keep legacy key aligned to avoid split-brain behavior across versions.
+        cfg["enable_markdown"] = bool(cfg.get("output_enable_md", True))
         cfg.setdefault(
             "merge_convert_submode", MERGE_CONVERT_SUBMODE_MERGE_ONLY
         )
@@ -716,6 +721,7 @@ class OfficeConverter:
         cfg.setdefault("llm_delivery_include_pdf", False)
         cfg.setdefault("overwrite_same_size", True)
         cfg.setdefault("merge_mode", MERGE_MODE_CATEGORY)
+        cfg.setdefault("merge_source", "source")
         cfg.setdefault("enable_merge_index", False)
         cfg.setdefault("enable_merge_excel", False)
         cfg.setdefault("enable_merge_map", True)
@@ -771,6 +777,10 @@ class OfficeConverter:
         self.content_strategy = cfg.get("content_strategy", self.content_strategy)
         self.enable_merge_index = bool(cfg.get("enable_merge_index", self.enable_merge_index))
         self.enable_merge_excel = bool(cfg.get("enable_merge_excel", self.enable_merge_excel))
+
+        # In convert-then-merge workflow, merge should always consume target outputs.
+        if self.run_mode == MODE_CONVERT_THEN_MERGE:
+            cfg["merge_source"] = "target"
 
     def _should_reuse_office_app(self):
         if not HAS_WIN32 or is_mac():
@@ -2413,6 +2423,26 @@ class OfficeConverter:
         bar = "#" * filled + "-" * (bar_len - filled)
         return f"[{int(percent * 100):>3}%]{bar} [{str(current).rjust(width)}/{total}]"
 
+    def _emit_file_plan(self, file_list):
+        cb = getattr(self, "file_plan_callback", None)
+        if not callable(cb):
+            return
+        try:
+            cb(list(file_list or []))
+        except Exception as e:
+            logging.warning(f"file_plan_callback failed: {e}")
+
+    def _emit_file_done(self, record):
+        cb = getattr(self, "file_done_callback", None)
+        if not callable(cb):
+            return
+        if not isinstance(record, dict):
+            return
+        try:
+            cb(dict(record))
+        except Exception as e:
+            logging.warning(f"file_done_callback failed: {e}")
+
     def run_batch(self, file_list, is_retry=False, source_alias_map=None):
         total = len(file_list)
         results = []
@@ -2448,15 +2478,15 @@ class OfficeConverter:
                         f"\r{progress_prefix} {status}: {fname} (耗时: {elapsed:.2f}s)    "
                     )
                     logging.info(f"{status}: {logical_source}")
-                    results.append(
-                        {
-                            "source_path": os.path.abspath(logical_source),
-                            "status": "skipped",
-                            "detail": status,
-                            "final_path": final_path,
-                            "elapsed": elapsed,
-                        }
-                    )
+                    record = {
+                        "source_path": os.path.abspath(logical_source),
+                        "status": "skipped",
+                        "detail": status,
+                        "final_path": final_path,
+                        "elapsed": elapsed,
+                    }
+                    results.append(record)
+                    self._emit_file_done(record)
                 else:
                     self.stats["success"] += 1
                     print(
@@ -2469,15 +2499,15 @@ class OfficeConverter:
                         self._append_conversion_index_record(
                             logical_source, final_path, status
                         )
-                    results.append(
-                        {
-                            "source_path": os.path.abspath(logical_source),
-                            "status": result_status,
-                            "detail": status,
-                            "final_path": final_path,
-                            "elapsed": elapsed,
-                        }
-                    )
+                    record = {
+                        "source_path": os.path.abspath(logical_source),
+                        "status": result_status,
+                        "detail": status,
+                        "final_path": final_path,
+                        "elapsed": elapsed,
+                    }
+                    results.append(record)
+                    self._emit_file_done(record)
 
             except Exception as e:
                 elapsed = time.time() - start
@@ -2486,31 +2516,31 @@ class OfficeConverter:
                     print(
                         f"\r{progress_prefix} 超时: {fname} (耗时: {elapsed:.2f}s)    "
                     )
-                    results.append(
-                        {
-                            "source_path": os.path.abspath(logical_source),
-                            "status": "timeout",
-                            "detail": err_msg,
-                            "final_path": "",
-                            "elapsed": elapsed,
-                            "error": err_msg,
-                        }
-                    )
+                    record = {
+                        "source_path": os.path.abspath(logical_source),
+                        "status": "timeout",
+                        "detail": err_msg,
+                        "final_path": "",
+                        "elapsed": elapsed,
+                        "error": err_msg,
+                    }
+                    results.append(record)
+                    self._emit_file_done(record)
                 else:
                     self.stats["failed"] += 1
                     print(
                         f"\r{progress_prefix} 失败: {fname} (耗时: {elapsed:.2f}s)    "
                     )
-                    results.append(
-                        {
-                            "source_path": os.path.abspath(logical_source),
-                            "status": "failed",
-                            "detail": err_msg,
-                            "final_path": "",
-                            "elapsed": elapsed,
-                            "error": err_msg,
-                        }
-                    )
+                    record = {
+                        "source_path": os.path.abspath(logical_source),
+                        "status": "failed",
+                        "detail": err_msg,
+                        "final_path": "",
+                        "elapsed": elapsed,
+                        "error": err_msg,
+                    }
+                    results.append(record)
+                    self._emit_file_done(record)
 
                 logging.error(f"failed: {logical_source} | reason: {e}")
 
@@ -4042,7 +4072,9 @@ class OfficeConverter:
         return names
 
     def _export_pdf_markdown(self, pdf_path, source_path_hint=None):
-        if not self.config.get("enable_markdown", True):
+        if not self.config.get(
+            "output_enable_md", self.config.get("enable_markdown", True)
+        ):
             return None
         if not HAS_PYPDF:
             return None
@@ -6285,7 +6317,7 @@ class OfficeConverter:
         mshelp_merged_outputs = self._merge_mshelp_markdowns()
         return results, mshelp_dirs, mshelp_index_outputs, mshelp_merged_outputs
 
-    def run(self):
+    def run(self, resume_file_list=None):
         self.setup_logging()
         self.print_runtime_summary()
         self._reset_perf_metrics()
@@ -6351,40 +6383,54 @@ class OfficeConverter:
         else:
             incremental_ctx = {}
             if self.run_mode in (MODE_CONVERT_ONLY, MODE_CONVERT_THEN_MERGE):
-                scan_start = time.perf_counter()
-                logging.info("scanning files...")
-                files = self._scan_convert_candidates()
-                logging.info("scan candidate file count: %s", len(files))
+                if resume_file_list is not None:
+                    files = []
+                    for p in resume_file_list:
+                        p = str(p or "").strip()
+                        if not p:
+                            continue
+                        files.append(os.path.abspath(p))
+                    logging.info(
+                        "resume mode active: using provided file list count=%s",
+                        len(files),
+                    )
+                else:
+                    scan_start = time.perf_counter()
+                    logging.info("scanning files...")
+                    files = self._scan_convert_candidates()
+                    logging.info("scan candidate file count: %s", len(files))
 
-                files, source_priority_skips = self._apply_source_priority_filter(files)
-                if source_priority_skips:
-                    self.stats["skipped"] += len(source_priority_skips)
-                    batch_results.extend(source_priority_skips)
+                    files, source_priority_skips = self._apply_source_priority_filter(files)
+                    if source_priority_skips:
+                        self.stats["skipped"] += len(source_priority_skips)
+                        batch_results.extend(source_priority_skips)
 
-                files, incremental_ctx = self._apply_incremental_filter(files)
-                if incremental_ctx.get("enabled"):
-                    self.stats["skipped"] += incremental_ctx.get("unchanged_count", 0)
-                    renamed_pairs = incremental_ctx.get("renamed_pairs", []) or []
-                    if renamed_pairs and not incremental_ctx.get(
-                        "reprocess_renamed", False
-                    ):
-                        self.stats["skipped"] += len(renamed_pairs)
-                        for item in renamed_pairs:
-                            batch_results.append(
-                                {
-                                    "source_path": item.get("to_path", ""),
-                                    "status": "renamed_detected",
-                                    "detail": "rename detected; no reconvert",
-                                    "final_path": "",
-                                    "renamed_from": item.get("from_path", ""),
-                                }
-                            )
+                    files, incremental_ctx = self._apply_incremental_filter(files)
+                    if incremental_ctx.get("enabled"):
+                        self.stats["skipped"] += incremental_ctx.get("unchanged_count", 0)
+                        renamed_pairs = incremental_ctx.get("renamed_pairs", []) or []
+                        if renamed_pairs and not incremental_ctx.get(
+                            "reprocess_renamed", False
+                        ):
+                            self.stats["skipped"] += len(renamed_pairs)
+                            for item in renamed_pairs:
+                                batch_results.append(
+                                    {
+                                        "source_path": item.get("to_path", ""),
+                                        "status": "renamed_detected",
+                                        "detail": "rename detected; no reconvert",
+                                        "final_path": "",
+                                        "renamed_from": item.get("from_path", ""),
+                                    }
+                                )
 
-                files, dedup_skips = self._apply_global_md5_dedup(files)
-                if dedup_skips:
-                    self.stats["skipped"] += len(dedup_skips)
-                    batch_results.extend(dedup_skips)
-                self._add_perf_seconds("scan_seconds", time.perf_counter() - scan_start)
+                    files, dedup_skips = self._apply_global_md5_dedup(files)
+                    if dedup_skips:
+                        self.stats["skipped"] += len(dedup_skips)
+                        batch_results.extend(dedup_skips)
+                    self._add_perf_seconds("scan_seconds", time.perf_counter() - scan_start)
+
+                self._emit_file_plan(files)
 
                 self.stats["total"] = len(files)
                 if files:
@@ -6395,7 +6441,9 @@ class OfficeConverter:
                         "batch_seconds", time.perf_counter() - batch_start
                     )
                 else:
-                    if incremental_ctx.get("enabled"):
+                    if resume_file_list is not None:
+                        print("\n[INFO] Resume mode: no pending files.")
+                    elif incremental_ctx.get("enabled"):
                         print("\n[INFO] Incremental mode: no added/modified files found.")
                     else:
                         print("\n[INFO] No convertible Office files found in source directory.")
@@ -6598,7 +6646,6 @@ def create_default_config(config_path):
             "output_enable_independent": False,
             "merge_convert_submode": MERGE_CONVERT_SUBMODE_MERGE_ONLY,
             "enable_corpus_manifest": True,
-            "enable_markdown": True,
             "markdown_strip_header_footer": True,
             "markdown_structured_headings": True,
             "enable_markdown_quality_report": True,
@@ -6644,7 +6691,8 @@ def create_default_config(config_path):
             },
             "overwrite_same_size": True,
             "merge_mode": MERGE_MODE_CATEGORY,
-            "merge_source": "source",
+            "run_mode": MODE_CONVERT_THEN_MERGE,
+            "merge_source": "target",
             "temp_sandbox_root": "",
             "sandbox_min_free_gb": 10,
             "sandbox_low_space_policy": "block",
@@ -6709,9 +6757,3 @@ if __name__ == "__main__":
     converter = OfficeConverter(args.config, interactive=True)
     converter.cli_wizard()
     converter.run()
-
-
-
-
-
-
