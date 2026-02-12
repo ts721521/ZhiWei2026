@@ -1,83 +1,200 @@
-﻿# 任务管理功能设计（2026-02-12）
+﻿# 任务管理功能设计（2026-02-12，基于当前代码的优化版）
 
-## 1. 目标与范围
-- 为 Office 转换工具新增“任务管理”能力。
-- 任务绑定固定的源目录、目标目录与任务级配置覆盖项。
-- 支持任务的手动运行、停止、断点续传。
-- 本期不包含定时调度与任务队列。
+## 1. 文档目标
+本设计以当前代码实现为基线，定义任务管理能力的后续优化路线，确保：
+- 规划与现状一致，不空转；
+- 每一步可实施、可验证、可回滚；
+- 用户能明确“任务到底用什么配置在运行”。
 
-## 2. 数据模型与存储
-任务数据存储在 `tasks/` 目录：
-- `tasks/tasks_index.json`：任务摘要索引。
-- `tasks/<task_id>.json`：任务完整定义。
-- `tasks/<task_id>_checkpoint.json`：任务断点信息（运行计划 + 已完成列表）。
+适用代码范围：
+- `office_gui.py`
+- `task_manager.py`
+- `office_converter.py`
+- `ui_translations.py`
 
-任务核心字段：
-- `id`
-- `name`
-- `source_folder`
-- `target_folder`
-- `run_incremental`
-- `config_overrides`
-- `status`
-- `created_at` / `updated_at` / `last_run_at`
+---
 
-## 3. 断点续传机制
-- 运行开始时记录本次 `planned_files`。
-- 每处理完成一个文件，写入 `completed_files`。
-- 停止后保留 checkpoint，状态标记为 `paused`。
-- 点击“断点续传”时，计算 `planned - completed` 作为本次输入列表，仅处理剩余文件。
-- 全部完成后自动清理 checkpoint。
+## 2. 当前实现快照（已完成）
 
-## 4. Converter 扩展
-在 `office_converter.py` 增加：
-- `run(resume_file_list=None)`：支持直接处理给定文件列表，跳过全量扫描。
-- `file_plan_callback`：回调本次计划文件列表。
-- `file_done_callback`：每个文件处理完成后回调结果记录。
+### 2.1 任务主流程（已具备）
+- 任务 CRUD、运行、停止、续传已具备。
+- 任务页已接入独立 Tab，并有运行态按钮互斥控制。
+- 断点续传机制已落地：`planned_files` + `completed_files`。
 
-任务层利用上述回调实现 checkpoint 持续更新。
+代码锚点：
+- `office_gui.py:_build_task_tab_content`
+- `office_gui.py:_on_click_task_run`
+- `office_gui.py:_set_running_ui_state`
+- `task_manager.py:TaskStore`
 
-## 5. 配置覆盖与冲突消解
-配置合并规则：
-- `runtime = deep_merge(project_config, task.config_overrides)`
-- 然后强制注入任务绑定路径：`source_folder` / `target_folder`
+### 2.2 Converter 联动（已具备）
+- Converter 支持 `run(resume_file_list=None)`，续传可跳过全量扫描。
+- 提供 `file_plan_callback` / `file_done_callback`，任务层可持续更新 checkpoint。
 
-冲突消解规则：
-- 任务只保存“差异覆盖项”，不保存与项目配置一致的冗余键。
-- `run_incremental` 是任务级开关，运行时覆盖 `enable_incremental_mode`。
-- `convert_then_merge` 模式下，强制 `merge_source = target`。
-- 统一 `output_enable_md` 与 `enable_markdown`，避免双键语义漂移。
+代码锚点：
+- `office_converter.py:run`
+- `office_converter.py:_emit_file_plan`
+- `office_converter.py:_emit_file_done`
 
-## 6. 增量账本隔离
-每个任务使用独立账本路径：
-- `<target>/_AI/registry/task_<task_id>_incremental_registry.json`
+### 2.3 配置冲突消解（已具备）
+- `convert_then_merge` 下强制 `merge_source=target`。
+- `output_enable_md` 与 `enable_markdown` 已做一致性对齐。
+- 每任务独立增量账本路径已生效。
 
-全量重跑时：
-- 清理该任务专属账本。
-- 清理 checkpoint。
-- 本次按全量模式执行。
+代码锚点：
+- `task_manager.py:build_task_runtime_config`
 
-## 7. GUI 行为
-在主 Notebook 新增“任务管理”页，提供：
-- 新建任务
-- 编辑任务
-- 删除任务
-- 刷新任务列表
-- 运行任务
-- 停止任务
-- 断点续传
-- 本次强制全量重跑开关
+### 2.4 质量状态
+- 当前相关测试通过（`python -m unittest discover -s tests`）。
 
-运行互斥：
-- 同一时刻只允许一个任务运行。
-- 运行期间禁用其他任务操作按钮。
+---
 
-## 8. 国际化
-在 `ui_translations.py` 增加任务管理相关中英文键：
-- Tab 标题、按钮文案、提示消息、对话框标题、详情模板等。
+## 3. 当前主要缺口（按优先级）
 
-## 9. 后续可扩展
-- 定时调度（cron / 间隔触发）。
-- 任务历史（每次运行统计、耗时、失败记录）。
-- 多任务队列与优先级。
-- 任务模板与从当前 UI 快速保存任务。
+### P0（必须先做）
+1. 任务配置来源不稳定
+- 当前任务运行仍依赖“当前激活配置文件”作为基线；切 profile 后同一任务行为可能变化。
+
+2. 任务配置编辑入口不闭环
+- 任务配置主要来自主界面当前值快照，不是任务页内完整编辑模型。
+
+3. 生效配置不可见
+- 用户无法在运行前看到任务最终生效配置（来源、覆盖项、强制项）。
+
+### P1（强烈建议）
+4. 缺少正式的任务配置域白名单
+- 目前由 `_build_task_overrides_from_ui` 隐式决定，缺少统一常量与校验。
+
+5. 续传一致性策略缺失
+- 配置关键项变化后仍可续传，存在结果不一致风险。
+
+### P2（后续增强）
+6. 任务配置与全局默认模板的双向复制能力未落地。
+
+---
+
+## 4. 设计原则（保持与当前代码兼容）
+
+1. 增量演进，不推翻当前可用能力。
+2. 先补“可解释性”和“稳定性”，再扩展高级交互。
+3. 新结构必须向后兼容旧任务文件（`config_overrides`）。
+
+---
+
+## 5. 目标配置模型（兼容迁移版）
+
+### 5.1 运行时三层合成（固定）
+1. `global_task_defaults`（全局任务默认模板）
+2. `task_config`（任务专属配置）
+3. 运行期强制项（路径、增量开关、账本路径、模式强制规则）
+
+### 5.2 与旧结构兼容
+- 旧任务字段：`config_overrides`
+- 新任务字段：`task_config`
+- 兼容策略：
+  - 读取时优先 `task_config`，否则回退 `config_overrides`；
+  - 保存时统一写 `task_config`，保留 `config_overrides` 一段过渡期；
+  - 提供一次性迁移脚本（可选）。
+
+### 5.3 强制规则（保持）
+- `run_incremental` 覆盖 `enable_incremental_mode`
+- `convert_then_merge => merge_source=target`
+- Markdown 双键一致性
+- 每任务独立 `incremental_registry_path`
+
+---
+
+## 6. 分阶段实施计划（优化后）
+
+## Phase 1：稳定与可解释（先做）
+目标：不改大结构，先让用户看得懂、跑得稳。
+
+改动：
+- 抽出任务配置白名单常量（单一来源）。
+- 任务详情增加：
+  - 配置来源（base + task + forced）
+  - 覆盖项数量
+  - 关键开关摘要
+- 增加“查看生效配置”按钮（只读弹窗/导出 JSON）。
+
+验收：
+- 运行前可看到最终生效配置。
+- 关键配置项与实际运行一致。
+
+## Phase 2：结构收敛
+目标：建立稳定配置来源，消除任务行为漂移。
+
+改动：
+- 在 `config.json` 引入 `global_task_defaults`。
+- 任务文件引入 `task_config` 与 `task_config_version`。
+- 运行时改为固定三层合成，不再依赖主界面临时值。
+- 保留旧字段兼容读取。
+
+验收：
+- 切换 profile 不影响已配置任务行为（除显式复制/编辑）。
+- 新旧任务都能运行。
+
+## Phase 3：一致性与效率增强
+目标：降低误操作风险，提升管理效率。
+
+改动：
+- 增加续传一致性签名（关键项 hash）。
+- 若关键项变化，续传前提示“建议全量重跑”。
+- 增加双向复制：
+  - Global -> Task
+  - Task -> Global
+  - 差异预览 + 二次确认。
+
+验收：
+- 配置变化时续传策略有明确提示。
+- 双向复制仅作用于白名单键。
+
+---
+
+## 7. 关键实现点（按文件）
+
+### `task_manager.py`
+- 增加：任务配置白名单、三层合成函数。
+- 增加：旧字段到新字段的兼容读取。
+- 增加：关键配置签名计算函数（Phase 3）。
+
+### `office_gui.py`
+- 任务页新增“查看生效配置”。
+- 任务详情扩展配置摘要。
+- 新建/编辑任务改为仅编辑任务配置域。
+- Phase 3 增加双向复制入口与差异确认。
+
+### `office_converter.py`
+- 保持 `resume_file_list` 机制。
+- 继续以 callback 向任务层回传计划与完成事件。
+
+### `ui_translations.py`
+- 补齐新增按钮与提示语键。
+
+---
+
+## 8. 测试与验收清单
+
+单元测试（建议新增/扩充）：
+1. 任务三层合成正确性（含强制规则）。
+2. 旧字段兼容读取（`config_overrides`）。
+3. 续传列表计算正确性。
+4. 关键配置签名变化检测（Phase 3）。
+5. 白名单复制策略（Global->Task / Task->Global）。
+
+回归验证：
+- 任务新建->运行->停止->续传->完成全链路。
+- 全量重跑会清理任务账本并重建 checkpoint。
+- 运行互斥（同一时刻仅一个任务运行）。
+
+---
+
+## 9. 非目标（本轮不做）
+- 定时调度（cron/间隔）
+- 多任务并行队列
+- 分布式执行
+
+---
+
+## 10. 结论
+当前代码的任务主链路已经可用，下一步不应推翻重来；应按“Phase 1 -> Phase 2 -> Phase 3”渐进优化。优先解决“配置来源不清”和“结果不可解释”，再推进结构收敛与高级管理能力。
