@@ -1,4 +1,4 @@
-﻿# 任务运行体系总设计（任务模式 + 传统模式共存）
+# 任务运行体系总设计（任务模式 + 传统模式共存）
 
 > 面向 2026 版 Office 批量转换工具的运行体系重构说明。  
 > 目标：以“任务模式”为主线，保留“传统模式”兼容路径，统一规划数据结构、运行流程和 GUI 行为，方便后续多人接力开发。
@@ -110,9 +110,9 @@ effective_config = deep_merge(global_config, task_overrides)
   "created_at": "2026-02-12T10:00:00",
   "updated_at": "2026-02-12T10:00:00",
   "source_folders": [
-    "E:\\21_SE_Doc\\BaiduNetdiskWorkspace\\SynologyDrive\\5_投标\\2026"
+    "E:\\\\21_SE_Doc\\\\BaiduNetdiskWorkspace\\\\SynologyDrive\\\\5_投标\\\\2026"
   ],
-  "target_folder": "C:\\PDFs",
+  "target_folder": "C:\\\\PDFs",
   "run_incremental_by_default": true,
   "task_overrides": {
     "run_mode": "convert_then_merge",
@@ -323,3 +323,4 @@ effective_config = deep_merge(global_config, task_overrides)
 - 把增量账本、断点续传、LLM 输出等高级能力，集中托管在“任务模式”下实现与文档约定。
 
 后续若需要扩展（定时调度、多任务队列、任务模板等），均可直接在任务模式的这一套结构上迭代，无需再做大规模重构。
+
