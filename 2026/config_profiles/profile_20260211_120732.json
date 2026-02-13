@@ -11,10 +11,6 @@
     "ppt_timeout_seconds": 180,
     "ppt_pdf_wait_seconds": 30,
     "enable_merge": true,
-    "output_enable_pdf": true,
-    "output_enable_md": true,
-    "output_enable_merged": true,
-    "output_enable_independent": false,
     "max_merge_size_mb": 80,
     "price_keywords": [
         "报价",
@@ -72,9 +68,7 @@
         "tooltip_font_family": "System",
         "tooltip_font_size": 9,
         "tooltip_auto_theme": true,
-        "confirm_revert_dirty": true,
-        "window_geometry": "1352x1079+172+142",
-        "window_state": "normal"
+        "confirm_revert_dirty": true
     },
     "source_folder_win": "E:\\21_SE_Doc\\BaiduNetdiskWorkspace\\SynologyDrive\\5_投标\\2026",
     "target_folder_win": "C:\\PDFs",
@@ -85,10 +79,11 @@
     "source_folders": [
         "E:\\21_SE_Doc\\BaiduNetdiskWorkspace\\SynologyDrive\\5_投标\\2026"
     ],
-    "merge_source": "target",
+    "merge_source": "source",
     "enable_merge_index": true,
     "enable_merge_excel": true,
     "enable_corpus_manifest": true,
+    "enable_markdown": true,
     "markdown_strip_header_footer": true,
     "markdown_structured_headings": true,
     "enable_markdown_quality_report": true,
@@ -99,18 +94,5 @@
     "incremental_reprocess_renamed": false,
     "source_priority_skip_same_name_pdf": false,
     "global_md5_dedup": true,
-    "enable_update_package": true,
-    "llm_delivery_root_win": "",
-    "mshelpviewer_folder_name": "MSHelpViewer",
-    "enable_mshelp_merge_output": true,
-    "enable_mshelp_output_docx": false,
-    "enable_mshelp_output_pdf": false,
-    "sandbox_min_free_gb": 10,
-    "sandbox_low_space_policy": "block",
-    "enable_llm_delivery_hub": true,
-    "llm_delivery_root": "",
-    "llm_delivery_flatten": true,
-    "llm_delivery_include_pdf": false,
-    "office_reuse_app": true,
-    "office_restart_every_n_files": 25
+    "enable_update_package": true
 }

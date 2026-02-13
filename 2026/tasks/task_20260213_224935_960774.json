@@ -1,0 +1,25 @@
+{
+  "id": "task_20260213_224935_960774",
+  "name": "test2",
+  "description": "",
+  "source_folders": [
+    "D:/toPDFExchange"
+  ],
+  "source_folder": "D:/toPDFExchange",
+  "target_folder": "D:/GameVideos",
+  "run_incremental": true,
+  "config_overrides": {
+    "merge_convert_submode": "merge_only",
+    "run_mode": "convert_then_merge",
+    "output_enable_pdf": true,
+    "output_enable_md": true,
+    "output_enable_merged": true,
+    "output_enable_independent": false,
+    "merge_mode": "category_split",
+    "max_merge_size_mb": 80
+  },
+  "status": "idle",
+  "created_at": "2026-02-13T22:49:35",
+  "updated_at": "2026-02-13T22:49:35",
+  "last_run_at": ""
+}

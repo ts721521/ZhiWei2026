@@ -306,11 +306,16 @@ effective_config = deep_merge(global_config, task_overrides)
 
 - `office_gui.py`：
   - 已有 `tab_run_tasks`、`_scroll_tasks`、`TaskStore(self.script_dir)` 等挂载点；
-  - `_on_run_mode_change` 中 `self._set_run_tab_state(self.tab_run_tasks, "normal")`，保证任务页常驻；
-  - `btn_start` 统一绑定 `_on_click_start`，是唯一运行入口。
+  - **传统模式**：`_update_task_tab_for_app_mode()` 在 `app_mode==classic` 时隐藏任务 Tab；`_on_run_mode_change` 末尾调用该函数，保证切换运行模式后仍按应用模式显隐任务页；
+  - **任务模式**：任务 Tab 显示，`btn_start` 走 `_on_click_start` → 选中任务后 `_on_click_task_run`；
+  - **传统模式**：`_on_click_start` 使用当前 UI 参数与 config 合并后运行，不依赖任务选择；
+  - `app_mode` 在 `_load_config_to_ui` 中读取、保存配置时写回；
+  - 新建任务向导 `_open_task_wizard()` 含 4 步（基础信息、目录与增量、运行模式与输出、确认与保存）。
 - `office_converter.py`：
   - 已有增量账本、增量包实现；
   - 需要在上层调用时，按任务维度指定独立的 `incremental_registry_path`。
+- **自动化测试**：`tests/test_gui_task_mode.py` 覆盖 app_mode 配置回合、传统模式隐藏任务 Tab、任务模式显示 Tab（需 ttkbootstrap）、向导 4 步 key、Windows 下步骤标签、开始按钮按 app_mode 分支；`tests/test_task_manager.py` 覆盖 TaskStore、checkpoint、build_task_runtime_config。运行：`python -m unittest discover -s tests -p "test_*.py" -v`。
+- **测试报告**：各功能模块的用例清单与验证结果见 `docs/test-reports/`，含 GUI 任务模式、任务管理、转换器续传、合并/转换流水线、输出控制等分报告及索引 [README](../test-reports/README.md)。
 
 ---
 

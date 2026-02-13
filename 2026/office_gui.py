@@ -1,4 +1,4 @@
-﻿# -*- coding: utf-8 -*-
+# -*- coding: utf-8 -*-
 """
 office_gui.py - Office 鏂囨。鎵归噺杞崲 & 姊崇悊宸ュ叿 GUI 鐗?
 
@@ -484,11 +484,20 @@ class OfficeGUI(tb.Window):
     def _attach_tooltip(self, widget, key):
         if id(widget) in self._tooltip_widget_ids:
             return
+        setattr(widget, "_tooltip_key", key)
+        setattr(widget, "_tooltip_disabled_reason", None)
         self._tooltip_widget_ids.add(id(widget))
+
+        def _text_func(w=widget):
+            reason = getattr(w, "_tooltip_disabled_reason", None)
+            if reason:
+                return reason
+            return self.tr(getattr(w, "_tooltip_key", ""))
+
         self._tooltips.append(
             HoverTip(
                 widget,
-                lambda k=key: self.tr(k),
+                _text_func,
                 style_func=self._get_tooltip_style,
                 delay_ms=self.tooltip_delay_ms,
                 bg=self.tooltip_bg,
@@ -501,11 +510,20 @@ class OfficeGUI(tb.Window):
     def _attach_tooltip_text(self, widget, text):
         if id(widget) in self._tooltip_widget_ids:
             return
+        setattr(widget, "_tooltip_text", text)
+        setattr(widget, "_tooltip_disabled_reason", None)
         self._tooltip_widget_ids.add(id(widget))
+
+        def _text_func(w=widget):
+            reason = getattr(w, "_tooltip_disabled_reason", None)
+            if reason:
+                return reason
+            return getattr(w, "_tooltip_text", "")
+
         self._tooltips.append(
             HoverTip(
                 widget,
-                lambda t=text: t,
+                _text_func,
                 style_func=self._get_tooltip_style,
                 delay_ms=self.tooltip_delay_ms,
                 bg=self.tooltip_bg,
@@ -557,6 +575,7 @@ class OfficeGUI(tb.Window):
             self.tr("btn_task_edit"): "tip_task_edit",
             self.tr("btn_task_delete"): "tip_task_delete",
             self.tr("btn_task_refresh"): "tip_task_refresh",
+            self.tr("btn_task_load_to_ui"): "tip_task_load_to_ui",
             self.tr("btn_task_run"): "tip_task_run",
             self.tr("btn_task_resume"): "tip_task_resume",
             self.tr("btn_task_stop"): "tip_task_stop",
@@ -666,7 +685,7 @@ class OfficeGUI(tb.Window):
         special_by_id = {}
         for attr_name, tip_key in (
             ("lst_source_folders", "tip_input_source_folder"),
-            ("lst_tasks", "tip_task_list"),
+            ("tree_tasks", "tip_task_list"),
             ("entry_temp_sandbox_root", "tip_input_sandbox_root"),
             ("cb_sandbox_low_space_policy", "tip_input_sandbox_low_space_policy"),
             ("ent_log_folder", "tip_input_log_folder"),
@@ -830,6 +849,26 @@ class OfficeGUI(tb.Window):
         ctrl_frame = tb.Frame(header_frame, bootstyle="light")
         ctrl_frame.pack(side=RIGHT, padx=20)
 
+        self.var_app_mode = tk.StringVar(value="classic")
+        frm_app_mode = tb.Frame(ctrl_frame, bootstyle="light")
+        frm_app_mode.pack(side=LEFT, padx=(0, 12))
+        tb.Label(frm_app_mode, text=self.tr("app_mode_classic") + " / " + self.tr("app_mode_task") + ":", font=("System", 9)).pack(side=LEFT, padx=(0, 4))
+        tb.Radiobutton(
+            frm_app_mode,
+            text=self.tr("app_mode_classic"),
+            variable=self.var_app_mode,
+            value="classic",
+            bootstyle="toolbutton-outline",
+        ).pack(side=LEFT, padx=2)
+        tb.Radiobutton(
+            frm_app_mode,
+            text=self.tr("app_mode_task"),
+            variable=self.var_app_mode,
+            value="task",
+            bootstyle="toolbutton-outline",
+        ).pack(side=LEFT, padx=2)
+        self._attach_tooltip(frm_app_mode, "tip_app_mode")
+
         self.btn_lang_toggle = tb.Button(
             ctrl_frame,
             text=self.tr("lang_toggle"),
@@ -907,7 +946,7 @@ class OfficeGUI(tb.Window):
         self.main_notebook.add(self.tab_run_tasks, text=self.tr("grp_task_runtime"))
         self.main_notebook.add(self.tab_settings, text=self.tr("tab_config_center"))
 
-        # 璁板綍鍘熷 tab 椤哄簭锛岀敤浜庨殣钘忓悗鎭㈠
+        # 记录原始 tab 顺序与标签 key，用于隐藏后恢复时带正确 text
         self._all_tabs = [
             self.tab_run_shared,
             self.tab_run_convert,
@@ -917,6 +956,16 @@ class OfficeGUI(tb.Window):
             self.tab_run_output,
             self.tab_run_tasks,
             self.tab_settings,
+        ]
+        self._all_tab_text_keys = [
+            "grp_shared_runtime",
+            "grp_convert_runtime",
+            ("grp_merge_runtime", "grp_collect_runtime"),
+            "grp_mshelp_runtime",
+            "grp_locator_tools",
+            "grp_output_files",
+            "grp_task_runtime",
+            "tab_config_center",
         ]
 
         # 姣忎釜 tab 鐙珛鍙粴鍔?
@@ -1362,10 +1411,28 @@ class OfficeGUI(tb.Window):
         self.lbl_m_src = tb.Label(self.frm_merge_opts, text=self.tr("lbl_merge_src"), font=("System", 9))
         self.lbl_m_src.pack(anchor="w")
         self.var_merge_source = tk.StringVar(value="source")
-        frm_m_src = tb.Frame(self.frm_merge_opts)
-        frm_m_src.pack(fill=X)
-        tb.Radiobutton(frm_m_src, text=self.tr("rad_src_dir"), variable=self.var_merge_source, value="source").pack(side=LEFT)
-        tb.Radiobutton(frm_m_src, text=self.tr("rad_tgt_dir"), variable=self.var_merge_source, value="target").pack(side=LEFT, padx=10)
+        self.frm_merge_src = tb.Frame(self.frm_merge_opts)
+        self.frm_merge_src.pack(fill=X)
+        tb.Radiobutton(self.frm_merge_src, text=self.tr("rad_src_dir"), variable=self.var_merge_source, value="source").pack(side=LEFT)
+        tb.Radiobutton(self.frm_merge_src, text=self.tr("rad_tgt_dir"), variable=self.var_merge_source, value="target").pack(side=LEFT, padx=10)
+        tb.Separator(self.frm_merge_opts).pack(fill=X, pady=5)
+        self.lbl_merge_output_summary = tb.Label(
+            self.frm_merge_opts, text="", bootstyle="secondary", wraplength=420
+        )
+        self.lbl_merge_output_summary.pack(anchor="w", pady=(4, 0))
+        self.lbl_merge_inline_hint = tb.Label(
+            self.frm_merge_opts, text="", wraplength=420, font=("System", 9)
+        )
+        self.lbl_merge_inline_hint.pack(anchor="w", pady=(2, 0))
+        try:
+            self.var_output_enable_merged.trace_add("write", lambda *a: self.after(0, self._on_merge_output_or_mode_change))
+            self.var_merge_mode.trace_add("write", lambda *a: self.after(0, self._on_merge_output_or_mode_change))
+            for _v in ("var_output_enable_pdf", "var_output_enable_md", "var_output_enable_independent"):
+                if hasattr(self, _v):
+                    getattr(self, _v).trace_add("write", lambda *a: self.after(0, self._update_output_summary_label))
+        except Exception:
+            pass
+        self._update_output_summary_label()
 
         # Section 4: conversion strategy + date filter锛堝乏鍒楋級
         lf_convert_content = tb.Labelframe(
@@ -1736,15 +1803,23 @@ class OfficeGUI(tb.Window):
         lf_tasks = tb.Labelframe(parent, text=self.tr("grp_task_runtime"), padding=8)
         lf_tasks.pack(fill=BOTH, expand=YES, pady=3)
 
-        self.lst_tasks = tk.Listbox(
-            lf_tasks, height=12, selectmode=SINGLE, font=("Consolas", 9)
+        cols = ("name", "source", "target", "status", "last_run")
+        self.tree_tasks = ttk.Treeview(
+            lf_tasks, columns=cols, show="headings", height=12, selectmode="browse"
         )
-        self.lst_tasks.pack(fill=BOTH, expand=YES, side=LEFT)
-        self._attach_tooltip(self.lst_tasks, "tip_task_list")
-        scr = tb.Scrollbar(lf_tasks, orient="vertical", command=self.lst_tasks.yview)
+        for c, key in zip(cols, ("col_task_name", "col_task_source", "col_task_target", "col_task_status", "col_task_last_run")):
+            self.tree_tasks.heading(c, text=self.tr(key))
+        self.tree_tasks.column("name", width=160)
+        self.tree_tasks.column("source", width=180)
+        self.tree_tasks.column("target", width=180)
+        self.tree_tasks.column("status", width=56)
+        self.tree_tasks.column("last_run", width=100)
+        self.tree_tasks.pack(fill=BOTH, expand=YES, side=LEFT)
+        self._attach_tooltip(self.tree_tasks, "tip_task_list")
+        scr = tb.Scrollbar(lf_tasks, orient="vertical", command=self.tree_tasks.yview)
         scr.pack(side=LEFT, fill=Y)
-        self.lst_tasks.configure(yscrollcommand=scr.set)
-        self.lst_tasks.bind("<<ListboxSelect>>", lambda _e: self._on_task_select())
+        self.tree_tasks.configure(yscrollcommand=scr.set)
+        self.tree_tasks.bind("<<TreeviewSelect>>", lambda _e: self._on_task_select())
 
         btn_col = tb.Frame(lf_tasks)
         btn_col.pack(side=LEFT, fill=Y, padx=(8, 0))
@@ -1785,6 +1860,15 @@ class OfficeGUI(tb.Window):
         )
         self.btn_task_refresh.pack(pady=(2, 8), fill=X)
 
+        self.btn_task_load_to_ui = tb.Button(
+            btn_col,
+            text=self.tr("btn_task_load_to_ui"),
+            command=self._on_click_task_load_to_ui,
+            bootstyle="secondary-outline",
+            width=12,
+        )
+        self.btn_task_load_to_ui.pack(pady=2, fill=X)
+
         self.btn_task_run = tb.Button(
             btn_col,
             text=self.tr("btn_task_run"),
@@ -1822,62 +1906,71 @@ class OfficeGUI(tb.Window):
         )
         self.chk_task_force_full_rebuild.pack(anchor="w", pady=(4, 2))
 
-        self.var_task_detail = tk.StringVar(value=self.tr("msg_task_none_selected"))
-        tb.Label(
-            parent,
-            textvariable=self.var_task_detail,
-            bootstyle="secondary",
-            justify=LEFT,
-            wraplength=900,
-        ).pack(fill=X, pady=(6, 0))
+        tk.Label(parent, text=self.tr("lbl_task_config_section"), font=("System", 9, "bold")).pack(anchor=W, pady=(6, 2))
+        self.txt_task_detail = ScrolledText(parent, height=40, wrap=tk.WORD, font=("Consolas", 9))
+        self.txt_task_detail.pack(fill=BOTH, expand=YES, pady=(0, 4))
+        try:
+            self.txt_task_detail.insert(tk.END, self.tr("msg_task_none_selected"))
+            self.txt_task_detail.configure(state="disabled")
+        except Exception:
+            pass
 
-        self._task_row_ids = []
         self._auto_attach_action_tooltips(lf_tasks)
         self._auto_attach_input_tooltips(lf_tasks, "tip_section_run_mode")
+        if not getattr(self, "_task_tab_app_mode_trace_done", False) and hasattr(self, "var_app_mode"):
+            self.var_app_mode.trace_add("write", lambda *a: self.after(0, self._on_app_mode_change_for_task_tab))
+            self._task_tab_app_mode_trace_done = True
         self._refresh_task_list_ui()
 
     def _get_selected_task_id(self):
-        if not hasattr(self, "lst_tasks"):
+        if not hasattr(self, "tree_tasks"):
             return None
-        sel = self.lst_tasks.curselection()
+        sel = self.tree_tasks.selection()
         if not sel:
             return None
-        idx = int(sel[0])
-        if idx < 0 or idx >= len(self._task_row_ids):
-            return None
-        return self._task_row_ids[idx]
+        return str(sel[0])
+
+    def _short_path(self, path, max_len=36):
+        p = str(path or "").strip()
+        if len(p) <= max_len:
+            return p
+        return "..." + p[-(max_len - 3) :]
 
     def _refresh_task_list_ui(self):
-        if not hasattr(self, "lst_tasks"):
+        if not hasattr(self, "tree_tasks"):
             return
         selected_id = self._get_selected_task_id()
-        self.lst_tasks.delete(0, END)
-        self._task_row_ids = []
+        for iid in self.tree_tasks.get_children():
+            self.tree_tasks.delete(iid)
         tasks = self.task_store.list_tasks()
         for task in tasks:
             task_id = str(task.get("id", ""))
-            name = str(task.get("name", ""))
+            name = str(task.get("name", ""))[:48]
+            source = self._short_path(task.get("source_folder", ""))
+            target = self._short_path(task.get("target_folder", ""))
             status = str(task.get("status", "idle"))
-            mode = "INC" if bool(task.get("run_incremental", True)) else "FULL"
-            has_cp = " (resume)" if bool(task.get("has_checkpoint")) else ""
-            row = f"[{status}] {name} [{mode}]{has_cp}"
-            self.lst_tasks.insert(END, row)
-            self._task_row_ids.append(task_id)
-
-        if selected_id and selected_id in self._task_row_ids:
-            idx = self._task_row_ids.index(selected_id)
-            self.lst_tasks.selection_set(idx)
-            self.lst_tasks.activate(idx)
+            last_run = (task.get("last_run_at") or "")[:16]
+            self.tree_tasks.insert("", END, iid=task_id, values=(name, source, target, status, last_run))
+        if selected_id and self.tree_tasks.exists(selected_id):
+            self.tree_tasks.selection_set(selected_id)
+            self.tree_tasks.focus(selected_id)
         self._on_task_select()
 
     def _on_task_select(self):
         task_id = self._get_selected_task_id()
         task = self.task_store.get_task(task_id) if task_id else None
         if not task:
-            if hasattr(self, "var_task_detail"):
-                self.var_task_detail.set(self.tr("msg_task_none_selected"))
+            if hasattr(self, "txt_task_detail"):
+                try:
+                    self.txt_task_detail.configure(state="normal")
+                    self.txt_task_detail.delete("1.0", tk.END)
+                    self.txt_task_detail.insert(tk.END, self.tr("msg_task_none_selected"))
+                    self.txt_task_detail.configure(state="disabled")
+                except Exception:
+                    pass
             if hasattr(self, "btn_task_resume"):
                 self.btn_task_resume.configure(state="disabled")
+            self._update_task_tab_for_app_mode()
             return
 
         cp = self.task_store.load_checkpoint(task_id)
@@ -1891,19 +1984,73 @@ class OfficeGUI(tb.Window):
             run_mode = str(runtime_preview.get("run_mode", ""))
         except Exception:
             run_mode = str(task.get("config_overrides", {}).get("run_mode", ""))
-        text = self.tr("msg_task_detail").format(
-            task.get("name", ""),
-            task.get("source_folder", ""),
-            task.get("target_folder", ""),
-            run_mode or "-",
-            "ON" if task.get("run_incremental", True) else "OFF",
-            task.get("status", "idle"),
-            done,
-            planned,
-        )
-        self.var_task_detail.set(text)
+
+        # 下方展示任务完整配置（非仅摘要）
+        full_lines = [
+            self.tr("msg_task_detail").format(
+                task.get("name", ""),
+                task.get("source_folder", ""),
+                task.get("target_folder", ""),
+                run_mode or "-",
+                "ON" if task.get("run_incremental", True) else "OFF",
+                task.get("status", "idle"),
+                done,
+                planned,
+            ),
+            "",
+            "--- " + (self.tr("lbl_task_full_config") or "Task full config") + " ---",
+            "name: " + str(task.get("name", "")),
+            "description: " + str((task.get("description") or "").replace("\n", " ")[:200]),
+            "source_folders: " + str(task.get("source_folders", []) or [task.get("source_folder", "")]),
+            "target_folder: " + str(task.get("target_folder", "")),
+            "run_incremental: " + str(task.get("run_incremental", True)),
+            "status: " + str(task.get("status", "idle")),
+            "last_run_at: " + str(task.get("last_run_at") or ""),
+            "checkpoint: " + str(done) + " / " + str(planned),
+        ]
+        overrides = task.get("config_overrides") or {}
+        if overrides:
+            full_lines.append("")
+            full_lines.append("config_overrides:")
+            for k, v in sorted(overrides.items()):
+                full_lines.append("  " + str(k) + ": " + str(v))
+        full_text = "\n".join(full_lines)
+
+        if hasattr(self, "txt_task_detail"):
+            try:
+                self.txt_task_detail.configure(state="normal")
+                self.txt_task_detail.delete("1.0", tk.END)
+                self.txt_task_detail.insert(tk.END, full_text)
+                self.txt_task_detail.configure(state="disabled")
+            except Exception:
+                pass
         can_resume = bool(cp and done < planned)
         self.btn_task_resume.configure(state="normal" if can_resume else "disabled")
+        self._update_task_tab_for_app_mode()
+
+    def _update_task_tab_for_app_mode(self):
+        """In classic mode hide task tab entirely; in task mode show it and enable Run/Resume (design 7.1)."""
+        if not hasattr(self, "var_app_mode"):
+            return
+        is_classic = self.var_app_mode.get() == "classic"
+        if hasattr(self, "main_notebook") and hasattr(self, "tab_run_tasks"):
+            self._set_run_tab_state(self.tab_run_tasks, "hidden" if is_classic else "normal")
+        # 打开任务模式后任务管理标签页显示为绿色
+        self._set_task_tab_highlight(not is_classic)
+        if not hasattr(self, "btn_task_run"):
+            return
+        if is_classic:
+            self.btn_task_run.configure(state="disabled")
+            if hasattr(self, "btn_task_resume"):
+                self.btn_task_resume.configure(state="disabled")
+        else:
+            self.btn_task_run.configure(state="normal")
+            # resume state left as set by _on_task_select
+
+    def _on_app_mode_change_for_task_tab(self):
+        self._update_task_tab_for_app_mode()
+        if getattr(self, "var_app_mode", None) and self.var_app_mode.get() == "task":
+            self._on_task_select()
 
     def _normalize_task_cfg_for_compare(self, cfg):
         normalized = dict(cfg if isinstance(cfg, dict) else {})
@@ -1975,46 +2122,318 @@ class OfficeGUI(tb.Window):
         return datetime.now().strftime("task_%Y%m%d_%H%M%S_%f")
 
     def _on_click_task_create(self):
-        name = simpledialog.askstring(
-            self.tr("win_task_create"),
-            self.tr("msg_task_input_name"),
-            parent=self,
-        )
-        if not name:
-            return
-        name = name.strip()
-        if not name:
-            messagebox.showinfo(self.tr("win_task_create"), self.tr("msg_task_input_name"))
-            return
-        source = filedialog.askdirectory(title=self.tr("msg_task_pick_source"))
-        if not source:
-            return
-        target = filedialog.askdirectory(title=self.tr("msg_task_pick_target"))
-        if not target:
-            return
-        run_incremental = messagebox.askyesno(
-            self.tr("win_task_create"),
-            self.tr("msg_task_incremental_prompt"),
-            parent=self,
-        )
-        project_cfg = self._load_config_for_write()
-        task = {
-            "id": self._new_task_id(),
-            "name": name,
-            "source_folder": source,
-            "target_folder": target,
-            "run_incremental": bool(run_incremental),
-            "config_overrides": self._build_task_overrides_from_ui(
-                project_cfg=project_cfg, only_diff=True
-            ),
-            "status": "idle",
-        }
+        self._open_task_wizard()
+
+    def _open_task_wizard(self):
+        win = tk.Toplevel(self)
+        win.title(self.tr("win_task_wizard"))
+        win.minsize(680, 560)
+        win.geometry("700x580")
+        win.transient(self)
         try:
-            self.task_store.save_task(task)
-        except Exception as e:
-            messagebox.showerror(self.tr("win_task_create"), str(e))
-            return
-        self._refresh_task_list_ui()
+            win.configure(bg="#f0f0f0")
+        except Exception:
+            pass
+        data = {
+            "name": "",
+            "description": "",
+            "source_folder": "",
+            "source_folders": [],
+            "target_folder": "",
+            "run_incremental": True,
+            "run_mode": MODE_CONVERT_THEN_MERGE,
+            "output_enable_pdf": True,
+            "output_enable_md": True,
+            "output_enable_merged": True,
+            "output_enable_independent": False,
+            "output_choice": "both",
+            "merge_how": MERGE_MODE_CATEGORY,
+            "max_merge_size_mb": 80,
+        }
+        win._wizard_data = data
+        win._wizard_step = 1
+        # 向导窗口内全部使用纯 tk 控件，避免 ttk/ttkbootstrap 在 Toplevel 上不渲染导致空白
+        _bg = "#f0f0f0"
+        nav = tk.Frame(win, bg=_bg, padx=10, pady=10)
+        nav.pack(side=BOTTOM, fill=X)
+        content_holder = tk.Frame(win, bg=_bg, padx=15, pady=15)
+        content_holder.pack(fill=BOTH, expand=True)
+        # 可滚动区域，避免第 3 步配置项被挡住
+        canvas = tk.Canvas(content_holder, bg=_bg, highlightthickness=0)
+        scrollbar = tk.Scrollbar(content_holder, orient="vertical", command=canvas.yview)
+        scrollbar.pack(side=tk.RIGHT, fill=tk.Y)
+        canvas.pack(side=tk.LEFT, fill=tk.BOTH, expand=True)
+        container = tk.Frame(canvas, bg=_bg)
+        canvas_window = canvas.create_window(0, 0, window=container, anchor=tk.NW)
+
+        def _on_container_configure(_ev=None):
+            canvas.configure(scrollregion=canvas.bbox("all"))
+
+        def _on_canvas_configure(ev):
+            if container.winfo_reqwidth() != ev.width:
+                canvas.itemconfig(canvas_window, width=ev.width)
+
+        container.bind("<Configure>", _on_container_configure)
+        canvas.bind("<Configure>", _on_canvas_configure)
+
+        def _on_mousewheel(ev):
+            canvas.yview_scroll(int(-1 * (ev.delta / 120)), "units")
+
+        def _unbind_mousewheel(e):
+            if e.widget == win:
+                try:
+                    canvas.unbind_all("<MouseWheel>")
+                except Exception:
+                    pass
+
+        canvas.bind_all("<MouseWheel>", _on_mousewheel)
+        win.bind("<Destroy>", _unbind_mousewheel)
+        f1 = tk.Frame(container, bg=_bg)
+        f2 = tk.Frame(container, bg=_bg)
+        f3 = tk.Frame(container, bg=_bg)
+        f4 = tk.Frame(container, bg=_bg)
+        tk.Label(f1, text=self.tr("wizard_step1"), font=("System", 11, "bold"), bg=_bg).pack(anchor=W)
+        tk.Label(f1, text=self.tr("msg_task_input_name"), bg=_bg).pack(anchor=W)
+        ent_name = tk.Entry(f1, width=50)
+        ent_name.pack(fill=X, pady=(0, 8))
+        tk.Label(f1, text=self.tr("lbl_task_description"), bg=_bg).pack(anchor=W)
+        txt_desc = tk.Text(f1, height=3, width=50)
+        txt_desc.pack(fill=X, pady=(0, 8))
+        tk.Label(f2, text=self.tr("wizard_step2"), font=("System", 11, "bold"), bg=_bg).pack(anchor=W)
+        tk.Label(f2, text=self.tr("lbl_source"), bg=_bg).pack(anchor=W)
+        f2_src = tk.Frame(f2, bg=_bg)
+        f2_src.pack(fill=X)
+        lst_src = tk.Listbox(f2_src, height=4, selectmode=SINGLE, font=("Consolas", 9))
+        lst_src.pack(side=LEFT, fill=BOTH, expand=True, padx=(0, 4))
+        scr_src = tk.Scrollbar(f2_src, orient="vertical", command=lst_src.yview)
+        scr_src.pack(side=LEFT, fill=Y)
+        lst_src.configure(yscrollcommand=scr_src.set)
+        f2_src_btns = tk.Frame(f2_src, bg=_bg)
+        f2_src_btns.pack(side=LEFT, fill=Y)
+        def add_src():
+            p = filedialog.askdirectory(title=self.tr("msg_task_pick_source"), parent=win)
+            if p and p not in lst_src.get(0, END):
+                lst_src.insert(END, p)
+        def remove_src():
+            sel = lst_src.curselection()
+            if sel:
+                lst_src.delete(sel[0])
+        tk.Button(f2_src_btns, text="+", command=add_src, width=3).pack(pady=2)
+        tk.Button(f2_src_btns, text="-", command=remove_src, width=3).pack(pady=2)
+        tk.Label(f2, text=self.tr("lbl_target"), bg=_bg).pack(anchor=W, pady=(8, 0))
+        f2_tgt = tk.Frame(f2, bg=_bg)
+        f2_tgt.pack(fill=X)
+        ent_tgt = tk.Entry(f2_tgt, width=40)
+        ent_tgt.pack(side=LEFT, fill=X, expand=True, padx=(0, 4))
+        def pick_tgt():
+            p = filedialog.askdirectory(title=self.tr("msg_task_pick_target"), parent=win)
+            if p:
+                ent_tgt.delete(0, END)
+                ent_tgt.insert(0, p)
+        tk.Button(f2_tgt, text=self.tr("btn_browse"), command=pick_tgt, width=4).pack(side=LEFT)
+        var_inc = tk.IntVar(value=1)
+        tk.Checkbutton(f2, text=self.tr("chk_incremental_mode"), variable=var_inc, bg=_bg).pack(anchor=W, pady=(8, 0))
+        tk.Label(f3, text=self.tr("wizard_step3"), font=("System", 11, "bold"), bg=_bg).pack(anchor=W)
+        var_mode = tk.StringVar(value=MODE_CONVERT_THEN_MERGE)
+        for val, key in [
+            (MODE_CONVERT_ONLY, "mode_convert"),
+            (MODE_CONVERT_THEN_MERGE, "mode_convert_merge"),
+            (MODE_MERGE_ONLY, "mode_merge"),
+            (MODE_COLLECT_ONLY, "mode_collect"),
+            (MODE_MSHELP_ONLY, "mode_mshelp"),
+        ]:
+            tk.Radiobutton(f3, text=self.tr(key), variable=var_mode, value=val, bg=_bg).pack(anchor=W)
+        tk.Label(f3, text=self.tr("grp_output_controls"), font=("System", 9, "bold"), bg=_bg).pack(anchor=W, pady=(8, 0))
+        var_output_choice = tk.StringVar(value="both")
+        tk.Radiobutton(f3, text=self.tr("wizard_output_only_independent"), variable=var_output_choice, value="only_independent", bg=_bg).pack(anchor=W)
+        tk.Radiobutton(f3, text=self.tr("wizard_output_only_merged"), variable=var_output_choice, value="only_merged", bg=_bg).pack(anchor=W)
+        tk.Radiobutton(f3, text=self.tr("wizard_output_both"), variable=var_output_choice, value="both", bg=_bg).pack(anchor=W)
+        f3_merge = tk.Frame(f3, bg=_bg)
+        f3_merge.pack(fill=X, pady=(8, 0))
+        var_merge_how = tk.StringVar(value=MERGE_MODE_CATEGORY)
+        tk.Radiobutton(f3_merge, text=self.tr("wizard_merge_single_file"), variable=var_merge_how, value=MERGE_MODE_ALL_IN_ONE, bg=_bg).pack(anchor=W)
+        tk.Radiobutton(f3_merge, text=self.tr("wizard_merge_by_size"), variable=var_merge_how, value=MERGE_MODE_CATEGORY, bg=_bg).pack(anchor=W)
+        f3_mb = tk.Frame(f3_merge, bg=_bg)
+        f3_mb.pack(fill=X, pady=(2, 0))
+        tk.Label(f3_mb, text=self.tr("wizard_merge_size_mb"), bg=_bg).pack(side=LEFT, padx=(0, 4))
+        var_mb = tk.StringVar(value="80")
+        ent_mb = tk.Entry(f3_mb, width=6, textvariable=var_mb)
+        ent_mb.pack(side=LEFT)
+        lbl_mb_tip = tk.Label(f3_merge, text="", bg=_bg, fg="#666")
+        lbl_mb_tip.pack(anchor=W, pady=(2, 0))
+
+        def _wizard_update_merge_ui():
+            need_merge = var_output_choice.get() in ("only_merged", "both")
+            if need_merge:
+                f3_merge.pack(fill=X, pady=(8, 0))
+                is_split = var_merge_how.get() == MERGE_MODE_CATEGORY
+                if is_split:
+                    ent_mb.configure(state="normal")
+                    lbl_mb_tip.configure(text="")
+                else:
+                    ent_mb.configure(state="disabled")
+                    lbl_mb_tip.configure(text=self.tr("tip_wizard_merge_size_disabled"))
+            else:
+                f3_merge.pack_forget()
+        var_output_choice.trace_add("write", lambda *a: _wizard_update_merge_ui())
+        var_merge_how.trace_add("write", lambda *a: _wizard_update_merge_ui())
+        _wizard_update_merge_ui()
+        var_pdf = tk.IntVar(value=1)
+        var_md = tk.IntVar(value=1)
+        tk.Checkbutton(f3, text=self.tr("chk_output_pdf"), variable=var_pdf, bg=_bg).pack(anchor=W, pady=(4, 0))
+        tk.Checkbutton(f3, text=self.tr("chk_output_md"), variable=var_md, bg=_bg).pack(anchor=W)
+        tk.Label(f4, text=self.tr("wizard_step4"), font=("System", 11, "bold"), bg=_bg).pack(anchor=W)
+        lbl_summary = tk.Label(f4, text="", justify=LEFT, wraplength=450, bg=_bg)
+        lbl_summary.pack(anchor=W, pady=(8, 0))
+        var_run_after_save = tk.IntVar(value=0)
+        chk_run_after = tk.Checkbutton(f4, text=self.tr("chk_wizard_run_after_save"), variable=var_run_after_save, bg=_bg)
+        chk_run_after.pack(anchor=W, pady=(8, 0))
+
+        def _show(step):
+            win._wizard_step = step
+            f1.pack_forget()
+            f2.pack_forget()
+            f3.pack_forget()
+            f4.pack_forget()
+            (f1, f2, f3, f4)[step - 1].pack(fill=BOTH, expand=True)
+            btn_back.configure(state="normal" if step > 1 else "disabled")
+            btn_next.configure(state="normal" if step < 4 else "disabled")
+            btn_save.pack_forget()
+            btn_next.pack_forget()
+            if step == 4:
+                btn_save.pack(side=LEFT, padx=4)
+                _refresh_summary()
+            else:
+                btn_next.pack(side=LEFT, padx=4)
+            try:
+                canvas.yview_moveto(0)
+                _on_container_configure()
+            except Exception:
+                pass
+
+        def _merge_summary_text(d):
+            if not d.get("output_enable_merged"):
+                return self.tr("wizard_merge_summary_none")
+            if d.get("merge_mode") == MERGE_MODE_ALL_IN_ONE:
+                return self.tr("wizard_merge_summary_single")
+            return self.tr("wizard_merge_summary_split").format(d.get("max_merge_size_mb", 80))
+
+        def _refresh_summary():
+            d = win._wizard_data
+            src_display = d["source_folder"] if len(d.get("source_folders", [])) <= 1 else f"{d['source_folder']} (+{len(d['source_folders'])-1})"
+            lbl_summary.configure(
+                text=f"{self.tr('msg_task_input_name')} {d['name']}\n"
+                     f"{self.tr('lbl_source')} {src_display}\n"
+                     f"{self.tr('lbl_target')} {d['target_folder']}\n"
+                     f"{self.tr('chk_incremental_mode')}: {'Y' if d['run_incremental'] else 'N'}\n"
+                     f"Run mode: {d['run_mode']}\n"
+                     f"{_merge_summary_text(d)}"
+            )
+
+        def _collect():
+            data["name"] = ent_name.get().strip()
+            data["description"] = txt_desc.get("1.0", END).strip()
+            data["source_folders"] = list(lst_src.get(0, END))
+            data["source_folder"] = (data["source_folders"] or [""])[0]
+            data["target_folder"] = ent_tgt.get().strip()
+            data["run_incremental"] = bool(var_inc.get())
+            data["run_mode"] = var_mode.get()
+            data["output_enable_pdf"] = bool(var_pdf.get())
+            data["output_enable_md"] = bool(var_md.get())
+            choice = var_output_choice.get()
+            data["output_choice"] = choice
+            if choice == "only_independent":
+                data["output_enable_merged"] = False
+                data["output_enable_independent"] = True
+            elif choice == "only_merged":
+                data["output_enable_merged"] = True
+                data["output_enable_independent"] = False
+            else:
+                data["output_enable_merged"] = True
+                data["output_enable_independent"] = True
+            data["merge_how"] = var_merge_how.get()
+            data["max_merge_size_mb"] = self._safe_positive_int(var_mb.get(), 80)
+            data["merge_mode"] = data["merge_how"] if data["output_enable_merged"] else MERGE_MODE_ALL_IN_ONE
+
+        def _go(delta):
+            _collect()
+            step = win._wizard_step + delta
+            step = max(1, min(4, step))
+            _show(step)
+
+        def _save():
+            _collect()
+            d = win._wizard_data
+            if not d["name"]:
+                messagebox.showwarning(self.tr("win_task_wizard"), self.tr("msg_task_input_name"), parent=win)
+                return
+            name_trim = d["name"].strip()
+            for t in (self.task_store.list_tasks() or []):
+                if isinstance(t, dict) and (t.get("name") or "").strip() == name_trim:
+                    messagebox.showwarning(
+                        self.tr("win_task_wizard"), self.tr("msg_task_name_duplicate"), parent=win
+                    )
+                    return
+            source_folders = [p.strip() for p in (d.get("source_folders") or []) if p and str(p).strip()]
+            if not source_folders:
+                messagebox.showwarning(self.tr("win_task_wizard"), self.tr("msg_source_folder_required"), parent=win)
+                return
+            for p in source_folders:
+                if not os.path.isdir(p):
+                    messagebox.showwarning(self.tr("win_task_wizard"), self.tr("msg_source_folder_required"), parent=win)
+                    return
+            if not d["target_folder"] or not os.path.isdir(d["target_folder"]):
+                messagebox.showwarning(self.tr("win_task_wizard"), self.tr("msg_target_folder_required"), parent=win)
+                return
+            project_cfg = self._load_config_for_write()
+            overrides = self._build_task_overrides_from_ui(project_cfg=project_cfg, only_diff=True)
+            overrides["run_mode"] = d["run_mode"]
+            overrides["output_enable_pdf"] = d["output_enable_pdf"]
+            overrides["output_enable_md"] = d["output_enable_md"]
+            overrides["output_enable_merged"] = d["output_enable_merged"]
+            overrides["output_enable_independent"] = d["output_enable_independent"]
+            overrides["merge_mode"] = d.get("merge_mode", MERGE_MODE_CATEGORY)
+            overrides["max_merge_size_mb"] = d.get("max_merge_size_mb", 80)
+            task = {
+                "id": self._new_task_id(),
+                "name": d["name"],
+                "description": d.get("description", ""),
+                "source_folders": source_folders,
+                "source_folder": (source_folders or [""])[0],
+                "target_folder": d["target_folder"],
+                "run_incremental": d["run_incremental"],
+                "config_overrides": overrides,
+                "status": "idle",
+            }
+            try:
+                self.task_store.save_task(task)
+            except Exception as e:
+                messagebox.showerror(self.tr("win_task_create"), str(e), parent=win)
+                return
+            saved_id = task["id"]
+            run_after_save = bool(var_run_after_save.get())
+            self._refresh_task_list_ui()
+            win.destroy()
+            if run_after_save and saved_id and hasattr(self, "tree_tasks") and self.tree_tasks.exists(saved_id):
+                self.tree_tasks.selection_set(saved_id)
+                self.tree_tasks.focus(saved_id)
+                self.after(200, lambda: self._on_click_task_run(False))
+
+        # 在 _go/_save 定义之后再创建按钮，避免 Python 3.12 闭包 "free variable not associated" 错误
+        btn_back = tk.Button(nav, text=self.tr("btn_wizard_back"), state="disabled", command=lambda: _go(-1))
+        btn_back.pack(side=LEFT, padx=4)
+        btn_next = tk.Button(nav, text=self.tr("btn_wizard_next"), command=lambda: _go(1))
+        btn_next.pack(side=LEFT, padx=4)
+        btn_save = tk.Button(nav, text=self.tr("btn_wizard_save"), command=_save)
+        btn_save.pack(side=LEFT, padx=4)
+
+        # 直接显示第一步（纯 tk 控件在 Toplevel 上无需等待主题/布局，可立即渲染）
+        _show(1)
+        try:
+            win.update_idletasks()
+            win.update()
+        except Exception:
+            pass
 
     def _on_click_task_edit(self):
         task_id = self._get_selected_task_id()
@@ -2064,6 +2483,7 @@ class OfficeGUI(tb.Window):
         project_cfg = self._load_config_for_write()
         task["name"] = name
         task["source_folder"] = source
+        task["source_folders"] = [source]
         task["target_folder"] = target
         task["run_incremental"] = bool(run_incremental)
         task["config_overrides"] = self._build_task_overrides_from_ui(
@@ -2092,6 +2512,44 @@ class OfficeGUI(tb.Window):
             return
         self.task_store.delete_task(task_id)
         self._refresh_task_list_ui()
+
+    def _on_click_task_load_to_ui(self):
+        """Load selected task's effective config into main UI (design 7.1: use task as template in classic mode)."""
+        task_id = self._get_selected_task_id()
+        if not task_id:
+            messagebox.showinfo(
+                self.tr("grp_task_runtime"), self.tr("msg_task_select_required")
+            )
+            return
+        task = self.task_store.get_task(task_id)
+        if not task:
+            return
+        try:
+            cfg = build_task_runtime_config(self._load_config_for_write(), task, force_full_rebuild=False)
+        except Exception as e:
+            messagebox.showerror(self.tr("btn_task_load_to_ui"), str(e))
+            return
+        self._suspend_cfg_dirty = True
+        try:
+            src_list = cfg.get("source_folders") or []
+            if not src_list and cfg.get("source_folder"):
+                src_list = [cfg.get("source_folder")]
+            self.source_folders_list = list(src_list)
+            self.lst_source_folders.delete(0, END)
+            for p in self.source_folders_list:
+                self.lst_source_folders.insert(END, p)
+            self.var_source_folder.set(self.source_folders_list[0] if self.source_folders_list else "")
+            self.var_target_folder.set(cfg.get("target_folder") or "")
+            self.var_run_mode.set(cfg.get("run_mode", MODE_CONVERT_THEN_MERGE))
+            self.var_output_enable_pdf.set(1 if cfg.get("output_enable_pdf", True) else 0)
+            self.var_output_enable_md.set(1 if cfg.get("output_enable_md", True) else 0)
+            self.var_output_enable_merged.set(1 if cfg.get("output_enable_merged", True) else 0)
+            self.var_output_enable_independent.set(1 if cfg.get("output_enable_independent", False) else 0)
+            self.var_merge_mode.set(cfg.get("merge_mode", MERGE_MODE_CATEGORY))
+            self.var_max_merge_size_mb.set(str(cfg.get("max_merge_size_mb", 80)))
+        finally:
+            self._suspend_cfg_dirty = False
+        messagebox.showinfo(self.tr("btn_task_load_to_ui"), self.tr("msg_task_load_to_ui_done"), parent=self)
 
     def _apply_runtime_cfg_to_converter(self, converter, runtime_cfg):
         converter.config = dict(runtime_cfg)
@@ -2150,6 +2608,10 @@ class OfficeGUI(tb.Window):
         runtime_cfg = build_task_runtime_config(
             project_cfg, task, force_full_rebuild=force_full_rebuild
         )
+        base_mode = runtime_cfg.get("run_mode", "")
+        coercion_msgs = self._sanitize_runtime_config_for_mode(runtime_cfg, base_mode)
+        if coercion_msgs:
+            self._log_coercion_summary(coercion_msgs, show_dialog=True)
         if force_full_rebuild:
             remove_task_registry_if_exists(task_id, runtime_cfg.get("target_folder", ""))
             self.task_store.clear_checkpoint(task_id)
@@ -2430,6 +2892,10 @@ class OfficeGUI(tb.Window):
         )
         self.ent_max_merge_size_mb.pack(side=LEFT, padx=(5, 0))
         self._attach_tooltip(self.ent_max_merge_size_mb, "tip_input_max_merge_size_mb")
+        try:
+            self.var_max_merge_size_mb.trace_add("write", lambda *a: self.after(0, self._update_output_summary_label))
+        except Exception:
+            pass
         (
             frm_cfg_merge_actions,
             self.btn_save_cfg_merge,
@@ -2798,35 +3264,117 @@ class OfficeGUI(tb.Window):
                 pass
             self._set_widget_tree_state(child, state)
 
+    def _set_disabled_reason_in_tree(self, root, reason_str):
+        """Set _tooltip_disabled_reason on all descendants that have tooltip key/text (for gray-reason tooltip)."""
+        if reason_str is None:
+            return
+        for child in root.winfo_children():
+            if getattr(child, "_tooltip_key", None) is not None or getattr(child, "_tooltip_text", None) is not None:
+                try:
+                    if str(child.cget("state")) == "disabled":
+                        setattr(child, "_tooltip_disabled_reason", reason_str)
+                except Exception:
+                    pass
+            self._set_disabled_reason_in_tree(child, reason_str)
+
+    def _clear_disabled_reason_in_tree(self, root):
+        """Clear _tooltip_disabled_reason on all descendants."""
+        for child in root.winfo_children():
+            if hasattr(child, "_tooltip_disabled_reason"):
+                setattr(child, "_tooltip_disabled_reason", None)
+            self._clear_disabled_reason_in_tree(child)
+
     def _set_run_tab_state(self, tab, state):
-        """Set run tab visibility state."""
+        """Set run tab visibility state. Supports ttkbootstrap (hide/restore) and standard ttk (tab state)."""
         try:
             if state in ("disabled", "hidden"):
-                self.main_notebook.hide(tab)
+                if hasattr(self.main_notebook, "hide"):
+                    self.main_notebook.hide(tab)
+                else:
+                    # 标准 ttk.Notebook 无 hide，用 tab(state="hidden")
+                    try:
+                        self.main_notebook.tab(tab, state="hidden")
+                    except Exception:
+                        pass
             else:
-                # 閲嶆柊娣诲姞鍒板師濮嬩綅缃紙濡傛灉灏氭湭鏄剧ず锛?
-                try:
-                    self.main_notebook.index(tab)
-                except Exception:
-                    # tab 宸茶闅愯棌锛岄渶瑕侀噸鏂版坊鍔犲埌姝ｇ‘浣嶇疆
-                    self._restore_tab(tab)
+                if hasattr(self.main_notebook, "hide"):
+                    try:
+                        self.main_notebook.index(tab)
+                        # tab 仍在 notebook 中（如 ttkbootstrap 用 state 隐藏）：显式设为 normal
+                        try:
+                            self.main_notebook.tab(tab, state="normal")
+                        except Exception:
+                            pass
+                    except Exception:
+                        self._restore_tab(tab)
+                else:
+                    try:
+                        # 标准 ttk：先直接用 widget 设 state="normal"，再尝试用 tab_id
+                        try:
+                            self.main_notebook.tab(tab, state="normal")
+                        except Exception:
+                            if hasattr(self, "_all_tabs") and tab in self._all_tabs:
+                                idx = self._all_tabs.index(tab)
+                                tab_list = list(self.main_notebook.tabs())
+                                if idx < len(tab_list):
+                                    self.main_notebook.tab(tab_list[idx], state="normal")
+                            else:
+                                for tab_id in self.main_notebook.tabs():
+                                    try:
+                                        if self.main_notebook.nametowidget(tab_id) is tab:
+                                            self.main_notebook.tab(tab_id, state="normal")
+                                            break
+                                    except Exception:
+                                        continue
+                    except Exception:
+                        pass
+        except Exception:
+            pass
+
+    def _set_task_tab_highlight(self, on):
+        """任务模式下把「任务管理」标签页设为绿色（前面加 🟢），传统模式下恢复默认。"""
+        if not hasattr(self, "main_notebook") or not hasattr(self, "tab_run_tasks"):
+            return
+        try:
+            base_text = self.tr("grp_task_runtime")
+            new_text = f"🟢 {base_text}" if on else base_text
+            try:
+                self.main_notebook.tab(self.tab_run_tasks, text=new_text)
+            except Exception:
+                for tab_id in self.main_notebook.tabs():
+                    try:
+                        if self.main_notebook.nametowidget(tab_id) is self.tab_run_tasks:
+                            self.main_notebook.tab(tab_id, text=new_text)
+                            break
+                    except Exception:
+                        continue
         except Exception:
             pass
 
     def _restore_tab(self, tab):
-        """Restore a hidden tab to its original index."""
+        """Restore a hidden tab to its original index, with correct tab text."""
         if not hasattr(self, "_all_tabs"):
             return
         target_idx = 0
-        for t in self._all_tabs:
+        tab_text = None
+        for i, t in enumerate(self._all_tabs):
             if t is tab:
+                if hasattr(self, "_all_tab_text_keys") and i < len(self._all_tab_text_keys):
+                    key = self._all_tab_text_keys[i]
+                    if isinstance(key, tuple):
+                        tab_text = f"{self.tr(key[0])} / {self.tr(key[1])}"
+                    else:
+                        tab_text = self.tr(key)
                 break
             try:
                 self.main_notebook.index(t)
                 target_idx += 1
             except Exception:
                 pass
-        self.main_notebook.insert(target_idx, tab)
+        if tab_text is not None:
+            self.main_notebook.insert(target_idx, tab, text=tab_text)
+        else:
+            self.main_notebook.insert(target_idx, tab)
 
     def _set_cfg_tab_state(self, tab, state):
         """Backward-compatible wrapper for config tab visibility."""
@@ -2856,8 +3404,9 @@ class OfficeGUI(tb.Window):
         self._set_run_tab_state(self.tab_run_locator, "normal")
         # 鎴愭灉鏂囦欢锛氬缁堝彲鐢?
         self._set_run_tab_state(self.tab_run_output, "normal")
-        # 任务管理页始终可见
-        self._set_run_tab_state(self.tab_run_tasks, "normal")
+        # 任务管理页：传统模式下隐藏，任务模式下可见（由 _update_task_tab_for_app_mode 统一决定）
+        if hasattr(self, "_update_task_tab_for_app_mode"):
+            self._update_task_tab_for_app_mode()
 
         # Collect options
         if is_collect:
@@ -2947,6 +3496,186 @@ class OfficeGUI(tb.Window):
             self.rb_merge_submode_pdf_to_md.configure(state=merge_submode_state)
         except Exception:
             pass
+        # Merge sub-controls: when merged output off, gray merge opts; when all_in_one, gray max_mb only
+        if is_merge_related:
+            if not bool(self.var_output_enable_merged.get()):
+                self._set_widget_tree_state(self.frm_merge_opts, "disabled")
+            else:
+                self._set_widget_tree_state(self.frm_merge_opts, "normal")
+                try:
+                    if self.var_merge_mode.get() == MERGE_MODE_ALL_IN_ONE:
+                        self.ent_max_merge_size_mb.configure(state="disabled")
+                    else:
+                        self.ent_max_merge_size_mb.configure(state="normal")
+                except Exception:
+                    pass
+            # Convert+Merge forces merge_source=target: make merge source radios read-only
+            try:
+                if mode == MODE_CONVERT_THEN_MERGE:
+                    self._set_widget_tree_state(self.frm_merge_src, "disabled")
+                else:
+                    self._set_widget_tree_state(self.frm_merge_src, "normal")
+            except Exception:
+                pass
+        self._apply_disabled_reason_tooltips()
+        self._update_output_summary_label()
+
+    def _apply_disabled_reason_tooltips(self):
+        """Set or clear _tooltip_disabled_reason on mode-sensitive widgets so gray controls show reason."""
+        mode = self.var_run_mode.get()
+        mode_labels = {
+            MODE_CONVERT_ONLY: self.tr("mode_convert"),
+            MODE_MERGE_ONLY: self.tr("mode_merge"),
+            MODE_CONVERT_THEN_MERGE: self.tr("mode_convert_merge"),
+            MODE_COLLECT_ONLY: self.tr("mode_collect"),
+            MODE_MSHELP_ONLY: self.tr("mode_mshelp"),
+        }
+        mode_label = mode_labels.get(mode, mode)
+        reason_by_mode = self.tr("tip_disabled_by_mode").format(mode_label)
+        reason_merged_off = self.tr("tip_disabled_merged_off")
+        reason_all_in_one = self.tr("tip_disabled_merge_all_in_one")
+
+        def _try_state(w):
+            try:
+                return str(w.cget("state"))
+            except Exception:
+                return ""
+
+        is_convert = mode in (MODE_CONVERT_ONLY, MODE_CONVERT_THEN_MERGE)
+        is_merge_related = mode in (MODE_CONVERT_THEN_MERGE, MODE_MERGE_ONLY)
+        merged_on = bool(self.var_output_enable_merged.get())
+        all_in_one = self.var_merge_mode.get() == MERGE_MODE_ALL_IN_ONE
+
+        # Convert-related trees
+        for root, reason in [
+            (self.group_exec, reason_by_mode if not is_convert else None),
+            (self.frm_date, reason_by_mode if not is_convert else None),
+        ]:
+            if root is None:
+                continue
+            try:
+                if reason and _try_state(root) == "disabled":
+                    self._set_disabled_reason_in_tree(root, reason)
+                else:
+                    self._clear_disabled_reason_in_tree(root)
+            except Exception:
+                pass
+
+        # Single widgets that are disabled by mode
+        for attr in ("lbl_strategy", "cb_strat", "chk_date_filter", "lbl_merge", "chk_enable_merge",
+                     "chk_markdown_strip_header_footer", "chk_markdown_structured_headings",
+                     "chk_markdown_quality_report", "chk_export_records_json", "chk_chromadb_export",
+                     "chk_incremental_mode", "chk_source_priority_skip_pdf", "chk_global_md5_dedup",
+                     "chk_enable_update_package", "chk_incremental_verify_hash", "chk_incremental_reprocess_renamed"):
+            w = getattr(self, attr, None)
+            if w is None:
+                continue
+            try:
+                if _try_state(w) == "disabled":
+                    setattr(w, "_tooltip_disabled_reason", reason_by_mode)
+                else:
+                    setattr(w, "_tooltip_disabled_reason", None)
+            except Exception:
+                pass
+
+        # Sandbox group
+        for attr in ("chk_enable_sandbox", "entry_temp_sandbox_root", "btn_temp_sandbox_root",
+                     "entry_sandbox_min_free_gb", "cb_sandbox_low_space_policy"):
+            w = getattr(self, attr, None)
+            if w is None:
+                continue
+            try:
+                if _try_state(w) == "disabled":
+                    setattr(w, "_tooltip_disabled_reason", reason_by_mode)
+                else:
+                    setattr(w, "_tooltip_disabled_reason", None)
+            except Exception:
+                pass
+
+        # Merge opts tree: reason by mode, or merged_off, or (for max_mb only) all_in_one
+        try:
+            self._clear_disabled_reason_in_tree(self.frm_merge_opts)
+            if not is_merge_related:
+                self._set_disabled_reason_in_tree(self.frm_merge_opts, reason_by_mode)
+            elif not merged_on:
+                self._set_disabled_reason_in_tree(self.frm_merge_opts, reason_merged_off)
+            elif all_in_one and hasattr(self, "ent_max_merge_size_mb"):
+                setattr(self.ent_max_merge_size_mb, "_tooltip_disabled_reason",
+                        reason_all_in_one if _try_state(self.ent_max_merge_size_mb) == "disabled" else None)
+        except Exception:
+            pass
+
+        # Merge source frame (disabled when convert_then_merge)
+        try:
+            self._clear_disabled_reason_in_tree(self.frm_merge_src)
+            if mode == MODE_CONVERT_THEN_MERGE:
+                self._set_disabled_reason_in_tree(self.frm_merge_src, reason_by_mode)
+        except Exception:
+            pass
+
+    def _update_output_summary_label(self):
+        """Update the fixed output summary line (design 5.6.1) and inline hint bar (design 5.6.2)."""
+        if not hasattr(self, "lbl_merge_output_summary"):
+            return
+        merged = bool(self.var_output_enable_merged.get())
+        indep = bool(self.var_output_enable_independent.get())
+        if not merged and not indep:
+            part = self.tr("summary_merged_off")
+        elif merged and not indep:
+            part = self.tr("summary_merged_only")
+        elif indep and not merged:
+            part = self.tr("summary_independent_only")
+        else:
+            part = self.tr("summary_both")
+        if merged:
+            mode = getattr(self, "var_merge_mode", None) and self.var_merge_mode.get()
+            if mode == MERGE_MODE_ALL_IN_ONE:
+                part += " " + self.tr("summary_merge_single")
+            else:
+                mb = 80
+                if hasattr(self, "var_max_merge_size_mb") and self.var_max_merge_size_mb.get():
+                    mb = self._safe_positive_int(self.var_max_merge_size_mb.get(), 80)
+                part += " " + self.tr("summary_merge_split_mb").format(mb)
+        prefix = self.tr("lbl_output_summary")
+        self.lbl_merge_output_summary.configure(text=prefix + part)
+        # Inline hint bar (5.6.2): yellow / green / gray
+        if hasattr(self, "lbl_merge_inline_hint"):
+            mode = getattr(self, "var_run_mode", None) and self.var_run_mode.get()
+            if mode not in (MODE_CONVERT_THEN_MERGE, MODE_MERGE_ONLY):
+                self.lbl_merge_inline_hint.configure(text="", bootstyle="secondary")
+            elif not merged:
+                self.lbl_merge_inline_hint.configure(
+                    text=self.tr("hint_merge_inline_merged_off"), bootstyle="secondary"
+                )
+            elif getattr(self, "var_merge_mode", None) and self.var_merge_mode.get() == MERGE_MODE_ALL_IN_ONE:
+                self.lbl_merge_inline_hint.configure(
+                    text=self.tr("hint_merge_inline_all_in_one"), bootstyle="warning"
+                )
+            else:
+                self.lbl_merge_inline_hint.configure(
+                    text=self.tr("hint_merge_inline_split"), bootstyle="success"
+                )
+
+    def _on_merge_output_or_mode_change(self):
+        """Update merge sub-controls state when Merged Output or Merge mode (all_in_one/category) changes."""
+        mode = self.var_run_mode.get()
+        is_merge_related = mode in (MODE_CONVERT_THEN_MERGE, MODE_MERGE_ONLY)
+        if not is_merge_related:
+            return
+        merged_on = bool(self.var_output_enable_merged.get())
+        if not merged_on:
+            self._set_widget_tree_state(self.frm_merge_opts, "disabled")
+        else:
+            self._set_widget_tree_state(self.frm_merge_opts, "normal")
+            try:
+                if self.var_merge_mode.get() == MERGE_MODE_ALL_IN_ONE:
+                    self.ent_max_merge_size_mb.configure(state="disabled")
+                else:
+                    self.ent_max_merge_size_mb.configure(state="normal")
+            except Exception:
+                pass
+        self._apply_disabled_reason_tooltips()
+        self._update_output_summary_label()
 
     def _on_toggle_date_filter(self):
         enabled = bool(self.var_enable_date_filter.get())
@@ -5318,6 +6047,9 @@ class OfficeGUI(tb.Window):
         except Exception:
             pass
 
+        if hasattr(self, "var_app_mode"):
+            self.var_app_mode.set(cfg.get("app_mode", "classic"))
+
         # Runtime parameters
         
         is_win = (sys.platform == "win32")
@@ -5515,6 +6247,8 @@ class OfficeGUI(tb.Window):
             self._refresh_profile_tree()
         if self.load_profile_dialog is not None and self.load_profile_dialog.winfo_exists():
             self._refresh_load_profile_tree()
+        if hasattr(self, "_update_task_tab_for_app_mode"):
+            self._update_task_tab_for_app_mode()
 
     def _load_config_for_write(self):
         cfg = {}
@@ -5758,6 +6492,10 @@ class OfficeGUI(tb.Window):
                  cfg["temp_sandbox_root_mac"] = self.var_temp_sandbox_root.get().strip()
                  cfg["llm_delivery_root_mac"] = self.var_llm_delivery_root.get().strip()
 
+        if hasattr(self, "var_app_mode"):
+            cfg["app_mode"] = self.var_app_mode.get()
+        else:
+            cfg["app_mode"] = "classic"
         cfg["source_folders"] = self.source_folders_list
         cfg["source_folder"] = self.source_folders_list[0] if self.source_folders_list else ""
         cfg["target_folder"] = self.var_target_folder.get().strip()
@@ -5991,6 +6729,7 @@ class OfficeGUI(tb.Window):
                 "btn_task_run",
                 "btn_task_resume",
                 "btn_task_refresh",
+                "btn_task_load_to_ui",
             ):
                 if hasattr(self, btn_name):
                     getattr(self, btn_name).configure(state="disabled")
@@ -6029,6 +6768,7 @@ class OfficeGUI(tb.Window):
                 "btn_task_delete",
                 "btn_task_run",
                 "btn_task_refresh",
+                "btn_task_load_to_ui",
             ):
                 if hasattr(self, btn_name):
                     getattr(self, btn_name).configure(state="normal")
@@ -6053,6 +6793,8 @@ class OfficeGUI(tb.Window):
             self._update_config_dirty_summary(getattr(self, "_last_section_dirty", {}))
             if hasattr(self, "_on_task_select"):
                 self._on_task_select()
+            if hasattr(self, "_update_task_tab_for_app_mode"):
+                self._update_task_tab_for_app_mode()
             self.progress.stop()
             self.progress["value"] = 100
             self.var_status.set(self.tr("status_ready") if hasattr(self, "tr") else "Ready")
@@ -6207,10 +6949,51 @@ class OfficeGUI(tb.Window):
         )
         return bool(messagebox.askyesno(self.tr("btn_start"), msg))
 
+    def _sanitize_runtime_config_for_mode(self, cfg, run_mode):
+        """Apply mode-driven coercion rules in place; return list of message strings."""
+        messages = []
+        if run_mode == MODE_CONVERT_THEN_MERGE:
+            prev = cfg.get("merge_source", "source")
+            if prev != "target":
+                cfg["merge_source"] = "target"
+                messages.append(self.tr("msg_coercion_merge_source").format(prev))
+        merge_mode = cfg.get("merge_mode", MERGE_MODE_CATEGORY)
+        if merge_mode == MERGE_MODE_ALL_IN_ONE:
+            messages.append(self.tr("msg_coercion_max_mb_ignored"))
+        elif merge_mode == MERGE_MODE_CATEGORY:
+            try:
+                mb = int(cfg.get("max_merge_size_mb", 80))
+                if mb < 1:
+                    cfg["max_merge_size_mb"] = 80
+                    messages.append(self.tr("msg_coercion_max_mb_default").format(80))
+            except (TypeError, ValueError):
+                cfg["max_merge_size_mb"] = 80
+                messages.append(self.tr("msg_coercion_max_mb_default").format(80))
+        return messages
+
+    def _log_coercion_summary(self, coercion_messages, show_dialog=False):
+        """Write coercion summary to log and optionally show dialog."""
+        if not coercion_messages:
+            return
+        header = self.tr("log_coercion_header")
+        block = "\n".join(f"  - {m}" for m in coercion_messages)
+        self.txt_log.insert("end", f"{header}\n{block}\n")
+        self.txt_log.see("end")
+        if show_dialog:
+            body = self.tr("msg_coercion_body").format(block)
+            messagebox.showinfo(self.tr("msg_coercion_title"), body)
+
     # ===================== 浠诲姟鎺у埗 =====================
     def _on_click_start(self):
         if self.worker_thread and self.worker_thread.is_alive():
             messagebox.showinfo(self.tr("btn_start"), self.tr("msg_task_already_running"))
+            return
+        if getattr(self, "var_app_mode", None) and self.var_app_mode.get() == "task":
+            task_id = self._get_selected_task_id()
+            if not task_id:
+                messagebox.showinfo(self.tr("btn_start"), self.tr("msg_task_select_required"))
+                return
+            self._on_click_task_run(resume=False)
             return
         if not self.validate_runtime_inputs(silent=False, scope="all"):
             messagebox.showerror(self.tr("btn_start"), self.tr("msg_validation_fix_before_run"))
@@ -6363,6 +7146,9 @@ class OfficeGUI(tb.Window):
                     )
                     cfg["enable_merge_index"] = bool(self.var_enable_merge_index.get())
                     cfg["enable_merge_excel"] = bool(self.var_enable_merge_excel.get())
+                    cfg["max_merge_size_mb"] = self._safe_positive_int(
+                        self.var_max_merge_size_mb.get(), 80
+                    )
                     cfg["enable_corpus_manifest"] = bool(self.var_enable_corpus_manifest.get())
                     cfg.pop("enable_markdown", None)
                     cfg["markdown_strip_header_footer"] = bool(self.var_markdown_strip_header_footer.get())
@@ -6394,6 +7180,9 @@ class OfficeGUI(tb.Window):
                     cfg["office_restart_every_n_files"] = self._safe_positive_int(
                         self.var_office_restart_every_n_files.get(), 25
                     )
+                    coercion_msgs = self._sanitize_runtime_config_for_mode(cfg, base_mode)
+                    if idx == 1 and coercion_msgs:
+                        self.after(0, lambda m=coercion_msgs: self._log_coercion_summary(m, show_dialog=True))
 
                     converter.run_mode = step["mode"]
                     converter.collect_mode = self.var_collect_mode.get()
