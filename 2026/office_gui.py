@@ -476,7 +476,10 @@ class OfficeGUI(tb.Window):
 
     def tr(self, key):
         """Translate key to current language"""
-        return TRANSLATIONS.get(self.current_lang, TRANSLATIONS["zh"]).get(key, key)
+        lang_map = TRANSLATIONS.get(self.current_lang, {})
+        if key in lang_map:
+            return lang_map[key]
+        return TRANSLATIONS.get("en", {}).get(key, key)
 
     def _attach_tooltip(self, widget, key):
         if id(widget) in self._tooltip_widget_ids:
@@ -537,8 +540,27 @@ class OfficeGUI(tb.Window):
             self.tr("lbl_filter_date"): "tip_toggle_date_filter",
             self.tr("chk_merge_index"): "tip_toggle_merge_index",
             self.tr("chk_merge_excel"): "tip_toggle_merge_excel",
+            self.tr("chk_output_pdf"): "tip_toggle_output_pdf",
+            self.tr("chk_output_md"): "tip_toggle_output_md",
+            self.tr("chk_output_merged"): "tip_toggle_output_merged",
+            self.tr("chk_output_independent"): "tip_toggle_output_independent",
+            self.tr("rad_merge_convert_merge_only"): "tip_option_merge_submode_merge_only",
+            self.tr("rad_merge_convert_pdf_to_md"): "tip_option_merge_submode_pdf_to_md",
+            self.tr("rad_category"): "tip_option_merge_mode_category",
+            self.tr("rad_all_in_one"): "tip_option_merge_mode_all_in_one",
+            self.tr("rad_src_dir"): "tip_option_merge_source_source",
+            self.tr("rad_tgt_dir"): "tip_option_merge_source_target",
             self.tr("chk_tooltip_auto_theme"): "tip_toggle_tooltip_auto_theme",
+            self.tr("chk_show_tooltip_advanced"): "tip_toggle_show_tooltip_advanced",
             self.tr("chk_confirm_revert_dirty"): "tip_toggle_confirm_revert_dirty",
+            self.tr("btn_task_create"): "tip_task_create",
+            self.tr("btn_task_edit"): "tip_task_edit",
+            self.tr("btn_task_delete"): "tip_task_delete",
+            self.tr("btn_task_refresh"): "tip_task_refresh",
+            self.tr("btn_task_run"): "tip_task_run",
+            self.tr("btn_task_resume"): "tip_task_resume",
+            self.tr("btn_task_stop"): "tip_task_stop",
+            self.tr("chk_task_force_full_rebuild"): "tip_task_force_full_rebuild",
         }
         for child in root.winfo_children():
             self._auto_attach_action_tooltips(child)
@@ -564,6 +586,126 @@ class OfficeGUI(tb.Window):
             else:
                 tip = self.tr("tip_auto_option_action").format(text)
             self._attach_tooltip_text(child, tip)
+
+    def _guess_widget_label_text(self, widget):
+        parent = getattr(widget, "master", None)
+        if parent is None:
+            return ""
+        try:
+            siblings = parent.winfo_children()
+            idx = siblings.index(widget)
+        except Exception:
+            return ""
+        for i in range(idx - 1, -1, -1):
+            sib = siblings[i]
+            try:
+                keys = set(sib.keys())
+            except Exception:
+                continue
+            if "text" not in keys:
+                continue
+            try:
+                text = str(sib.cget("text")).strip()
+            except Exception:
+                text = ""
+            if text and text not in {"...", "?", ">", "+", "-", "C"}:
+                return text
+        return ""
+
+    def _is_input_like_widget(self, widget):
+        cls = str(widget.winfo_class() or "").lower()
+        if any(
+            token in cls
+            for token in (
+                "entry",
+                "combobox",
+                "spinbox",
+                "listbox",
+                "text",
+                "dateentry",
+            )
+        ):
+            return True
+        try:
+            keys = set(widget.keys())
+        except Exception:
+            return False
+        is_option = "variable" in keys and ("value" in keys or "onvalue" in keys)
+        if is_option:
+            return False
+        return "textvariable" in keys
+
+    def _auto_attach_input_tooltips(self, root, fallback_section_tip_key=None):
+        # Prefer specific input tips by nearby label text; fallback to a generic
+        # explanation so every config input remains discoverable.
+        input_tip_key_by_label_text = {
+            self.tr("lbl_source"): "tip_input_source_folder",
+            self.tr("lbl_target"): "tip_input_target_folder",
+            self.tr("lbl_config"): "tip_input_config_path",
+            self.tr("lbl_strategy"): "tip_input_strategy",
+            self.tr("lbl_filter_date"): "tip_input_date",
+            self.tr("lbl_log_folder"): "tip_input_log_folder",
+            self.tr("lbl_sandbox_min_free_gb"): "tip_input_sandbox_min_free_gb",
+            self.tr("lbl_gen_timeout"): "tip_input_timeout_seconds",
+            self.tr("lbl_pdf_wait"): "tip_input_pdf_wait_seconds",
+            self.tr("lbl_ppt_timeout"): "tip_input_ppt_timeout_seconds",
+            self.tr("lbl_ppt_wait"): "tip_input_ppt_pdf_wait_seconds",
+            self.tr("lbl_office_restart_every"): "tip_input_office_restart_every_n_files",
+            self.tr("lbl_max_mb"): "tip_input_max_merge_size_mb",
+            self.tr("lbl_mshelp_folder_name"): "tip_input_mshelp_folder_name",
+            self.tr("lbl_locator_merged"): "tip_input_locator_merged",
+            self.tr("lbl_locator_page"): "tip_input_locator_page",
+            self.tr("lbl_locator_id"): "tip_input_locator_short_id",
+            self.tr("lbl_excluded"): "tip_input_excluded_folders",
+            self.tr("lbl_keywords"): "tip_input_price_keywords",
+            self.tr("lbl_tooltip_delay"): "tip_input_tooltip_delay_ms",
+            self.tr("lbl_tooltip_font_size"): "tip_input_tooltip_font_size",
+            self.tr("lbl_tooltip_bg"): "tip_input_tooltip_bg",
+            self.tr("lbl_tooltip_fg"): "tip_input_tooltip_fg",
+        }
+        special_by_id = {}
+        for attr_name, tip_key in (
+            ("lst_source_folders", "tip_input_source_folder"),
+            ("lst_tasks", "tip_task_list"),
+            ("entry_temp_sandbox_root", "tip_input_sandbox_root"),
+            ("cb_sandbox_low_space_policy", "tip_input_sandbox_low_space_policy"),
+            ("ent_log_folder", "tip_input_log_folder"),
+            ("ent_mshelpviewer_folder_name", "tip_input_mshelp_folder_name"),
+            ("ent_cfg_mshelpviewer_folder_name", "tip_input_mshelp_folder_name"),
+            ("ent_timeout_seconds", "tip_input_timeout_seconds"),
+            ("ent_pdf_wait_seconds", "tip_input_pdf_wait_seconds"),
+            ("ent_ppt_timeout_seconds", "tip_input_ppt_timeout_seconds"),
+            ("ent_ppt_pdf_wait_seconds", "tip_input_ppt_pdf_wait_seconds"),
+            ("ent_office_restart_every_n_files", "tip_input_office_restart_every_n_files"),
+            ("ent_max_merge_size_mb", "tip_input_max_merge_size_mb"),
+            ("ent_tooltip_delay", "tip_input_tooltip_delay_ms"),
+            ("ent_tooltip_font_size", "tip_input_tooltip_font_size"),
+            ("ent_tooltip_bg", "tip_input_tooltip_bg"),
+            ("ent_tooltip_fg", "tip_input_tooltip_fg"),
+        ):
+            w = getattr(self, attr_name, None)
+            if w is not None:
+                special_by_id[id(w)] = tip_key
+
+        for child in root.winfo_children():
+            self._auto_attach_input_tooltips(child, fallback_section_tip_key)
+            if id(child) in self._tooltip_widget_ids:
+                continue
+            if not self._is_input_like_widget(child):
+                continue
+            direct_key = special_by_id.get(id(child))
+            if direct_key:
+                self._attach_tooltip(child, direct_key)
+                continue
+            label_text = self._guess_widget_label_text(child)
+            mapped_key = input_tip_key_by_label_text.get(label_text, "")
+            if mapped_key:
+                self._attach_tooltip(child, mapped_key)
+                continue
+            base = self.tr("tip_auto_config_item").format(label_text or child.winfo_class())
+            if fallback_section_tip_key:
+                base = f"{base}\n{self.tr(fallback_section_tip_key)}"
+            self._attach_tooltip_text(child, base)
 
     def _add_cfg_section_reset_action(self, parent, section_name):
         frame = tb.Frame(parent)
@@ -1085,6 +1227,7 @@ class OfficeGUI(tb.Window):
 
         self.lst_source_folders = tk.Listbox(frm_src_body, height=6, selectmode=EXTENDED, font=("System", 9), activestyle="dotbox")
         self.lst_source_folders.pack(side=LEFT, fill=X, expand=YES)
+        self._attach_tooltip(self.lst_source_folders, "tip_input_source_folder")
 
         scr_src = tb.Scrollbar(frm_src_body, orient="vertical", command=self.lst_source_folders.yview)
         scr_src.pack(side=LEFT, fill=Y)
@@ -1572,6 +1715,13 @@ class OfficeGUI(tb.Window):
         self._auto_attach_action_tooltips(lf_ai_export)
         self._auto_attach_action_tooltips(lf_incremental)
         self._auto_attach_action_tooltips(lf_locator)
+        self._auto_attach_input_tooltips(lf_mode, "tip_section_run_mode")
+        self._auto_attach_input_tooltips(lf_paths, "tip_section_run_paths")
+        self._auto_attach_input_tooltips(lf_settings, "tip_section_run_advanced")
+        self._auto_attach_input_tooltips(lf_merge_runtime, "tip_section_run_advanced")
+        self._auto_attach_input_tooltips(lf_collect, "tip_section_run_advanced")
+        self._auto_attach_input_tooltips(lf_mshelp_runtime, "tip_mode_mshelp")
+        self._auto_attach_input_tooltips(lf_locator, "tip_section_run_locator")
         self._build_task_tab_content()
         self._attach_tooltip(self.entry_temp_sandbox_root, "tip_input_sandbox_root")
         self._attach_tooltip(self.cb_strat, "tip_input_strategy")
@@ -1590,6 +1740,7 @@ class OfficeGUI(tb.Window):
             lf_tasks, height=12, selectmode=SINGLE, font=("Consolas", 9)
         )
         self.lst_tasks.pack(fill=BOTH, expand=YES, side=LEFT)
+        self._attach_tooltip(self.lst_tasks, "tip_task_list")
         scr = tb.Scrollbar(lf_tasks, orient="vertical", command=self.lst_tasks.yview)
         scr.pack(side=LEFT, fill=Y)
         self.lst_tasks.configure(yscrollcommand=scr.set)
@@ -1681,6 +1832,8 @@ class OfficeGUI(tb.Window):
         ).pack(fill=X, pady=(6, 0))
 
         self._task_row_ids = []
+        self._auto_attach_action_tooltips(lf_tasks)
+        self._auto_attach_input_tooltips(lf_tasks, "tip_section_run_mode")
         self._refresh_task_list_ui()
 
     def _get_selected_task_id(self):
@@ -2293,9 +2446,13 @@ class OfficeGUI(tb.Window):
             text=self.tr("lbl_mshelp_folder_name"),
             font=("System", 9),
         ).pack(anchor="w")
-        tb.Entry(
+        self.ent_cfg_mshelpviewer_folder_name = tb.Entry(
             lf_cfg_ai_mshelp, textvariable=self.var_mshelpviewer_folder_name
-        ).pack(fill=X)
+        )
+        self.ent_cfg_mshelpviewer_folder_name.pack(fill=X)
+        self._attach_tooltip(
+            self.ent_cfg_mshelpviewer_folder_name, "tip_input_mshelp_folder_name"
+        )
         tb.Checkbutton(
             lf_cfg_ai_mshelp,
             text=self.tr("chk_mshelp_merge_output"),
@@ -2335,11 +2492,15 @@ class OfficeGUI(tb.Window):
             command=self._toggle_tooltip_advanced,
         )
         self.chk_show_tooltip_advanced.pack(anchor="w")
+        self._attach_tooltip(
+            self.chk_show_tooltip_advanced, "tip_toggle_show_tooltip_advanced"
+        )
         frm_tip = tb.Frame(lf_proc_ui)
         self.frm_tooltip_advanced = frm_tip
         self.var_tooltip_auto_theme = tk.IntVar(value=1)
         self.chk_tooltip_auto_theme = tb.Checkbutton(frm_tip, text=self.tr("chk_tooltip_auto_theme"), variable=self.var_tooltip_auto_theme)
         self.chk_tooltip_auto_theme.grid(row=0, column=0, sticky="w", padx=(0, 8))
+        self._attach_tooltip(self.chk_tooltip_auto_theme, "tip_toggle_tooltip_auto_theme")
         self.var_confirm_revert_dirty = tk.IntVar(value=1)
         self.chk_confirm_revert_dirty = tb.Checkbutton(
             frm_tip,
@@ -2361,6 +2522,7 @@ class OfficeGUI(tb.Window):
             to=10000,
         )
         self.ent_tooltip_delay.grid(row=0, column=2, sticky="w", padx=4)
+        self._attach_tooltip(self.ent_tooltip_delay, "tip_input_tooltip_delay_ms")
         self.var_tooltip_font_size = tk.StringVar(value="9")
         tb.Label(frm_tip, text=self.tr("lbl_tooltip_font_size")).grid(row=0, column=3, sticky="e")
         self.ent_tooltip_font_size = spinbox_cls(
@@ -2371,10 +2533,14 @@ class OfficeGUI(tb.Window):
             to=48,
         )
         self.ent_tooltip_font_size.grid(row=0, column=4, sticky="w", padx=4)
+        self._attach_tooltip(
+            self.ent_tooltip_font_size, "tip_input_tooltip_font_size"
+        )
         self.var_tooltip_bg = tk.StringVar(value="#FFF7D6")
         tb.Label(frm_tip, text=self.tr("lbl_tooltip_bg")).grid(row=1, column=1, sticky="e")
         self.ent_tooltip_bg = tb.Entry(frm_tip, textvariable=self.var_tooltip_bg, width=10)
         self.ent_tooltip_bg.grid(row=1, column=2, sticky="w", padx=4)
+        self._attach_tooltip(self.ent_tooltip_bg, "tip_input_tooltip_bg")
         self.btn_pick_tooltip_bg = tb.Button(frm_tip, text="...", width=3, command=lambda: self.pick_tooltip_color("bg"))
         self.btn_pick_tooltip_bg.grid(row=1, column=2, sticky="e", padx=(0, 0))
         self._attach_tooltip(self.btn_pick_tooltip_bg, "tip_pick_color")
@@ -2382,6 +2548,7 @@ class OfficeGUI(tb.Window):
         tb.Label(frm_tip, text=self.tr("lbl_tooltip_fg")).grid(row=1, column=3, sticky="e")
         self.ent_tooltip_fg = tb.Entry(frm_tip, textvariable=self.var_tooltip_fg, width=10)
         self.ent_tooltip_fg.grid(row=1, column=4, sticky="w", padx=4)
+        self._attach_tooltip(self.ent_tooltip_fg, "tip_input_tooltip_fg")
         self.btn_pick_tooltip_fg = tb.Button(frm_tip, text="...", width=3, command=lambda: self.pick_tooltip_color("fg"))
         self.btn_pick_tooltip_fg.grid(row=1, column=4, sticky="e", padx=(0, 0))
         self._attach_tooltip(self.btn_pick_tooltip_fg, "tip_pick_color")
@@ -2479,6 +2646,15 @@ class OfficeGUI(tb.Window):
         self._auto_attach_action_tooltips(frm_cfg_ui_actions)
         self._auto_attach_action_tooltips(frm_cfg_rules_actions)
         self._auto_attach_action_tooltips(cfg_actions)
+        self._auto_attach_input_tooltips(lf_cfg_path, "tip_section_cfg_paths")
+        self._auto_attach_input_tooltips(lf_proc_shared, "tip_section_cfg_process")
+        self._auto_attach_input_tooltips(lf_cfg_log, "tip_section_cfg_process")
+        self._auto_attach_input_tooltips(lf_proc_convert, "tip_section_cfg_process")
+        self._auto_attach_input_tooltips(lf_proc_merge_output, "tip_section_cfg_process")
+        self._auto_attach_input_tooltips(lf_cfg_ai_mshelp, "tip_mode_mshelp")
+        self._auto_attach_input_tooltips(lf_proc_ui, "tip_section_cfg_process")
+        self._auto_attach_input_tooltips(lf_rules_excluded, "tip_section_cfg_lists")
+        self._auto_attach_input_tooltips(lf_rules_keywords, "tip_section_cfg_lists")
         self._attach_tooltip(self.txt_excluded_folders, "tip_input_excluded_folders")
         self._attach_tooltip(self.txt_price_keywords, "tip_input_price_keywords")
         self._bind_var_validation(self.var_timeout_seconds, lambda: self._normalize_then_validate(self.var_timeout_seconds, self._normalize_numeric_var, "config"))
