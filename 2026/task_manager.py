@@ -103,13 +103,19 @@ def build_task_runtime_config(project_config, task, force_full_rebuild=False):
         overrides = {}
     merged = _deep_merge(merged, overrides)
 
-    source_folder = task.get("source_folder", merged.get("source_folder", ""))
+    source_folders = task.get("source_folders")
+    if isinstance(source_folders, list) and source_folders:
+        source_folders = [str(p).strip() for p in source_folders if str(p).strip()]
+    if not source_folders:
+        fallback = str(task.get("source_folder", merged.get("source_folder", "") or "")).strip()
+        source_folders = [fallback] if fallback else []
+    source_folder = (source_folders or [""])[0]
     target_folder = task.get("target_folder", merged.get("target_folder", ""))
     task_id = str(task.get("id", "") or "task")
 
     merged["source_folder"] = source_folder
     merged["target_folder"] = target_folder
-    merged["source_folders"] = [source_folder] if source_folder else []
+    merged["source_folders"] = source_folders if source_folders else []
 
     run_incremental = bool(task.get("run_incremental", True)) and not bool(
         force_full_rebuild
@@ -173,10 +179,11 @@ class TaskStore:
         return task if task else None
 
     def _build_summary(self, task):
+        src = task.get("source_folder") or (task.get("source_folders") or [""])[0]
         return {
             "id": task["id"],
             "name": task["name"],
-            "source_folder": task.get("source_folder", ""),
+            "source_folder": src,
             "target_folder": task.get("target_folder", ""),
             "run_incremental": bool(task.get("run_incremental", True)),
             "status": task.get("status", "idle"),
@@ -190,7 +197,12 @@ class TaskStore:
             raise ValueError("task must be dict")
         task_id = str(task.get("id", "")).strip()
         name = str(task.get("name", "")).strip()
-        source_folder = str(task.get("source_folder", "")).strip()
+        source_folders = task.get("source_folders")
+        if isinstance(source_folders, list):
+            source_folders = [str(p).strip() for p in source_folders if str(p).strip()]
+        if not source_folders:
+            source_folders = [str(task.get("source_folder", "")).strip()]
+        source_folder = (source_folders or [""])[0]
         target_folder = str(task.get("target_folder", "")).strip()
         if not task_id or not name:
             raise ValueError("task id/name required")
@@ -203,6 +215,7 @@ class TaskStore:
         payload.update(task)
         payload["id"] = task_id
         payload["name"] = name
+        payload["source_folders"] = source_folders
         payload["source_folder"] = source_folder
         payload["target_folder"] = target_folder
         payload["run_incremental"] = bool(payload.get("run_incremental", True))

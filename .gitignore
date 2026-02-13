@@ -53,9 +53,7 @@ log/
 2026/.ruff_cache/
 2026/.coverage
 2026/.coverage.*
-2026/config_profiles/*.json
-
-# PyInstaller
+2026/config_profiles/*.json# PyInstaller
 2026/build/
 2026/dist/
 2026/*.spec

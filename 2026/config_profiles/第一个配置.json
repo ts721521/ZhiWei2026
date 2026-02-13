@@ -1,0 +1,114 @@
+{
+    "source_folder": "E:\\21_SE_Doc\\BaiduNetdiskWorkspace\\SynologyDrive\\5_投标\\2026",
+    "target_folder": "C:\\PDFs",
+    "log_folder": "./logs",
+    "enable_sandbox": true,
+    "default_engine": "wps",
+    "kill_process_mode": "auto",
+    "auto_retry_failed": false,
+    "timeout_seconds": 60,
+    "pdf_wait_seconds": 15,
+    "ppt_timeout_seconds": 180,
+    "ppt_pdf_wait_seconds": 30,
+    "enable_merge": true,
+    "max_merge_size_mb": 80,
+    "price_keywords": [
+        "报价",
+        "价格表",
+        "Price",
+        "Quotation"
+    ],
+    "excluded_folders": [
+        "temp",
+        "backup",
+        "archive"
+    ],
+    "allowed_extensions": {
+        "word": [
+            ".doc",
+            ".docx"
+        ],
+        "excel": [
+            ".xls",
+            ".xlsx"
+        ],
+        "powerpoint": [
+            ".ppt",
+            ".pptx"
+        ],
+        "pdf": [
+            ".pdf"
+        ]
+    },
+    "overwrite_same_size": true,
+    "merge_mode": "all_in_one",
+    "temp_sandbox_root": "",
+    "run_mode": "convert_then_merge",
+    "collect_mode": "copy_and_index",
+    "content_strategy": "standard",
+    "enable_merge_map": true,
+    "bookmark_with_short_id": true,
+    "everything": {
+        "enabled": true,
+        "es_path": "",
+        "prefer_path_exact": true,
+        "timeout_ms": 1500
+    },
+    "listary": {
+        "enabled": true,
+        "copy_query_on_locate": true
+    },
+    "privacy": {
+        "mask_md5_in_logs": true
+    },
+    "ui": {
+        "tooltip_delay_ms": 500,
+        "tooltip_bg": "#FFF7D6",
+        "tooltip_fg": "#202124",
+        "tooltip_font_family": "System",
+        "tooltip_font_size": 9,
+        "tooltip_auto_theme": true,
+        "confirm_revert_dirty": true
+    },
+    "source_folder_win": "E:\\21_SE_Doc\\BaiduNetdiskWorkspace\\SynologyDrive\\5_投标\\2026",
+    "target_folder_win": "C:\\PDFs",
+    "temp_sandbox_root_win": "",
+    "source_folders_win": [
+        "E:\\21_SE_Doc\\BaiduNetdiskWorkspace\\SynologyDrive\\5_投标\\2026"
+    ],
+    "source_folders": [
+        "E:\\21_SE_Doc\\BaiduNetdiskWorkspace\\SynologyDrive\\5_投标\\2026"
+    ],
+    "merge_source": "source",
+    "enable_merge_index": true,
+    "enable_merge_excel": true,
+    "enable_corpus_manifest": true,
+    "enable_markdown": true,
+    "markdown_strip_header_footer": true,
+    "markdown_structured_headings": true,
+    "enable_markdown_quality_report": true,
+    "enable_excel_json": true,
+    "enable_chromadb_export": true,
+    "enable_incremental_mode": false,
+    "incremental_verify_hash": false,
+    "incremental_reprocess_renamed": false,
+    "source_priority_skip_same_name_pdf": false,
+    "global_md5_dedup": true,
+    "enable_update_package": true,
+    "llm_delivery_root_win": "",
+    "mshelpviewer_folder_name": "MSHelpViewer",
+    "enable_mshelp_merge_output": true,
+    "enable_mshelp_output_docx": false,
+    "enable_mshelp_output_pdf": false,
+    "sandbox_min_free_gb": 10,
+    "sandbox_low_space_policy": "block",
+    "enable_llm_delivery_hub": true,
+    "llm_delivery_root": "",
+    "llm_delivery_flatten": true,
+    "llm_delivery_include_pdf": false,
+    "office_reuse_app": true,
+    "office_restart_every_n_files": 25,
+    "enable_upload_readme": false,
+    "enable_upload_json_manifest": true,
+    "upload_dedup_merged": true
+}
