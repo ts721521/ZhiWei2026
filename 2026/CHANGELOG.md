@@ -5,7 +5,7 @@ All notable changes to this project are documented in this file.
 ## [v5.17.0] - 2026-02-13
 ### Added
 - Merge output filename pattern: configurable `merge_filename_pattern` in config and GUI (placeholders: `{category}`, `{timestamp}`, `{date}`, `{time}`, `{idx}`). Default: `Merged_{category}_{timestamp}_{idx}`.
-- Build script `build_exe.py`: exe output name now includes version (e.g. `OfficeBatchConverter_v5.17.0.exe`), version read from `office_converter.py`; **packaging now clears `dist` and `build` before building**.
+- Build script `build_exe.py`: exe output name now includes version (e.g. `ZhiWei_v5.17.0.exe`), version read from `office_converter.py`; **packaging now clears `dist` and `build` before building**.
 - **README.md** for GitHub: project intro, features, install, run, build, and doc links.
 
 ### Changed
@@ -16,6 +16,7 @@ All notable changes to this project are documented in this file.
 - Multi-select source folders were not actually processing files under each folder: only the first folder was used in task mode; converter now iterates over all `source_folders` for scanning and relpath resolution.
 
 ### Documentation & Release
+- **Product rename**: 品牌名 **知喂 (ZhiWei)**，副标题「知识投喂工具」/「Office 转知识库」；exe 与脚本使用 `ZhiWei`。
 - GUI: English mode removed; interface is Chinese-only.
 - All user-facing docs updated (使用说明书、打包说明、CHANGELOG); AI handover doc and README aligned for public release.
 

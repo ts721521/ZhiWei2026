@@ -2,8 +2,8 @@
 
 TRANSLATIONS = {
     "en": {
-        "title": "Office Batch Converter & Organizer",
-        "header_title": "Office Batch Converter",
+        "title": "ZhiWei",
+        "header_title": "ZhiWei",
         "theme_dark": "Dark Mode",
         "theme_light": "Light Mode",
         "lang_toggle": "中文",
@@ -511,8 +511,8 @@ TRANSLATIONS = {
         "msg_coercion_max_mb_default": "max_merge_size_mb: invalid -> {} (default)",
     },
     "zh": {
-        "title": "Office 批量转换 & 梳理工具",
-        "header_title": "Office 批量转换工具",
+        "title": "知喂",
+        "header_title": "知喂 · 知识投喂工具",
         "theme_dark": "深色模式",
         "theme_light": "浅色模式",
         "lang_toggle": "English",

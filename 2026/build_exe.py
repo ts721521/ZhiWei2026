@@ -11,7 +11,7 @@ import sys
 import importlib.util
 
 # Import version from office_converter
-APP_NAME = "OfficeBatchConverter"
+APP_NAME = "ZhiWei"
 ENTRY = "office_gui.py"
 ENV_KEYS_TO_CLEAR = ("PYTHONPATH", "PYTHONHOME")
 
