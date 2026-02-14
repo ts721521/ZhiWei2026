@@ -2,6 +2,30 @@
 
 All notable changes to this project are documented in this file.
 
+## [v5.17.0] - 2026-02-13
+### Added
+- Merge output filename pattern: configurable `merge_filename_pattern` in config and GUI (placeholders: `{category}`, `{timestamp}`, `{date}`, `{time}`, `{idx}`). Default: `Merged_{category}_{timestamp}_{idx}`.
+- Build script `build_exe.py`: exe output name now includes version (e.g. `OfficeBatchConverter_v5.17.0.exe`), version read from `office_converter.py`.
+
+### Changed
+- Multi-folder processing: converter now scans and processes **all** source folders in both task mode and classic mode. Added `_get_source_roots()` and `_get_source_root_for_path()`; convert, merge, collect, and MSHelp flows use multiple source roots when `source_folders` is set.
+- Classic mode: each run step explicitly sets `source_folders = [step["source"]]` so one folder per step; task mode passes full `source_folders` and processes all in one run.
+
+### Fixed
+- Multi-select source folders were not actually processing files under each folder: only the first folder was used in task mode; converter now iterates over all `source_folders` for scanning and relpath resolution.
+
+---
+
+## [v5.16.0] - 2026-02-13
+### Added
+- GUI: Multiple source folder selection with parent folder scanning feature for both classic mode and task wizard.
+- GUI: Source folder multi-select dialog now supports two methods:
+  - Method 1 (Recommended): Select parent folder and scan all subfolders at once
+  - Method 2: Manual individual folder addition
+- GUI: Added "Select All", "Deselect All", and "Invert Selection" controls for quick folder selection.
+- GUI: Multi-select dialogs with improved window sizes to ensure all controls are fully visible.
+- GUI: Task wizard source folder selection now supports the same multi-select functionality as classic mode.
+
 ## [Unreleased] - 2026-02-11
 ### Added
 - GUI: New independent tab `成果文件` (Output Files) for managing LLM upload hub, upload manifest, and dedup settings. Always visible regardless of run mode.

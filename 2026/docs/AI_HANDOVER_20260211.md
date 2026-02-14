@@ -6,7 +6,7 @@
   - `office_converter.py` (pipeline, conversion, merge, AI exports, incremental, MSHelp)
   - `office_gui.py` (Tk/ttkbootstrap UI, run/config centers)
   - `ui_translations.py` (zh/en i18n)
-- Current version marker in code: `v5.15.6` (code), docs/changelog updated to current workstream.
+- Current version marker in code: `v5.17.0` (code), docs/changelog updated to current workstream.
 
 ## 2. Implemented Capability Baseline
 ### 2.1 Existing run modes
