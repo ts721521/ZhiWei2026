@@ -3,7 +3,7 @@
 office_gui.py - Office 鏂囨。鎵归噺杞崲 & 姊崇悊宸ュ叿 GUI 鐗?
 
 璇存槑锛?
-- 渚濊禆 office_converter.py 涓殑 OfficeConverter锛堝凡鏇存柊鍒?v5.15.6锛?
+- 渚濊禆 office_converter.py 涓殑 OfficeConverter锛堝凡鏇存柊鍒?v5.17.0锛?
 - GUI 涓惈锛?
     * "杩愯鍙傛暟"椤碉細閫夋嫨婧?鐩爣鐩綍銆佽繍琛屾ā寮忋€佸唴瀹圭瓥鐣ャ€佸悎骞舵ā寮忋€佹矙绠辩瓑
     * "閰嶇疆绠＄悊"椤碉細鐩存帴缂栬緫 config.json 鐨勯儴鍒嗛厤缃紙鏃ュ織鐩綍銆佹帓闄ょ洰褰曘€佸叧閿瓧銆佽秴鏃跺弬鏁扮瓑锛?
@@ -2149,6 +2149,11 @@ class OfficeGUI(tb.Window):
             "output_choice": "both",
             "merge_how": MERGE_MODE_CATEGORY,
             "max_merge_size_mb": 80,
+            "merge_filename_pattern": (
+                getattr(self, "var_merge_filename_pattern", None)
+                and self.var_merge_filename_pattern.get().strip()
+                or "Merged_{category}_{timestamp}_{idx}"
+            ),
         }
         win._wizard_data = data
         win._wizard_step = 1
@@ -2211,9 +2216,21 @@ class OfficeGUI(tb.Window):
         f2_src_btns = tk.Frame(f2_src, bg=_bg)
         f2_src_btns.pack(side=LEFT, fill=Y)
         def add_src():
-            p = filedialog.askdirectory(title=self.tr("msg_task_pick_source"), parent=win)
-            if p and p not in lst_src.get(0, END):
-                lst_src.insert(END, p)
+            # Ask user if they want to select multiple folders
+            result = messagebox.askyesno(
+                self.tr("msg_task_pick_source"),
+                self.tr("msg_multi_select_folders"),
+                icon="question",
+                parent=win
+            )
+            if result:
+                # Multi-select mode - open multi-folder dialog
+                self._open_task_multi_folder_dialog(win, lst_src)
+            else:
+                # Single-select mode
+                p = filedialog.askdirectory(title=self.tr("msg_task_pick_source"), parent=win)
+                if p and p not in lst_src.get(0, END):
+                    lst_src.insert(END, p)
         def remove_src():
             sel = lst_src.curselection()
             if sel:
@@ -2394,6 +2411,9 @@ class OfficeGUI(tb.Window):
             overrides["output_enable_independent"] = d["output_enable_independent"]
             overrides["merge_mode"] = d.get("merge_mode", MERGE_MODE_CATEGORY)
             overrides["max_merge_size_mb"] = d.get("max_merge_size_mb", 80)
+            overrides["merge_filename_pattern"] = (
+                d.get("merge_filename_pattern") or "Merged_{category}_{timestamp}_{idx}"
+            )
             task = {
                 "id": self._new_task_id(),
                 "name": d["name"],
@@ -2547,6 +2567,9 @@ class OfficeGUI(tb.Window):
             self.var_output_enable_independent.set(1 if cfg.get("output_enable_independent", False) else 0)
             self.var_merge_mode.set(cfg.get("merge_mode", MERGE_MODE_CATEGORY))
             self.var_max_merge_size_mb.set(str(cfg.get("max_merge_size_mb", 80)))
+            self.var_merge_filename_pattern.set(
+                cfg.get("merge_filename_pattern") or "Merged_{category}_{timestamp}_{idx}"
+            )
         finally:
             self._suspend_cfg_dirty = False
         messagebox.showinfo(self.tr("btn_task_load_to_ui"), self.tr("msg_task_load_to_ui_done"), parent=self)
@@ -2896,6 +2919,15 @@ class OfficeGUI(tb.Window):
             self.var_max_merge_size_mb.trace_add("write", lambda *a: self.after(0, self._update_output_summary_label))
         except Exception:
             pass
+        tb.Label(lf_proc_merge_output, text=self.tr("lbl_merge_filename_pattern"), font=("System", 9)).pack(anchor="w", pady=(8, 0))
+        self.var_merge_filename_pattern = tk.StringVar(value="Merged_{category}_{timestamp}_{idx}")
+        self.ent_merge_filename_pattern = tb.Entry(
+            lf_proc_merge_output,
+            textvariable=self.var_merge_filename_pattern,
+            width=45,
+        )
+        self.ent_merge_filename_pattern.pack(fill=X, pady=(2, 0))
+        self._attach_tooltip(self.ent_merge_filename_pattern, "tip_input_merge_filename_pattern")
         (
             frm_cfg_merge_actions,
             self.btn_save_cfg_merge,
@@ -3772,16 +3804,565 @@ class OfficeGUI(tb.Window):
     # ===================== 閻╊喖缍?鎸夐挳鍔ㄤ綔 =====================
 
     def add_source_folder(self):
+        """Add source folder with option to select multiple folders."""
+        # Show dialog to choose single or multi select
+        if not hasattr(self, "_multi_folder_dialog"):
+            self._multi_folder_dialog = None
+
+        # Ask user if they want to select multiple folders
+        result = messagebox.askyesno(
+            self.tr("tip_add_source_folder"),
+            self.tr("msg_multi_select_folders") if hasattr(self, "tr") and "msg_multi_select_folders" in TRANSLATIONS.get(self.current_lang, {}) 
+            else "是否要选择多个文件夹？\n\n选择「是」将打开多选文件夹对话框\n选择「否」将打开单选文件夹对话框",
+            icon="question"
+        )
+
+        if result:
+            # Multi-select mode
+            self._open_multi_folder_dialog()
+        else:
+            # Single-select mode
+            path = filedialog.askdirectory(title=self.tr("tip_add_source_folder"))
+            if path:
+                if sys.platform == "win32":
+                    path = path.replace("/", "\\")
+                if path not in self.source_folders_list:
+                    self.source_folders_list.append(path)
+                    self.lst_source_folders.insert(END, path)
+                    self.cfg_dirty = True
+            # Sync to hidden var for compatibility
+            if self.source_folders_list:
+                self.var_source_folder.set(self.source_folders_list[0])
+
+    def _open_multi_folder_dialog(self):
+        """Open a custom dialog for selecting multiple folders."""
+        if hasattr(self, "_multi_folder_dialog") and self._multi_folder_dialog is not None:
+            try:
+                if self._multi_folder_dialog.winfo_exists():
+                    self._multi_folder_dialog.lift()
+                    self._multi_folder_dialog.focus_force()
+                    return
+            except Exception:
+                pass
+
+        dlg = tk.Toplevel(self)
+        dlg.title(self.tr("msg_multi_select_title") if hasattr(self, "tr") and "msg_multi_select_title" in TRANSLATIONS.get(self.current_lang, {}) else "多选源文件夹")
+        self._place_dialog_in_main(dlg, 720, 650)
+        dlg.minsize(650, 550)
+        dlg.transient(self)
+        dlg.grab_set()
+        dlg.lift()
+        dlg.protocol("WM_DELETE_WINDOW", self._close_multi_folder_dialog)
+        self._multi_folder_dialog = dlg
+
+        # Main frame
+        frame = tb.Frame(dlg, padding=12)
+        frame.pack(fill=BOTH, expand=YES)
+
+        # Instructions
+        tb.Label(frame, text="方式1：扫描父文件夹（推荐，一次添加多个）", font=("System", 9, "bold"), foreground="#007bff").pack(anchor="w", pady=(0, 5))
+        
+        # Parent folder selection section
+        parent_frame = tb.Frame(frame)
+        parent_frame.pack(fill=X, pady=(0, 10))
+        
+        tb.Label(parent_frame, text="选择父文件夹：", font=("System", 9)).pack(side=LEFT, padx=(0, 8))
+        ent_parent = tb.Entry(parent_frame, width=50)
+        ent_parent.pack(side=LEFT, fill=X, expand=YES)
+        
+        def pick_parent():
+            p = filedialog.askdirectory(title="选择父文件夹")
+            if p:
+                if sys.platform == "win32":
+                    p = p.replace("/", "\\")
+                ent_parent.delete(0, END)
+                ent_parent.insert(0, p)
+        
+        def scan_subfolders():
+            parent = ent_parent.get().strip()
+            if not parent or not os.path.isdir(parent):
+                messagebox.showwarning("提示", "请选择有效的父文件夹！", parent=dlg)
+                return
+            
+            # Clear existing
+            folder_tree.delete(*folder_tree.get_children())
+            
+            # Scan subfolders
+            try:
+                subfolders = []
+                for item in os.listdir(parent):
+                    item_path = os.path.join(parent, item)
+                    if os.path.isdir(item_path):
+                        subfolders.append(item_path)
+                
+                # Sort folders
+                subfolders.sort()
+                
+                # Add to tree (all checked by default)
+                for subfolder in subfolders:
+                    item = folder_tree.insert("", "end", values=(subfolder,))
+                    folder_tree.item(item, tags=("checked",))
+                    folder_tree.set(item, "selected", "1")  # Custom flag
+                
+                # Update count
+                self._update_folder_count(folder_tree)
+                
+                # Update display
+                total = len(subfolders)
+                count_label.config(text=f"已扫描 {total} 个子文件夹")
+                
+                messagebox.showinfo("扫描完成", f"已从父文件夹扫描到 {total} 个子文件夹！", parent=dlg)
+                
+            except Exception as e:
+                messagebox.showerror("错误", f"扫描失败：{str(e)}", parent=dlg)
+        
+        tb.Button(parent_frame, text="浏览", command=pick_parent, bootstyle="info", width=8).pack(side=LEFT, padx=(8, 4))
+        tb.Button(parent_frame, text="扫描子文件夹", command=scan_subfolders, bootstyle="success", width=12).pack(side=LEFT, padx=(4, 0))
+
+        # Manual add section
+        tb.Label(frame, text="方式2：手动逐个添加", font=("System", 9, "bold"), foreground="#666").pack(anchor="w", pady=(10, 5))
+
+        # Treeview for folder selection with checkboxes
+        left_frame = tb.Frame(frame)
+        left_frame.pack(fill=BOTH, expand=YES)
+
+        # Use a custom checkbox listbox approach
+        cols = ("selected", "path",)
+        folder_tree = ttk.Treeview(left_frame, columns=cols, show="headings", selectmode="extended")
+        folder_tree.heading("selected", text="", width=30)
+        folder_tree.column("selected", width=30, anchor="center")
+        folder_tree.heading("path", text="文件夹路径")
+        folder_tree.column("path", width=550, anchor="w")
+        folder_tree.pack(side=LEFT, fill=BOTH, expand=YES)
+
+        # Scrollbar for treeview
+        tree_scroll = tb.Scrollbar(left_frame, orient=VERTICAL, command=folder_tree.yview)
+        folder_tree.configure(yscrollcommand=tree_scroll.set)
+        tree_scroll.pack(side=RIGHT, fill=Y)
+
+        # Right: Buttons
+        btn_frame = tb.Frame(frame)
+        btn_frame.pack(side=RIGHT, fill=Y, padx=(10, 0))
+
+        btn_browse = tb.Button(btn_frame, text="+ 浏览", command=lambda: self._browse_folder_to_dialog(folder_tree), bootstyle="info", width=10)
+        btn_browse.pack(pady=2)
+
+        tb.Label(btn_frame, text="", height=1).pack()  # Spacer
+
+        btn_remove = tb.Button(btn_frame, text="- 移除", command=lambda: self._remove_folder_from_tree(folder_tree), bootstyle="danger-outline", width=10)
+        btn_remove.pack(pady=2)
+
+        btn_clear = tb.Button(btn_frame, text="C 清空", command=lambda: self._clear_folder_tree(folder_tree), bootstyle="secondary-outline", width=10)
+        btn_clear.pack(pady=2)
+
+        # Bottom section: Controls
+        bottom_frame = tb.Frame(frame)
+        bottom_frame.pack(fill=X, pady=(10, 0))
+
+        # Count display
+        self._multi_folder_count_var = tk.StringVar()
+        count_label = tb.Label(bottom_frame, textvariable=self._multi_folder_count_var, font=("System", 9))
+        count_label.pack(anchor="w")
+
+        # Checkbox controls
+        check_frame = tb.Frame(bottom_frame)
+        check_frame.pack(anchor="w", pady=(8, 0))
+
+        def select_all():
+            for item in folder_tree.get_children():
+                folder_tree.item(item, tags=("checked",))
+
+        def deselect_all():
+            for item in folder_tree.get_children():
+                folder_tree.item(item, tags=())
+
+        def invert_selection():
+            for item in folder_tree.get_children():
+                tags = folder_tree.item(item, "tags")
+                if tags and "checked" in tags:
+                    folder_tree.item(item, tags=())
+                else:
+                    folder_tree.item(item, tags=("checked",))
+
+        tb.Button(check_frame, text="全选", command=select_all, bootstyle="info-outline", width=8).pack(side=LEFT, padx=(0, 4))
+        tb.Button(check_frame, text="全不选", command=deselect_all, bootstyle="secondary-outline", width=8).pack(side=LEFT, padx=4)
+        tb.Button(check_frame, text="反选", command=invert_selection, bootstyle="secondary-outline", width=8).pack(side=LEFT, padx=4)
+
+        # Initialize
+        self._update_folder_count(folder_tree)
+
+        # Action buttons
+        action_btn_frame = tb.Frame(frame)
+        action_btn_frame.pack(fill=X, pady=(10, 0))
+
+        btn_add = tb.Button(action_btn_frame, text="添加到列表", command=lambda: self._confirm_multi_folder_selection(folder_tree), bootstyle="success", width=12)
+        btn_add.pack(side=LEFT)
+
+        btn_cancel = tb.Button(action_btn_frame, text="取消", command=self._close_multi_folder_dialog, bootstyle="secondary-outline", width=10)
+        btn_cancel.pack(side=RIGHT)
+
+
+    def _close_multi_folder_dialog(self):
+        """Close the multi-folder selection dialog."""
+        if hasattr(self, "_multi_folder_dialog") and self._multi_folder_dialog is not None:
+            try:
+                if self._multi_folder_dialog.grab_current() == self._multi_folder_dialog:
+                    self._multi_folder_dialog.grab_release()
+            except Exception:
+                pass
+            try:
+                self._multi_folder_dialog.destroy()
+            except Exception:
+                pass
+        self._multi_folder_dialog = None
+
+    def _browse_folder_to_dialog(self, tree):
+        """Browse for a single folder and add to tree."""
         path = filedialog.askdirectory(title=self.tr("tip_add_source_folder"))
         if path:
             if sys.platform == "win32":
                 path = path.replace("/", "\\")
-            if path not in self.source_folders_list:
-                self.source_folders_list.append(path)
-                self.lst_source_folders.insert(END, path)
+            # Check if already exists
+            exists = False
+            for item in tree.get_children():
+                if tree.get(item, "path")[0] == path:
+                    exists = True
+                    break
+            if not exists:
+                tree.insert("", "end", values=(path,))
+                self._update_folder_count(tree)
+
+    def _browse_multiple_to_dialog(self, tree):
+        """Browse for multiple folders using multiple askdirectory calls."""
+        # Since askdirectory doesn't support multi-select natively,
+        # we'll use a simple loop approach with a counter
+        base_dir = filedialog.askdirectory(title=self.tr("tip_add_source_folder") + " (选择第一个文件夹)")
+        if not base_dir:
+            return
+
+        if sys.platform == "win32":
+            base_dir = base_dir.replace("/", "\\")
+
+        # Add first folder
+        exists = False
+        for item in tree.get_children():
+            if tree.get(item, "path")[0] == base_dir:
+                exists = True
+                break
+        if not exists:
+            tree.insert("", "end", values=(base_dir,))
+        self._update_folder_count(tree)
+
+        # Ask if user wants to add more folders
+        while True:
+            result = messagebox.askyesno(
+                "继续添加",
+                "是否要继续添加更多文件夹？",
+                icon="question"
+            )
+            if not result:
+                break
+
+            next_dir = filedialog.askdirectory(title=self.tr("tip_add_source_folder") + " (选择下一个文件夹)")
+            if not next_dir:
+                break
+
+            if sys.platform == "win32":
+                next_dir = next_dir.replace("/", "\\")
+
+            # Check if already exists
+            exists = False
+            for item in tree.get_children():
+                if tree.get(item, "path")[0] == next_dir:
+                    exists = True
+                    break
+            if not exists:
+                tree.insert("", "end", values=(next_dir,))
+            self._update_folder_count(tree)
+
+    def _remove_folder_from_tree(self, tree):
+        """Remove selected folders from the tree."""
+        selection = tree.selection()
+        for item in reversed(selection):
+            tree.delete(item)
+        self._update_folder_count(tree)
+
+    def _clear_folder_tree(self, tree):
+        """Clear all folders from the tree."""
+        tree.delete(*tree.get_children())
+        self._update_folder_count(tree)
+
+    def _update_folder_count(self, tree):
+        """Update the folder count display."""
+        count = len(tree.get_children())
+        if hasattr(self, "_multi_folder_count_var"):
+            if count == 0:
+                self._multi_folder_count_var.set("已选择 0 个文件夹")
+            elif count == 1:
+                self._multi_folder_count_var.set("已选择 1 个文件夹")
+            else:
+                self._multi_folder_count_var.set(f"已选择 {count} 个文件夹")
+
+    def _confirm_multi_folder_selection(self, tree):
+        """Add selected folders to the main source folders list."""
+        added_count = 0
+        for item in tree.get_children():
+            tags = tree.item(item, "tags")
+            if tags and "checked" in tags:  # Only add checked items
+                path = tree.get(item, "path")[0]
+                if path not in self.source_folders_list:
+                    self.source_folders_list.append(path)
+                    self.lst_source_folders.insert(END, path)
+                    added_count += 1
         # Sync to hidden var for compatibility
         if self.source_folders_list:
             self.var_source_folder.set(self.source_folders_list[0])
+        if added_count > 0:
+            self.cfg_dirty = True
+        self._close_multi_folder_dialog()
+
+    def _open_task_multi_folder_dialog(self, parent_win, target_listbox):
+        """Open a simplified multi-folder dialog for task wizard."""
+        # Check if dialog already exists
+        if hasattr(self, "_task_multi_folder_dialog") and self._task_multi_folder_dialog is not None:
+            try:
+                if self._task_multi_folder_dialog.winfo_exists():
+                    self._task_multi_folder_dialog.lift()
+                    self._task_multi_folder_dialog.focus_force()
+                    return
+            except Exception:
+                pass
+
+        dlg = tk.Toplevel(parent_win)
+        dlg.title(self.tr("msg_multi_select_title"))
+        dlg.minsize(620, 600)
+        dlg.geometry("660x620")
+        dlg.transient(parent_win)
+        dlg.grab_set()
+        dlg.lift()
+        dlg.protocol("WM_DELETE_WINDOW", lambda: self._close_task_multi_folder_dialog(dlg))
+        self._task_multi_folder_dialog = dlg
+
+        # Main frame with simple style
+        frame = tk.Frame(dlg, padx=12, pady=12)
+        frame.pack(fill=BOTH, expand=YES)
+
+        # Instructions
+        tk.Label(frame, text="方式1：扫描父文件夹（推荐，一次添加多个）", font=("System", 9, "bold"), fg="blue").pack(anchor="w", pady=(0, 5))
+        
+        # Parent folder selection section
+        parent_frame = tk.Frame(frame)
+        parent_frame.pack(fill=X, pady=(0, 8))
+        
+        tk.Label(parent_frame, text="选择父文件夹：", font=("System", 9)).pack(side=LEFT, padx=(0, 8))
+        ent_parent = tk.Entry(parent_frame, width=50)
+        ent_parent.pack(side=LEFT, fill=X, expand=YES)
+        
+        def pick_parent():
+            p = filedialog.askdirectory(title="选择父文件夹")
+            if p:
+                if sys.platform == "win32":
+                    p = p.replace("/", "\\")
+                ent_parent.delete(0, END)
+                ent_parent.insert(0, p)
+        
+        def scan_subfolders():
+            parent = ent_parent.get().strip()
+            if not parent or not os.path.isdir(parent):
+                messagebox.showwarning("提示", "请选择有效的父文件夹！", parent=dlg)
+                return
+            
+            # Clear existing
+            folder_listbox.delete(0, END)
+            
+            # Scan subfolders
+            try:
+                subfolders = []
+                for item in os.listdir(parent):
+                    item_path = os.path.join(parent, item)
+                    if os.path.isdir(item_path):
+                        subfolders.append(item_path)
+                
+                # Sort folders
+                subfolders.sort()
+                
+                # Add to listbox (all selected by default)
+                for subfolder in subfolders:
+                    folder_listbox.insert(END, subfolder)
+                
+                # Update count
+                update_task_count()
+                
+                messagebox.showinfo("扫描完成", f"已从父文件夹扫描到 {len(subfolders)} 个子文件夹！", parent=dlg)
+                
+            except Exception as e:
+                messagebox.showerror("错误", f"扫描失败：{str(e)}", parent=dlg)
+        
+        tk.Button(parent_frame, text="浏览", command=pick_parent, width=8).pack(side=LEFT, padx=(8, 4))
+        tk.Button(parent_frame, text="扫描子文件夹", command=scan_subfolders, bg="green", fg="white", width=12).pack(side=LEFT, padx=(4, 0))
+
+        # Manual add section
+        tk.Label(frame, text="方式2：手动逐个添加", font=("System", 9, "bold"), fg="gray").pack(anchor="w", pady=(8, 5))
+
+        # Top section with split layout
+        top_frame = tk.Frame(frame)
+        top_frame.pack(fill=BOTH, expand=YES, pady=(0, 10))
+
+        # Left: Listbox for folder selection
+        left_frame = tk.Frame(top_frame)
+        left_frame.pack(side=LEFT, fill=BOTH, expand=YES)
+
+        folder_listbox = tk.Listbox(left_frame, selectmode=EXTENDED, font=("Consolas", 9))
+        folder_listbox.pack(side=LEFT, fill=BOTH, expand=YES)
+
+        # Scrollbar for listbox
+        list_scroll = tk.Scrollbar(left_frame, orient=VERTICAL, command=folder_listbox.yview)
+        folder_listbox.configure(yscrollcommand=list_scroll.set)
+        list_scroll.pack(side=RIGHT, fill=Y)
+
+        # Right: Buttons for add/remove
+        btn_frame = tk.Frame(top_frame)
+        btn_frame.pack(side=RIGHT, fill=Y, padx=(10, 0))
+
+        tk.Button(btn_frame, text="+ 浏览", width=8, command=lambda: self._task_browse_folder_to_dialog(folder_listbox)).pack(pady=2)
+        
+        tk.Label(btn_frame, text="", height=1).pack()  # Spacer
+        
+        tk.Button(btn_frame, text="- 移除", width=8, command=lambda: self._task_remove_from_listbox(folder_listbox)).pack(pady=2)
+        tk.Button(btn_frame, text="C 清空", width=8, command=lambda: self._task_clear_listbox(folder_listbox)).pack(pady=2)
+
+        # Bottom section: Current selected folders info
+        bottom_frame = tk.Frame(frame)
+        bottom_frame.pack(fill=X, pady=(8, 0))
+
+        task_count_var = tk.StringVar()
+        task_count_label = tk.Label(bottom_frame, textvariable=task_count_var, font=("System", 9))
+        task_count_label.pack(anchor="w")
+
+        # Selection controls
+        check_frame = tk.Frame(bottom_frame)
+        check_frame.pack(anchor="w", pady=(6, 0))
+
+        def select_all():
+            folder_listbox.selection_set(0, END)
+        def deselect_all():
+            folder_listbox.selection_clear(0, END)
+
+        tk.Button(check_frame, text="全选", command=select_all, width=8).pack(side=LEFT, padx=(0, 4))
+        tk.Button(check_frame, text="全不选", command=deselect_all, width=8).pack(side=LEFT, padx=4)
+
+        # Update initial count
+        def update_task_count():
+            count = folder_listbox.size()
+            if count == 0:
+                task_count_var.set("已选择 0 个文件夹")
+            elif count == 1:
+                task_count_var.set("已选择 1 个文件夹")
+            else:
+                task_count_var.set(f"已选择 {count} 个文件夹")
+        update_task_count()
+
+        # Action buttons
+        action_btn_frame = tk.Frame(frame)
+        action_btn_frame.pack(fill=X, pady=(10, 0))
+
+        tk.Button(action_btn_frame, text="添加", width=10, command=lambda: self._task_confirm_selection(folder_listbox, target_listbox)).pack(side=LEFT)
+        tk.Button(action_btn_frame, text="取消", width=10, command=lambda: self._close_task_multi_folder_dialog(dlg)).pack(side=RIGHT)
+
+    def _close_task_multi_folder_dialog(self, dlg):
+        """Close the task multi-folder selection dialog."""
+        try:
+            if dlg.grab_current() == dlg:
+                dlg.grab_release()
+        except Exception:
+            pass
+        try:
+            dlg.destroy()
+        except Exception:
+            pass
+        self._task_multi_folder_dialog = None
+
+    def _task_browse_folder_to_dialog(self, listbox):
+        """Browse for a single folder and add to listbox."""
+        p = filedialog.askdirectory(title=self.tr("msg_task_pick_source"))
+        if p:
+            if sys.platform == "win32":
+                p = p.replace("/", "\\")
+            # Check if already exists
+            exists = False
+            for i in range(listbox.size()):
+                if listbox.get(i) == p:
+                    exists = True
+                    break
+            if not exists:
+                listbox.insert(END, p)
+
+    def _task_browse_multiple_to_dialog(self, listbox):
+        """Browse for multiple folders using multiple askdirectory calls."""
+        base_dir = filedialog.askdirectory(title=self.tr("msg_task_pick_source") + " (选择第一个文件夹)")
+        if not base_dir:
+            return
+
+        if sys.platform == "win32":
+            base_dir = base_dir.replace("/", "\\")
+
+        # Add first folder
+        exists = False
+        for i in range(listbox.size()):
+            if listbox.get(i) == base_dir:
+                exists = True
+                break
+        if not exists:
+            listbox.insert(END, base_dir)
+
+        # Ask if user wants to add more folders
+        while True:
+            result = messagebox.askyesno(
+                "继续添加",
+                "是否要继续添加更多文件夹？",
+                icon="question"
+            )
+            if not result:
+                break
+
+            next_dir = filedialog.askdirectory(title=self.tr("msg_task_pick_source") + " (选择下一个文件夹)")
+            if not next_dir:
+                break
+
+            if sys.platform == "win32":
+                next_dir = next_dir.replace("/", "\\")
+
+            # Check if already exists
+            exists = False
+            for i in range(listbox.size()):
+                if listbox.get(i) == next_dir:
+                    exists = True
+                    break
+            if not exists:
+                listbox.insert(END, next_dir)
+
+    def _task_remove_from_listbox(self, listbox):
+        """Remove selected folder from listbox."""
+        sel = listbox.curselection()
+        if sel:
+            listbox.delete(sel[0])
+
+    def _task_clear_listbox(self, listbox):
+        """Clear all folders from listbox."""
+        listbox.delete(0, END)
+
+    def _task_confirm_selection(self, source_listbox, target_listbox):
+        """Add all folders from source listbox to target listbox."""
+        added_count = 0
+        current_folders = list(target_listbox.get(0, END))
+        for i in range(source_listbox.size()):
+            path = source_listbox.get(i)
+            if path not in current_folders:
+                target_listbox.insert(END, path)
+                added_count += 1
+        if added_count > 0:
+            self._close_task_multi_folder_dialog(self._task_multi_folder_dialog)
+
 
 
     def remove_source_folder(self):
@@ -5284,6 +5865,9 @@ class OfficeGUI(tb.Window):
                 1 if snapshot.get("enable_merge_excel", False) else 0
             )
             self.var_max_merge_size_mb.set(str(snapshot.get("max_merge_size_mb", 80)))
+            self.var_merge_filename_pattern.set(
+                snapshot.get("merge_filename_pattern") or "Merged_{category}_{timestamp}_{idx}"
+            )
         if "rules" in sections:
             self._set_text_widget_lines(
                 self.txt_excluded_folders, snapshot.get("excluded_folders", [])
@@ -5472,6 +6056,8 @@ class OfficeGUI(tb.Window):
             "max_merge_size_mb": self._safe_positive_int(
                 self.var_max_merge_size_mb.get(), 80
             ),
+            "merge_filename_pattern": self.var_merge_filename_pattern.get().strip()
+            or "Merged_{category}_{timestamp}_{idx}",
             "enable_corpus_manifest": bool(self.var_enable_corpus_manifest.get()),
             "enable_markdown": bool(self.var_output_enable_md.get()),
             "markdown_strip_header_footer": bool(
@@ -5577,6 +6163,8 @@ class OfficeGUI(tb.Window):
             "max_merge_size_mb": self._safe_positive_int(
                 cfg.get("max_merge_size_mb", 80), 80
             ),
+            "merge_filename_pattern": cfg.get("merge_filename_pattern")
+            or "Merged_{category}_{timestamp}_{idx}",
             "enable_corpus_manifest": bool(cfg.get("enable_corpus_manifest", True)),
             "enable_markdown": bool(cfg.get("output_enable_md", cfg.get("enable_markdown", True))),
             "markdown_strip_header_footer": bool(
@@ -6226,6 +6814,9 @@ class OfficeGUI(tb.Window):
             str(cfg.get("office_restart_every_n_files", 25))
         )
         self.var_max_merge_size_mb.set(str(cfg.get("max_merge_size_mb", 80)))
+        self.var_merge_filename_pattern.set(
+            cfg.get("merge_filename_pattern") or "Merged_{category}_{timestamp}_{idx}"
+        )
 
         # 鑱斿姩鍒锋柊
         self._on_run_mode_change()
@@ -6350,6 +6941,10 @@ class OfficeGUI(tb.Window):
             cfg["enable_merge_excel"] = bool(self.var_enable_merge_excel.get())
             cfg["max_merge_size_mb"] = self._safe_positive_int(
                 self.var_max_merge_size_mb.get(), 80
+            )
+            cfg["merge_filename_pattern"] = (
+                self.var_merge_filename_pattern.get().strip()
+                or "Merged_{category}_{timestamp}_{idx}"
             )
 
         if "rules" in sections:
@@ -6580,6 +7175,13 @@ class OfficeGUI(tb.Window):
             )
             cfg["enable_merge_index"] = bool(self.var_enable_merge_index.get())
             cfg["enable_merge_excel"] = bool(self.var_enable_merge_excel.get())
+            cfg["max_merge_size_mb"] = self._safe_positive_int(
+                self.var_max_merge_size_mb.get(), 80
+            )
+            cfg["merge_filename_pattern"] = (
+                self.var_merge_filename_pattern.get().strip()
+                or "Merged_{category}_{timestamp}_{idx}"
+            )
 
         cfg["run_mode"] = self.var_run_mode.get()
         if write_collect:
@@ -7116,6 +7718,7 @@ class OfficeGUI(tb.Window):
 
                     cfg = converter.config
                     cfg["source_folder"] = step["source"]
+                    cfg["source_folders"] = [step["source"]]
                     cfg["target_folder"] = target
                     cfg["enable_sandbox"] = bool(self.var_enable_sandbox.get())
                     cfg["temp_sandbox_root"] = self.var_temp_sandbox_root.get().strip()
@@ -7148,6 +7751,10 @@ class OfficeGUI(tb.Window):
                     cfg["enable_merge_excel"] = bool(self.var_enable_merge_excel.get())
                     cfg["max_merge_size_mb"] = self._safe_positive_int(
                         self.var_max_merge_size_mb.get(), 80
+                    )
+                    cfg["merge_filename_pattern"] = (
+                        self.var_merge_filename_pattern.get().strip()
+                        or "Merged_{category}_{timestamp}_{idx}"
                     )
                     cfg["enable_corpus_manifest"] = bool(self.var_enable_corpus_manifest.get())
                     cfg.pop("enable_markdown", None)

@@ -56,8 +56,6 @@ log/
 2026/config_profiles/*.json# PyInstaller
 2026/build/
 2026/dist/
-2026/*.spec
-
-# Repo-root temp scripts (e.g. _patch_*.py, _fix_*.py)
+2026/*.spec# Repo-root temp scripts (e.g. _patch_*.py, _fix_*.py)
 _*.py
 _*.txt

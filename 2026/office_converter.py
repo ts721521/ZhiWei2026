@@ -122,7 +122,7 @@ try:
 except Exception:
     HAS_REPORTLAB = False
 
-__version__ = "5.15.6"
+__version__ = "5.17.0"
 
 # Office constants
 wdFormatPDF = 17
@@ -664,6 +664,14 @@ class OfficeConverter:
 
         self.config["source_folder"] = self._get_path_from_config("source_folder")
         self.config["target_folder"] = self._get_path_from_config("target_folder")
+        # Normalize source_folders: ensure list and sync source_folder to first
+        src_list = self.config.get("source_folders")
+        if isinstance(src_list, list) and src_list:
+            self.config["source_folders"] = [os.path.abspath(str(p).strip()) for p in src_list if str(p).strip()]
+            if self.config["source_folders"]:
+                self.config["source_folder"] = self.config["source_folders"][0]
+        else:
+            self.config["source_folders"] = [self.config["source_folder"]] if self.config.get("source_folder") else []
         self._apply_config_defaults()
 
     def _apply_config_defaults(self):
@@ -1891,7 +1899,7 @@ class OfficeConverter:
             mshelp_dir = ""
 
         try:
-            src_rel = os.path.relpath(src_abs, self.config.get("source_folder", ""))
+            src_rel = os.path.relpath(src_abs, self._get_source_root_for_path(src_abs))
         except Exception:
             src_rel = src_abs
 
@@ -1935,8 +1943,10 @@ class OfficeConverter:
         return unique
 
     def _scan_mshelp_cab_candidates(self):
-        source_root = self.config.get("source_folder", "")
-        dirs = self._find_mshelpviewer_dirs(source_root)
+        source_roots = self._get_source_roots()
+        dirs = []
+        for source_root in source_roots:
+            dirs.extend(self._find_mshelpviewer_dirs(source_root))
         cab_exts = tuple(
             e.lower() for e in self.config.get("allowed_extensions", {}).get("cab", [".cab"])
         )
@@ -2678,18 +2688,45 @@ class OfficeConverter:
             logging.error(f"failed to generate merge index page: {e}")
             return None
 
+    @staticmethod
+    def _format_merge_filename(pattern, category="All", idx=1, now=None):
+        """
+        Format merge output filename from pattern.
+        Placeholders: {category}, {timestamp}, {date}, {time}, {idx}
+        """
+        if now is None:
+            now = datetime.now()
+        timestamp = now.strftime("%Y%m%d_%H%M%S")
+        date_part = now.strftime("%Y%m%d")
+        time_part = now.strftime("%H%M%S")
+        name = (
+            pattern.replace("{category}", str(category))
+            .replace("{timestamp}", timestamp)
+            .replace("{date}", date_part)
+            .replace("{time}", time_part)
+            .replace("{idx}", str(idx))
+        )
+        # Sanitize: only allow safe filename chars (alphanumeric, dash, underscore, dot)
+        safe = re.sub(r'[^\w\-.]', '_', name)
+        safe = re.sub(r'_+', '_', safe).strip("_")
+        if not safe:
+            safe = f"Merged_{category}_{timestamp}_{idx}"
+        if not safe.lower().endswith(".pdf"):
+            safe = f"{safe}.pdf"
+        return safe
+
     def _get_merge_tasks(self):
         """Build merge task groups from scanned PDFs."""
-        scan_folder = self.config["target_folder"]
         scan_source_type = "target"
         if self.run_mode == MODE_MERGE_ONLY:
             scan_source_type = self.config.get("merge_source", "source")
 
         if scan_source_type == "source":
-            scan_folder = self.config["source_folder"]
-            print(f"  [merge_only/source] scanning: {scan_folder}")
+            scan_roots = self._get_source_roots()
+            print(f"  [merge_only/source] scanning {len(scan_roots)} source folder(s)")
         else:
-            print(f"  [merge scan] scanning target: {scan_folder}")
+            scan_roots = [self.config["target_folder"]]
+            print(f"  [merge scan] scanning target: {scan_roots[0]}")
 
         all_pdfs = []
         exclude_abs_paths = set(
@@ -2698,17 +2735,20 @@ class OfficeConverter:
         if scan_source_type == "source":
             exclude_abs_paths.add(os.path.abspath(self.config["target_folder"]))
 
-        for root, dirs, files in os.walk(scan_folder):
-            dirs[:] = [
-                d for d in dirs
-                if os.path.abspath(os.path.join(root, d)) not in exclude_abs_paths
-            ]
-
-            if os.path.abspath(root) in exclude_abs_paths:
+        for scan_folder in scan_roots:
+            if not scan_folder or not os.path.isdir(scan_folder):
                 continue
-            for f in files:
-                if f.lower().endswith(".pdf"):
-                    all_pdfs.append(os.path.join(root, f))
+            for root, dirs, files in os.walk(scan_folder):
+                dirs[:] = [
+                    d for d in dirs
+                    if os.path.abspath(os.path.join(root, d)) not in exclude_abs_paths
+                ]
+
+                if os.path.abspath(root) in exclude_abs_paths:
+                    continue
+                for f in files:
+                    if f.lower().endswith(".pdf"):
+                        all_pdfs.append(os.path.join(root, f))
 
         if not all_pdfs:
             print("[INFO] no PDF files found for merge.")
@@ -2717,10 +2757,13 @@ class OfficeConverter:
         all_pdfs.sort()
 
         merge_tasks = []  # [(output_name, [pdf_paths])]
+        now = datetime.now()
+        pattern = (self.config.get("merge_filename_pattern") or "Merged_{category}_{timestamp}_{idx}").strip()
+        if not pattern:
+            pattern = "Merged_{category}_{timestamp}_{idx}"
 
         if self.merge_mode == MERGE_MODE_ALL_IN_ONE:
-            timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-            output_name = f"Merged_All_{timestamp}.pdf"
+            output_name = self._format_merge_filename(pattern, category="All", idx=1, now=now)
             merge_tasks.append((output_name, all_pdfs))
         else:
             categories = {
@@ -2767,10 +2810,11 @@ class OfficeConverter:
                 if current_group:
                     groups.append(current_group)
 
-                timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
                 cat_label = prefix.rstrip("_")
                 for idx, group in enumerate(groups, 1):
-                    output_filename = f"Merged_{cat_label}_{timestamp}_{idx}.pdf"
+                    output_filename = self._format_merge_filename(
+                        pattern, category=cat_label, idx=idx, now=now
+                    )
                     merge_tasks.append((output_filename, group))
 
         return merge_tasks
@@ -2986,7 +3030,7 @@ class OfficeConverter:
                         source_rel_path = source_abs_path
                         try:
                             source_rel_path = os.path.relpath(
-                                source_abs_path, self.config["source_folder"]
+                                source_abs_path, self._get_source_root_for_path(source_abs_path)
                             )
                         except Exception:
                             pass
@@ -3176,13 +3220,14 @@ class OfficeConverter:
         if not ext.startswith("."):
             ext = "." + ext
 
-        scan_folder = self.config["target_folder"]
         scan_source_type = "target"
         if self.run_mode == MODE_MERGE_ONLY:
             scan_source_type = self.config.get("merge_source", "source")
 
         if scan_source_type == "source":
-            scan_folder = self.config["source_folder"]
+            scan_roots = self._get_source_roots()
+        else:
+            scan_roots = [self.config["target_folder"]]
 
         files = []
         exclude_abs_paths = set(
@@ -3191,17 +3236,20 @@ class OfficeConverter:
         if scan_source_type == "source":
             exclude_abs_paths.add(os.path.abspath(self.config["target_folder"]))
 
-        for root, dirs, names in os.walk(scan_folder):
-            dirs[:] = [
-                d
-                for d in dirs
-                if os.path.abspath(os.path.join(root, d)) not in exclude_abs_paths
-            ]
-            if os.path.abspath(root) in exclude_abs_paths:
+        for scan_folder in scan_roots:
+            if not scan_folder or not os.path.isdir(scan_folder):
                 continue
-            for name in names:
-                if name.lower().endswith(ext):
-                    files.append(os.path.join(root, name))
+            for root, dirs, names in os.walk(scan_folder):
+                dirs[:] = [
+                    d
+                    for d in dirs
+                    if os.path.abspath(os.path.join(root, d)) not in exclude_abs_paths
+                ]
+                if os.path.abspath(root) in exclude_abs_paths:
+                    continue
+                for name in names:
+                    if name.lower().endswith(ext):
+                        files.append(os.path.join(root, name))
 
         files.sort()
         return files
@@ -3398,7 +3446,7 @@ class OfficeConverter:
             pdf_md5 = ""
 
         try:
-            src_rel = os.path.relpath(src_abs, self.config["source_folder"])
+            src_rel = os.path.relpath(src_abs, self._get_source_root_for_path(src_abs))
         except Exception:
             src_rel = src_abs
         try:
@@ -3579,14 +3627,14 @@ class OfficeConverter:
 
     def _build_ai_output_path_from_source(self, source_path, sub_dir, ext):
         target_root = self.config.get("target_folder", "")
-        source_root = self.config.get("source_folder", "")
         if not target_root:
             return None
 
         source_abs = os.path.abspath(source_path)
         rel = os.path.basename(source_abs)
         try:
-            rel_try = os.path.relpath(source_abs, source_root)
+            src_root = self._get_source_root_for_path(source_abs)
+            rel_try = os.path.relpath(source_abs, src_root)
             if not rel_try.startswith(".."):
                 rel = rel_try
         except Exception:
@@ -4546,7 +4594,8 @@ class OfficeConverter:
         }
         try:
             payload["source_relpath"] = os.path.relpath(
-                os.path.abspath(source_excel_path), self.config.get("source_folder", "")
+                os.path.abspath(source_excel_path),
+                self._get_source_root_for_path(source_excel_path),
             )
         except Exception:
             payload["source_relpath"] = os.path.basename(source_excel_path)
@@ -5238,7 +5287,10 @@ class OfficeConverter:
             logging.error("openpyxl missing; collect_only mode cannot continue.")
             return
 
-        source_root = self.config["source_folder"]
+        source_roots = self._get_source_roots()
+        if not source_roots:
+            print("[WARN] No source folder(s) to scan. collect_only skipped.")
+            return
         target_root = self.config["target_folder"]
         os.makedirs(target_root, exist_ok=True)
 
@@ -5262,31 +5314,34 @@ class OfficeConverter:
         print("\n" + "=" * 60)
         print(" File collection & dedup mode")
         print("=" * 60)
-        print(f" Source dir : {source_root}")
+        print(f" Source dir(s) : {len(source_roots)} folder(s)")
         print(f" Target dir : {target_root}")
         print(f" Sub mode   : {self.get_readable_collect_mode()} ({self.collect_mode})")
         print(f" Filter ext : {office_exts}")
         print("=" * 60)
 
         all_files = []
-        for root, dirs, files in os.walk(source_root):
-            dirs[:] = [
-                d
-                for d in dirs
-                if d.lower() not in excl_names
-                and os.path.abspath(os.path.join(root, d)).lower() not in excl_paths
-            ]
-            for name in files:
-                if name.startswith("~$"):
-                    continue
-                ext = os.path.splitext(name)[1].lower()
-                if ext in office_exts:
-                    full_path = os.path.join(root, name)
-                    try:
-                        size = os.path.getsize(full_path)
-                    except OSError:
+        for source_root in source_roots:
+            if not os.path.isdir(source_root):
+                continue
+            for root, dirs, files in os.walk(source_root):
+                dirs[:] = [
+                    d
+                    for d in dirs
+                    if d.lower() not in excl_names
+                    and os.path.abspath(os.path.join(root, d)).lower() not in excl_paths
+                ]
+                for name in files:
+                    if name.startswith("~$"):
                         continue
-                    all_files.append((full_path, size, ext))
+                    ext = os.path.splitext(name)[1].lower()
+                    if ext in office_exts:
+                        full_path = os.path.join(root, name)
+                        try:
+                            size = os.path.getsize(full_path)
+                        except OSError:
+                            continue
+                        all_files.append((full_path, size, ext))
 
         total = len(all_files)
         print(f"Scanned Office files: {total}")
@@ -5309,7 +5364,7 @@ class OfficeConverter:
                 break
             if len(files) == 1:
                 src_path, ext = files[0]
-                rel = os.path.relpath(src_path, source_root)
+                rel = os.path.relpath(src_path, self._get_source_root_for_path(src_path))
                 dst_path = os.path.join(target_root, rel)
                 unique_records.append(
                     {
@@ -5330,7 +5385,7 @@ class OfficeConverter:
             for file_hash, same_hash_files in hash_groups.items():
                 if len(same_hash_files) == 1:
                     src_path, ext = same_hash_files[0]
-                    rel = os.path.relpath(src_path, source_root)
+                    rel = os.path.relpath(src_path, self._get_source_root_for_path(src_path))
                     dst_path = os.path.join(target_root, rel)
                     unique_records.append(
                         {
@@ -5346,7 +5401,7 @@ class OfficeConverter:
                     group_id_counter += 1
 
                     keep_src, keep_ext = same_hash_files[0]
-                    keep_rel = os.path.relpath(keep_src, source_root)
+                    keep_rel = os.path.relpath(keep_src, self._get_source_root_for_path(keep_src))
                     keep_dst = os.path.join(target_root, keep_rel)
 
                     unique_records.append(
@@ -5540,12 +5595,40 @@ class OfficeConverter:
 
     # =============== Main flow ===============
 
+    def _get_source_roots(self):
+        """Return list of source folder paths to scan (multi-folder or single)."""
+        roots = self.config.get("source_folders")
+        if isinstance(roots, list) and roots:
+            roots = [os.path.abspath(str(p).strip()) for p in roots if str(p).strip()]
+            roots = [r for r in roots if os.path.isdir(r)]
+            if roots:
+                return roots
+        single = self.config.get("source_folder", "")
+        if single and os.path.isdir(single):
+            return [os.path.abspath(single)]
+        return []
+
+    def _get_source_root_for_path(self, abs_path):
+        """Return the source root that contains abs_path (for relpath). Prefer longest match."""
+        abs_path = os.path.abspath(abs_path)
+        roots = self._get_source_roots()
+        if not roots:
+            return self.config.get("source_folder", "") or ""
+        match = ""
+        for r in roots:
+            r = os.path.abspath(r)
+            if abs_path == r or abs_path.startswith(r + os.sep) or abs_path.startswith(r + "/"):
+                if len(r) > len(match):
+                    match = r
+        return match or (roots[0] if roots else self.config.get("source_folder", ""))
+
     def _scan_convert_candidates(self):
         files = []
-        source_folder = self.config.get("source_folder", "")
-        if not source_folder or not os.path.exists(source_folder):
-            print(f"\n[WARN] Source directory does not exist: {source_folder}")
-            logging.error(f"source directory does not exist: {source_folder}")
+        source_roots = self._get_source_roots()
+        if not source_roots:
+            single = self.config.get("source_folder", "")
+            print(f"\n[WARN] Source directory does not exist or empty: {single}")
+            logging.error("source directory does not exist or source_folders empty")
             return files
 
         excl_config = self.config.get("excluded_folders", [])
@@ -5567,34 +5650,37 @@ class OfficeConverter:
                     if isinstance(e, str) and e:
                         valid_exts.add(e.lower())
 
-        for root, dirs, filenames in os.walk(source_folder):
-            dirs[:] = [
-                d
-                for d in dirs
-                if d.lower() not in excl_names
-                and os.path.abspath(os.path.join(root, d)).lower() not in excl_paths
-            ]
-            for fname in filenames:
-                if fname.startswith("~$"):
-                    continue
-                ext = os.path.splitext(fname)[1].lower()
-                if ext not in valid_exts:
-                    continue
+        for source_folder in source_roots:
+            if not os.path.isdir(source_folder):
+                continue
+            for root, dirs, filenames in os.walk(source_folder):
+                dirs[:] = [
+                    d
+                    for d in dirs
+                    if d.lower() not in excl_names
+                    and os.path.abspath(os.path.join(root, d)).lower() not in excl_paths
+                ]
+                for fname in filenames:
+                    if fname.startswith("~$"):
+                        continue
+                    ext = os.path.splitext(fname)[1].lower()
+                    if ext not in valid_exts:
+                        continue
 
-                full_path = os.path.join(root, fname)
-                if self.filter_date:
-                    try:
-                        ctime = os.path.getctime(full_path)
-                        file_date = datetime.fromtimestamp(ctime).date()
-                        filter_d = self.filter_date.date()
-                        if self.filter_mode == "after" and file_date < filter_d:
-                            continue
-                        if self.filter_mode == "before" and file_date > filter_d:
-                            continue
-                    except Exception:
-                        pass
+                    full_path = os.path.join(root, fname)
+                    if self.filter_date:
+                        try:
+                            ctime = os.path.getctime(full_path)
+                            file_date = datetime.fromtimestamp(ctime).date()
+                            filter_d = self.filter_date.date()
+                            if self.filter_mode == "after" and file_date < filter_d:
+                                continue
+                            if self.filter_mode == "before" and file_date > filter_d:
+                                continue
+                        except Exception:
+                            pass
 
-                files.append(full_path)
+                    files.append(full_path)
 
         return files
 
@@ -6680,6 +6766,7 @@ def create_default_config(config_path):
             "excel_json_formula_sample_limit": 200,
             "excel_json_merged_range_limit": 500,
             "max_merge_size_mb": 80,
+            "merge_filename_pattern": "Merged_{category}_{timestamp}_{idx}",
             "price_keywords": ["报价", "价格表", "Price", "Quotation"],
             "excluded_folders": ["temp", "backup", "archive"],
             "allowed_extensions": {

@@ -10,9 +10,23 @@ import subprocess
 import sys
 import importlib.util
 
+# Import version from office_converter
 APP_NAME = "OfficeBatchConverter"
 ENTRY = "office_gui.py"
 ENV_KEYS_TO_CLEAR = ("PYTHONPATH", "PYTHONHOME")
+
+# Get version from office_converter
+def get_version():
+    try:
+        spec = importlib.util.spec_from_file_location("office_converter", "office_converter.py")
+        module = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(module)
+        return getattr(module, "__version__", "unknown")
+    except Exception:
+        return "unknown"
+
+APP_VERSION = get_version()
+APP_NAME_WITH_VERSION = f"{APP_NAME}_v{APP_VERSION}"
 
 
 def ensure_pyinstaller_installed():
@@ -48,13 +62,17 @@ def main():
 
     dist_root = os.path.join(root, "dist")
     legacy_onedir_dir = os.path.join(dist_root, APP_NAME)
-    if os.path.isdir(legacy_onedir_dir):
-        shutil.rmtree(legacy_onedir_dir, ignore_errors=True)
-        print("已清理旧版 onedir 目录: dist\\" + APP_NAME + "\\")
+    legacy_version_dir = os.path.join(dist_root, APP_NAME_WITH_VERSION)
+    
+    # Clean old build directories
+    for old_dir in [legacy_onedir_dir, legacy_version_dir]:
+        if os.path.isdir(old_dir):
+            shutil.rmtree(old_dir, ignore_errors=True)
+            print(f"已清理旧版 onedir 目录: dist\\{os.path.basename(old_dir)}\\")
 
     cmd = [
         sys.executable, "-m", "PyInstaller",
-        "--name", APP_NAME,
+        "--name", APP_NAME_WITH_VERSION,  # Use versioned name
         "--onefile",
         "--windowed",
         "--noconfirm",
@@ -71,13 +89,13 @@ def main():
         "--collect-all", "ttkbootstrap",
         ENTRY,
     ]
-    print("正在打包，请稍候...")
+    print(f"正在打包 {APP_NAME_WITH_VERSION}，请稍候...")
     r = subprocess.call(cmd, env=build_clean_env())
     if r != 0:
         return r
 
     dist_dir = dist_root
-    exe_path = os.path.join(dist_dir, APP_NAME + ".exe")
+    exe_path = os.path.join(dist_dir, APP_NAME_WITH_VERSION + ".exe")  # Use versioned exe path
     config_src = os.path.join(root, "config.json")
     config_dst = os.path.join(dist_dir, "config.json")
     if os.path.isfile(config_src) and os.path.isfile(exe_path):
@@ -85,10 +103,10 @@ def main():
         print("已复制 config.json 到 dist（与 exe 同目录）。")
 
     print("")
-    print("打包完成。")
-    print("  可执行文件: dist\\" + APP_NAME + ".exe")
+    print(f"打包完成！版本：{APP_VERSION}")
+    print(f"  可执行文件: dist\\{APP_NAME_WITH_VERSION}.exe")
     print("  重要: 请从 dist 目录运行 exe，不要从 build 目录运行（build 为临时目录，会报错）。")
-    print("  分发时至少发送该 exe；如需预置配置，请同时发送同目录 config.json。")
+    print(f"  分发时至少发送该 exe；如需预置配置，请同时发送同目录 config.json。")
     return 0
 
 
