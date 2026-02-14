@@ -1,0 +1,20 @@
+{
+  "source_folder": "C:\\YourSourcePath",
+  "target_folder": "D:\\YourOutputPath",
+  "log_folder": "./logs",
+  "enable_sandbox": true,
+  "default_engine": "wps",
+  "kill_process_mode": "auto",
+  "run_mode": "convert_then_merge",
+  "enable_merge": true,
+  "output_enable_pdf": true,
+  "output_enable_md": true,
+  "output_enable_merged": true,
+  "output_enable_independent": false,
+  "max_merge_size_mb": 80,
+  "excluded_folders": ["temp", "backup", "archive"],
+  "enable_merge_map": true,
+  "bookmark_with_short_id": true,
+  "source_folders": [],
+  "merge_filename_pattern": "Merged_{category}_{timestamp}_{idx}"
+}

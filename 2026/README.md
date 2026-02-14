@@ -65,7 +65,7 @@ pip install ttkbootstrap
 python office_gui.py
 ```
 
-首次运行将在当前目录生成默认 `config.json`，可在界面中配置路径与运行参数。
+首次运行将在当前目录生成默认 `config.json`；也可复制 [config.example.json](config.example.json) 为 `config.json` 后修改路径与选项。
 
 **命令行**
 
@@ -110,7 +110,7 @@ python build_exe.py
 ├── office_converter.py  # 核心逻辑：转换、合并、梳理、MSHelp、增量等
 ├── ui_translations.py   # 界面文案
 ├── build_exe.py         # 一键打包脚本
-├── config.json          # 运行时配置（首次运行自动生成）
+├── config.example.json   # 配置示例（复制为 config.json 后修改）
 ├── 使用说明书.md
 ├── 打包说明.md
 ├── CHANGELOG.md
