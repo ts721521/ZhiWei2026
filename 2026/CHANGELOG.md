@@ -5,7 +5,8 @@ All notable changes to this project are documented in this file.
 ## [v5.17.0] - 2026-02-13
 ### Added
 - Merge output filename pattern: configurable `merge_filename_pattern` in config and GUI (placeholders: `{category}`, `{timestamp}`, `{date}`, `{time}`, `{idx}`). Default: `Merged_{category}_{timestamp}_{idx}`.
-- Build script `build_exe.py`: exe output name now includes version (e.g. `OfficeBatchConverter_v5.17.0.exe`), version read from `office_converter.py`.
+- Build script `build_exe.py`: exe output name now includes version (e.g. `OfficeBatchConverter_v5.17.0.exe`), version read from `office_converter.py`; **packaging now clears `dist` and `build` before building**.
+- **README.md** for GitHub: project intro, features, install, run, build, and doc links.
 
 ### Changed
 - Multi-folder processing: converter now scans and processes **all** source folders in both task mode and classic mode. Added `_get_source_roots()` and `_get_source_root_for_path()`; convert, merge, collect, and MSHelp flows use multiple source roots when `source_folders` is set.
@@ -13,6 +14,10 @@ All notable changes to this project are documented in this file.
 
 ### Fixed
 - Multi-select source folders were not actually processing files under each folder: only the first folder was used in task mode; converter now iterates over all `source_folders` for scanning and relpath resolution.
+
+### Documentation & Release
+- GUI: English mode removed; interface is Chinese-only.
+- All user-facing docs updated (使用说明书、打包说明、CHANGELOG); AI handover doc and README aligned for public release.
 
 ---
 
