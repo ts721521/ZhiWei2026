@@ -5,8 +5,8 @@
 - Core runtime:
   - `office_converter.py` (pipeline, conversion, merge, AI exports, incremental, MSHelp)
   - `office_gui.py` (Tk/ttkbootstrap UI, run/config centers)
-  - `ui_translations.py` (zh/en i18n)
-- Current version marker in code: `v5.17.0` (code), docs/changelog updated to current workstream.
+  - `ui_translations.py` (界面文案，当前仅中文)
+- Current version marker in code: `v5.17.0`. Release-ready: README.md added for GitHub, 使用说明书/打包说明/CHANGELOG updated; GUI is Chinese-only; build script clears dist/build before packaging.
 
 ## 2. Implemented Capability Baseline
 ### 2.1 Existing run modes
