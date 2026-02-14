@@ -100,6 +100,7 @@ python build_exe.py
 | [使用说明书.md](使用说明书.md) | 界面说明、数据流程、增量与溯源、配置说明、常见问题 |
 | [打包说明.md](打包说明.md) | PyInstaller / cx_Freeze 打包与分发说明 |
 | [CHANGELOG.md](CHANGELOG.md) | 版本更新记录 |
+| [docs/AI_交接文档_下一阶段开发.md](docs/AI_交接文档_下一阶段开发.md) | 给下一位开发者/AI 的交接：入口、约束、下一阶段功能与文档索引 |
 
 ---
 

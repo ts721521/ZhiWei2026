@@ -1,12 +1,14 @@
 # AI Handover (2026-02-11)
 
+**For next AI / developer:** 中文交接文档（项目概览、入口、下一阶段功能、约束与文档索引）见 **[AI_交接文档_下一阶段开发.md](AI_交接文档_下一阶段开发.md)**。本文档侧重英文设计要点与验收标准。
+
 ## 1. Project Snapshot
-- Repo: `GPTVersion/2026`
+- Repo: `GPTVersion/2026` (or `ZhiWei2026`). Product name: **知喂 (ZhiWei)**.
 - Core runtime:
-  - `office_converter.py` (pipeline, conversion, merge, AI exports, incremental, MSHelp)
-  - `office_gui.py` (Tk/ttkbootstrap UI, run/config centers)
+  - `office_converter.py` (pipeline, conversion, merge, AI exports, incremental, MSHelp, LLM hub)
+  - `office_gui.py` (Tk/ttkbootstrap UI, run/config centers, classic + task mode)
   - `ui_translations.py` (界面文案，当前仅中文)
-- Current version marker in code: `v5.17.0`. Release-ready: README.md added for GitHub, 使用说明书/打包说明/CHANGELOG updated; GUI is Chinese-only; build script clears dist/build before packaging.
+- Version: `v5.17.0` in `office_converter.py` `__version__`. Config/tasks/user data are gitignored; see `config.example.json`.
 
 ## 2. Implemented Capability Baseline
 ### 2.1 Existing run modes
