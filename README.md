@@ -1,13 +1,14 @@
-# Office 文档批量转换 & 梳理工具
+# 知喂 (ZhiWei)
 
-将 Office（Word / Excel / PowerPoint）批量转为 PDF，支持合并、梳理去重，以及面向 NotebookLM 的来源反查。
+面向知识库与 AI 的语料准备工具：Office 文档批量转 PDF、合并、梳理，并支持与 NotebookLM 等场景的溯源集成。
 
 ---
 
-**主项目与完整说明在 [2026](2026/) 目录。**
+**主项目与完整文档位于 [2026](2026/) 目录。**
 
-- 运行方式：进入 `2026` 目录后执行 `python office_gui.py`（需先 `pip install -r requirements.txt`）
-- 使用说明与打包说明：[2026/使用说明书.md](2026/使用说明书.md) · [2026/打包说明.md](2026/打包说明.md)
-- 版本与更新记录：[2026/CHANGELOG.md](2026/CHANGELOG.md)
+| 操作 | 说明 |
+|------|------|
+| **运行** | 进入 `2026` 目录，执行 `pip install -r requirements.txt` 后运行 `python office_gui.py` |
+| **文档** | [使用说明书](2026/使用说明书.md) · [打包说明](2026/打包说明.md) · [更新记录](2026/CHANGELOG.md) |
 
-当前版本：**v5.17.0**
+**当前版本**：v5.17.0

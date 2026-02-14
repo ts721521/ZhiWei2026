@@ -450,7 +450,7 @@ class OfficeConverter:
 
     def print_welcome(self):
         print("=" * 60)
-        print(f" Office Batch Converter & Organizer  v{__version__}")
+        print(f" 知喂 ZhiWei · 知识投喂工具  v{__version__}")
         print(" Supports WPS / Microsoft Office, CLI / GUI dual mode")
         print("=" * 60)
         print(f"Config file: {self.config_path}\n")
