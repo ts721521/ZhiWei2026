@@ -61,14 +61,16 @@ def main():
         return 1
 
     dist_root = os.path.join(root, "dist")
-    legacy_onedir_dir = os.path.join(dist_root, APP_NAME)
-    legacy_version_dir = os.path.join(dist_root, APP_NAME_WITH_VERSION)
-    
-    # Clean old build directories
-    for old_dir in [legacy_onedir_dir, legacy_version_dir]:
-        if os.path.isdir(old_dir):
-            shutil.rmtree(old_dir, ignore_errors=True)
-            print(f"已清理旧版 onedir 目录: dist\\{os.path.basename(old_dir)}\\")
+    build_root = os.path.join(root, "build")
+
+    # 打包前清空目标目录，避免残留旧文件
+    for target_dir in (dist_root, build_root):
+        if os.path.isdir(target_dir):
+            try:
+                shutil.rmtree(target_dir, ignore_errors=True)
+                print(f"已清空: {os.path.basename(target_dir)}\\")
+            except Exception as e:
+                print(f"[WARN] 清空 {os.path.basename(target_dir)} 时出错: {e}")
 
     cmd = [
         sys.executable, "-m", "PyInstaller",

@@ -73,7 +73,7 @@
         "tooltip_font_size": 9,
         "tooltip_auto_theme": true,
         "confirm_revert_dirty": true,
-        "window_geometry": "1352x1079+589+150",
+        "window_geometry": "1352x1079+329+154",
         "window_state": "normal"
     },
     "source_folder_win": "E:\\21_SE_Doc\\BaiduNetdiskWorkspace\\SynologyDrive\\5_投标\\2026",
@@ -112,5 +112,11 @@
     "llm_delivery_flatten": true,
     "llm_delivery_include_pdf": false,
     "office_reuse_app": true,
-    "office_restart_every_n_files": 25
+    "office_restart_every_n_files": 25,
+    "app_mode": "classic",
+    "merge_convert_submode": "merge_only",
+    "enable_upload_readme": true,
+    "enable_upload_json_manifest": true,
+    "upload_dedup_merged": true,
+    "merge_filename_pattern": "Merged_{category}_{timestamp}_{idx}"
 }

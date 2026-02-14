@@ -393,7 +393,7 @@ class OfficeGUI(tb.Window):
         super().__init__(themename="cosmo")
         if not HAS_TTKBOOTSTRAP:
             print("[GUI] ttkbootstrap not found, using tkinter compatibility mode.")
-        self.current_lang = "zh"  # Default language
+        self.current_lang = "zh"  # 仅中文界面，保留变量供 tr 等兼容
         self.title(f"{self.tr('title')} v{__version__}")
 
         # 绐楀彛榛樿灏哄涓庡睆骞曡嚜閫傚簲
@@ -453,7 +453,7 @@ class OfficeGUI(tb.Window):
         if not os.path.exists(self.config_path):
             success = create_default_config(self.config_path)
             if success:
-                info_title = "Info" if self.current_lang == "en" else "鎻愮ず"
+                info_title = "提示"
                 messagebox.showinfo(info_title, self.tr("msg_no_config"))
 
         self._build_ui()
@@ -475,8 +475,8 @@ class OfficeGUI(tb.Window):
     # ===================== UI 閺嬪嫬缂?(Modern Layout) =====================
 
     def tr(self, key):
-        """Translate key to current language"""
-        lang_map = TRANSLATIONS.get(self.current_lang, {})
+        """取中文文案（仅支持中文界面）"""
+        lang_map = TRANSLATIONS.get("zh", {})
         if key in lang_map:
             return lang_map[key]
         return TRANSLATIONS.get("en", {}).get(key, key)
@@ -773,64 +773,6 @@ class OfficeGUI(tb.Window):
             "font_size": self.tooltip_font_size,
         }
 
-    def _toggle_language(self):
-        """Switch language and rebuild UI"""
-        # Save current state to config first
-        try:
-            self._save_settings_to_file(show_msg=False)
-        except Exception:
-            pass
-
-        if self.profile_manager_win is not None and self.profile_manager_win.winfo_exists():
-            try:
-                self.profile_manager_win.destroy()
-            except Exception:
-                pass
-        self.profile_manager_win = None
-        self.profile_tree = None
-        self._profile_tree_rows = {}
-        if self.save_profile_dialog is not None and self.save_profile_dialog.winfo_exists():
-            try:
-                self.save_profile_dialog.destroy()
-            except Exception:
-                pass
-        if self.load_profile_dialog is not None and self.load_profile_dialog.winfo_exists():
-            try:
-                self.load_profile_dialog.destroy()
-            except Exception:
-                pass
-        self.save_profile_dialog = None
-        self.load_profile_dialog = None
-        self.load_profile_tree = None
-        self._load_profile_tree_rows = {}
-        
-        self.current_lang = "en" if self.current_lang == "zh" else "zh"
-        self._tooltips = []
-        self._tooltip_widget_ids = set()
-
-        # 淇濆瓨褰撳墠 UI 鐘舵€佷互渚块噸寤哄悗鎭㈠
-        _saved_tab_idx = None
-        try:
-            _saved_tab_idx = self.main_notebook.index(self.main_notebook.select())
-        except Exception:
-            pass
-
-        # Destroy all children to rebuild
-        for widget in self.winfo_children():
-            widget.destroy()
-
-        # Rebuild
-        self.title(f"{self.tr('title')} v{__version__}")
-        self._build_ui()
-        self._load_config_to_ui()
-
-        # 鎭㈠涔嬪墠鐨?tab 閫変腑鐘舵€?
-        if _saved_tab_idx is not None:
-            try:
-                self.main_notebook.select(_saved_tab_idx)
-            except Exception:
-                pass
-
     # ===================== UI 閺嬪嫬缂?=====================
 
     def _build_ui(self):
@@ -869,22 +811,19 @@ class OfficeGUI(tb.Window):
         ).pack(side=LEFT, padx=2)
         self._attach_tooltip(frm_app_mode, "tip_app_mode")
 
-        self.btn_lang_toggle = tb.Button(
-            ctrl_frame,
-            text=self.tr("lang_toggle"),
-            command=self._toggle_language,
-            bootstyle="outline-secondary",
-            width=6,
-        )
-        self.btn_lang_toggle.pack(side=LEFT, padx=10)
-        self._attach_tooltip(self.btn_lang_toggle, "tip_lang_toggle")
-
         self.var_theme = tk.StringVar(value="cosmo")
 
         def toggle_theme():
             t = self.var_theme.get()
             new_theme = "superhero" if t == "cosmo" else "cosmo"
-            self.style.theme_use(new_theme)
+            # 无 ttkbootstrap 时 FallbackStyle.theme_use 仅存名称不生效，提示用户安装
+            if not HAS_TTKBOOTSTRAP and new_theme == "superhero":
+                messagebox.showinfo("主题", "深色主题需要安装 ttkbootstrap：pip install ttkbootstrap")
+                return
+            try:
+                self.style.theme_use(new_theme)
+            except Exception:
+                pass
             self.var_theme.set(new_theme)
 
         self.chk_theme_toggle = tb.Checkbutton(
@@ -3812,8 +3751,7 @@ class OfficeGUI(tb.Window):
         # Ask user if they want to select multiple folders
         result = messagebox.askyesno(
             self.tr("tip_add_source_folder"),
-            self.tr("msg_multi_select_folders") if hasattr(self, "tr") and "msg_multi_select_folders" in TRANSLATIONS.get(self.current_lang, {}) 
-            else "是否要选择多个文件夹？\n\n选择「是」将打开多选文件夹对话框\n选择「否」将打开单选文件夹对话框",
+            self.tr("msg_multi_select_folders"),
             icon="question"
         )
 
@@ -3846,7 +3784,7 @@ class OfficeGUI(tb.Window):
                 pass
 
         dlg = tk.Toplevel(self)
-        dlg.title(self.tr("msg_multi_select_title") if hasattr(self, "tr") and "msg_multi_select_title" in TRANSLATIONS.get(self.current_lang, {}) else "多选源文件夹")
+        dlg.title(self.tr("msg_multi_select_title"))
         self._place_dialog_in_main(dlg, 720, 650)
         dlg.minsize(650, 550)
         dlg.transient(self)
