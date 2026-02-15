@@ -4,6 +4,7 @@
 使用前安装: pip install pyinstaller
 在本目录执行: python build_exe.py
 """
+
 import os
 import shutil
 import subprocess
@@ -15,15 +16,19 @@ APP_NAME = "ZhiWei"
 ENTRY = "office_gui.py"
 ENV_KEYS_TO_CLEAR = ("PYTHONPATH", "PYTHONHOME")
 
+
 # Get version from office_converter
 def get_version():
     try:
-        spec = importlib.util.spec_from_file_location("office_converter", "office_converter.py")
+        spec = importlib.util.spec_from_file_location(
+            "office_converter", "office_converter.py"
+        )
         module = importlib.util.module_from_spec(spec)
         spec.loader.exec_module(module)
         return getattr(module, "__version__", "unknown")
     except Exception:
         return "unknown"
+
 
 APP_VERSION = get_version()
 APP_NAME_WITH_VERSION = f"{APP_NAME}_v{APP_VERSION}"
@@ -34,8 +39,8 @@ def ensure_pyinstaller_installed():
         return True
     exe = sys.executable
     print("[ERROR] 当前解释器未安装 PyInstaller。")
-    print(f"[HINT] 请先执行: \"{exe}\" -m pip install -U pyinstaller")
-    print(f"[HINT] 可检查是否安装成功: \"{exe}\" -m PyInstaller --version")
+    print(f'[HINT] 请先执行: "{exe}" -m pip install -U pyinstaller')
+    print(f'[HINT] 可检查是否安装成功: "{exe}" -m PyInstaller --version')
     return False
 
 
@@ -48,7 +53,9 @@ def build_clean_env():
             env.pop(key, None)
 
     if cleared:
-        print("[WARN] detected polluted Python environment variables; cleared for build:")
+        print(
+            "[WARN] detected polluted Python environment variables; cleared for build:"
+        )
         for key, value in cleared:
             print(f"       {key}={value}")
     return env
@@ -73,22 +80,50 @@ def main():
                 print(f"[WARN] 清空 {os.path.basename(target_dir)} 时出错: {e}")
 
     cmd = [
-        sys.executable, "-m", "PyInstaller",
-        "--name", APP_NAME_WITH_VERSION,  # Use versioned name
+        sys.executable,
+        "-m",
+        "PyInstaller",
+        "--name",
+        APP_NAME_WITH_VERSION,  # Use versioned name
         "--onefile",
         "--windowed",
         "--noconfirm",
         "--clean",
-        "--hidden-import", "ttkbootstrap",
-        "--hidden-import", "tkinter",
-        "--hidden-import", "win32com.client",
-        "--hidden-import", "pythoncom",
-        "--hidden-import", "pypdf",
-        "--hidden-import", "openpyxl",
-        "--hidden-import", "docx",
-        "--hidden-import", "bs4",
-        "--hidden-import", "chromadb",
-        "--collect-all", "ttkbootstrap",
+        # External packages
+        "--hidden-import",
+        "ttkbootstrap",
+        "--hidden-import",
+        "tkinter",
+        "--hidden-import",
+        "win32com.client",
+        "--hidden-import",
+        "pythoncom",
+        "--hidden-import",
+        "pywintypes",
+        "--hidden-import",
+        "pypdf",
+        "--hidden-import",
+        "openpyxl",
+        "--hidden-import",
+        "docx",
+        "--hidden-import",
+        "bs4",
+        "--hidden-import",
+        "chromadb",
+        # Local modules
+        "--hidden-import",
+        "ui_translations",
+        "--hidden-import",
+        "locate_source",
+        "--hidden-import",
+        "search_adapter",
+        "--hidden-import",
+        "task_manager",
+        "--hidden-import",
+        "gdrive_upload",
+        # Collect ttkbootstrap assets
+        "--collect-all",
+        "ttkbootstrap",
         ENTRY,
     ]
     print(f"正在打包 {APP_NAME_WITH_VERSION}，请稍候...")
@@ -97,7 +132,9 @@ def main():
         return r
 
     dist_dir = dist_root
-    exe_path = os.path.join(dist_dir, APP_NAME_WITH_VERSION + ".exe")  # Use versioned exe path
+    exe_path = os.path.join(
+        dist_dir, APP_NAME_WITH_VERSION + ".exe"
+    )  # Use versioned exe path
     config_src = os.path.join(root, "config.json")
     config_dst = os.path.join(dist_dir, "config.json")
     if os.path.isfile(config_src) and os.path.isfile(exe_path):
@@ -107,7 +144,9 @@ def main():
     print("")
     print(f"打包完成！版本：{APP_VERSION}")
     print(f"  可执行文件: dist\\{APP_NAME_WITH_VERSION}.exe")
-    print("  重要: 请从 dist 目录运行 exe，不要从 build 目录运行（build 为临时目录，会报错）。")
+    print(
+        "  重要: 请从 dist 目录运行 exe，不要从 build 目录运行（build 为临时目录，会报错）。"
+    )
     print(f"  分发时至少发送该 exe；如需预置配置，请同时发送同目录 config.json。")
     return 0
 

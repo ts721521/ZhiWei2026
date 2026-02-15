@@ -102,6 +102,18 @@ python build_exe.py
 | [CHANGELOG.md](CHANGELOG.md) | 版本更新记录 |
 | [docs/AI_交接文档_下一阶段开发.md](docs/AI_交接文档_下一阶段开发.md) | 给下一位开发者/AI 的交接：入口、约束、下一阶段功能与文档索引 |
 
+### Obsidian 文档同步
+
+- 全局配置项：`obsidian_sync_enabled`、`obsidian_root`、`obsidian_program_name`。
+- 当启用 LLM 交付集 (`enable_llm_delivery_hub=true`) 时，文档会优先同步到：`<obsidian_root>/<obsidian_program_name>/`。
+- 额外开发文档（仓库根目录与 `docs/` 下的 `.md`）可执行：
+
+```bash
+python sync_docs_to_obsidian.py --config config.json
+```
+
+- 同步后会生成索引：`<obsidian_root>/<obsidian_program_name>/开发文档/_sync_index.md`。
+
 ---
 
 ## 项目结构

@@ -1964,6 +1964,62 @@ class OfficeGUI(tb.Window):
             self.chk_enable_update_package, "tip_toggle_enable_update_package"
         )
 
+        # ========== 并发处理和断点续传配置 ==========
+        # 并发转换开关
+        self.var_enable_parallel_conversion = tk.IntVar(value=0)
+        self.chk_enable_parallel_conversion = tb.Checkbutton(
+            lf_incremental,
+            text=self.tr("chk_enable_parallel_conversion"),
+            variable=self.var_enable_parallel_conversion,
+            command=self._on_toggle_parallel_conversion,
+        )
+        self.chk_enable_parallel_conversion.pack(anchor="w")
+        # 并发数配置（受开关控制）
+        self._frm_parallel_sub = tb.Frame(lf_incremental)
+        self._frm_parallel_sub.pack(fill=X, padx=(16, 0))
+        frm_workers = tb.Frame(self._frm_parallel_sub)
+        frm_workers.pack(fill=X)
+        tb.Label(frm_workers, text=self.tr("lbl_parallel_workers")).pack(side=LEFT)
+        self.var_parallel_workers = tk.StringVar(value="4")
+        self.spn_parallel_workers = tb.Spinbox(
+            frm_workers,
+            from_=1,
+            to=16,
+            width=5,
+            textvariable=self.var_parallel_workers,
+        )
+        self.spn_parallel_workers.pack(side=LEFT, padx=(6, 0))
+
+        # 断点续传开关
+        self.var_enable_checkpoint = tk.IntVar(value=1)
+        self.chk_enable_checkpoint = tb.Checkbutton(
+            lf_incremental,
+            text=self.tr("chk_enable_checkpoint"),
+            variable=self.var_enable_checkpoint,
+        )
+        self.chk_enable_checkpoint.pack(anchor="w")
+        # 自动恢复断点
+        self.var_checkpoint_auto_resume = tk.IntVar(value=1)
+        self.chk_checkpoint_auto_resume = tb.Checkbutton(
+            lf_incremental,
+            text=self.tr("chk_checkpoint_auto_resume"),
+            variable=self.var_checkpoint_auto_resume,
+        )
+        self.chk_checkpoint_auto_resume.pack(anchor="w", padx=(16, 0))
+
+        # 绑定提示
+        self._attach_tooltip(
+            self.chk_enable_parallel_conversion, "tip_toggle_parallel_conversion"
+        )
+        self._attach_tooltip(self.spn_parallel_workers, "tip_parallel_workers")
+        self._attach_tooltip(self.chk_enable_checkpoint, "tip_toggle_checkpoint")
+        self._attach_tooltip(
+            self.chk_checkpoint_auto_resume, "tip_checkpoint_auto_resume"
+        )
+
+        # 初始状态：并发子选项默认隐藏
+        self._on_toggle_parallel_conversion()
+
         self.var_enable_date_filter = tk.IntVar(value=0)
         self.chk_date_filter = tb.Checkbutton(
             lf_convert_content,
@@ -2484,6 +2540,14 @@ class OfficeGUI(tb.Window):
             ),
             "global_md5_dedup": bool(self.var_global_md5_dedup.get()),
             "enable_update_package": bool(self.var_enable_update_package.get()),
+            "enable_parallel_conversion": bool(
+                self.var_enable_parallel_conversion.get()
+            ),
+            "parallel_workers": self._safe_positive_int(
+                self.var_parallel_workers.get(), 4
+            ),
+            "enable_checkpoint": bool(self.var_enable_checkpoint.get()),
+            "checkpoint_auto_resume": bool(self.var_checkpoint_auto_resume.get()),
         }
         current = self._normalize_task_cfg_for_compare(current)
         if not only_diff:
@@ -3867,6 +3931,10 @@ class OfficeGUI(tb.Window):
             self.var_source_priority_skip_same_name_pdf,
             self.var_global_md5_dedup,
             self.var_enable_update_package,
+            self.var_enable_parallel_conversion,
+            self.var_parallel_workers,
+            self.var_enable_checkpoint,
+            self.var_checkpoint_auto_resume,
             self.var_tooltip_auto_theme,
             self.var_confirm_revert_dirty,
             self.var_tooltip_delay_ms,
@@ -4493,6 +4561,12 @@ class OfficeGUI(tb.Window):
             self.chk_incremental_reprocess_renamed.configure(state=verify_state)
         except Exception:
             pass
+
+    def _on_toggle_parallel_conversion(self):
+        enabled = bool(self.var_enable_parallel_conversion.get())
+        state = "normal" if enabled else "disabled"
+        if hasattr(self, "_frm_parallel_sub"):
+            self._set_widget_tree_state(self._frm_parallel_sub, state)
 
     def _on_toggle_markdown_master(self):
         """Toggle state of markdown sub-options."""
@@ -7150,6 +7224,17 @@ class OfficeGUI(tb.Window):
             self.var_enable_update_package.set(
                 1 if snapshot.get("enable_update_package", True) else 0
             )
+            self.var_enable_parallel_conversion.set(
+                1 if snapshot.get("enable_parallel_conversion", False) else 0
+            )
+            self.var_parallel_workers.set(str(snapshot.get("parallel_workers", 4)))
+            self.var_enable_checkpoint.set(
+                1 if snapshot.get("enable_checkpoint", True) else 0
+            )
+            self.var_checkpoint_auto_resume.set(
+                1 if snapshot.get("checkpoint_auto_resume", True) else 0
+            )
+            self._on_toggle_parallel_conversion()
         if "merge" in sections:
             self.var_enable_merge.set(1 if snapshot.get("enable_merge", True) else 0)
             self.var_output_enable_pdf.set(
@@ -7420,6 +7505,14 @@ class OfficeGUI(tb.Window):
             ),
             "global_md5_dedup": bool(self.var_global_md5_dedup.get()),
             "enable_update_package": bool(self.var_enable_update_package.get()),
+            "enable_parallel_conversion": bool(
+                self.var_enable_parallel_conversion.get()
+            ),
+            "parallel_workers": self._safe_positive_int(
+                self.var_parallel_workers.get(), 4
+            ),
+            "enable_checkpoint": bool(self.var_enable_checkpoint.get()),
+            "checkpoint_auto_resume": bool(self.var_checkpoint_auto_resume.get()),
             "excluded_folders": self._read_text_lines(self.txt_excluded_folders),
             "price_keywords": self._read_text_lines(self.txt_price_keywords),
             "ui": {
@@ -7540,6 +7633,14 @@ class OfficeGUI(tb.Window):
             ),
             "global_md5_dedup": bool(cfg.get("global_md5_dedup", False)),
             "enable_update_package": bool(cfg.get("enable_update_package", True)),
+            "enable_parallel_conversion": bool(
+                cfg.get("enable_parallel_conversion", False)
+            ),
+            "parallel_workers": self._safe_positive_int(
+                cfg.get("parallel_workers", 4), 4
+            ),
+            "enable_checkpoint": bool(cfg.get("enable_checkpoint", True)),
+            "checkpoint_auto_resume": bool(cfg.get("checkpoint_auto_resume", True)),
             "excluded_folders": self._normalize_lines(cfg.get("excluded_folders", [])),
             "price_keywords": self._normalize_lines(cfg.get("price_keywords", [])),
             "ui": {
@@ -8182,6 +8283,15 @@ class OfficeGUI(tb.Window):
         self.var_enable_update_package.set(
             1 if cfg.get("enable_update_package", True) else 0
         )
+        self.var_enable_parallel_conversion.set(
+            1 if cfg.get("enable_parallel_conversion", False) else 0
+        )
+        self.var_parallel_workers.set(str(cfg.get("parallel_workers", 4)))
+        self.var_enable_checkpoint.set(1 if cfg.get("enable_checkpoint", True) else 0)
+        self.var_checkpoint_auto_resume.set(
+            1 if cfg.get("checkpoint_auto_resume", True) else 0
+        )
+        self._on_toggle_parallel_conversion()
 
         self.var_enable_merge.set(1 if cfg.get("enable_merge", True) else 0)
         self.var_output_enable_pdf.set(1 if cfg.get("output_enable_pdf", True) else 0)
@@ -8359,6 +8469,14 @@ class OfficeGUI(tb.Window):
             )
             cfg["global_md5_dedup"] = bool(self.var_global_md5_dedup.get())
             cfg["enable_update_package"] = bool(self.var_enable_update_package.get())
+            cfg["enable_parallel_conversion"] = bool(
+                self.var_enable_parallel_conversion.get()
+            )
+            cfg["parallel_workers"] = self._safe_positive_int(
+                self.var_parallel_workers.get(), 4
+            )
+            cfg["enable_checkpoint"] = bool(self.var_enable_checkpoint.get())
+            cfg["checkpoint_auto_resume"] = bool(self.var_checkpoint_auto_resume.get())
 
         if "merge" in sections:
             cfg["enable_merge"] = bool(self.var_enable_merge.get())
@@ -8620,6 +8738,14 @@ class OfficeGUI(tb.Window):
             )
             cfg["global_md5_dedup"] = bool(self.var_global_md5_dedup.get())
             cfg["enable_update_package"] = bool(self.var_enable_update_package.get())
+            cfg["enable_parallel_conversion"] = bool(
+                self.var_enable_parallel_conversion.get()
+            )
+            cfg["parallel_workers"] = self._safe_positive_int(
+                self.var_parallel_workers.get(), 4
+            )
+            cfg["enable_checkpoint"] = bool(self.var_enable_checkpoint.get())
+            cfg["checkpoint_auto_resume"] = bool(self.var_checkpoint_auto_resume.get())
 
         if write_merge:
             cfg["enable_merge"] = bool(self.var_enable_merge.get())
@@ -9358,6 +9484,16 @@ class OfficeGUI(tb.Window):
                     cfg["global_md5_dedup"] = bool(self.var_global_md5_dedup.get())
                     cfg["enable_update_package"] = bool(
                         self.var_enable_update_package.get()
+                    )
+                    cfg["enable_parallel_conversion"] = bool(
+                        self.var_enable_parallel_conversion.get()
+                    )
+                    cfg["parallel_workers"] = self._safe_positive_int(
+                        self.var_parallel_workers.get(), 4
+                    )
+                    cfg["enable_checkpoint"] = bool(self.var_enable_checkpoint.get())
+                    cfg["checkpoint_auto_resume"] = bool(
+                        self.var_checkpoint_auto_resume.get()
                     )
                     cfg["kill_process_mode"] = self.var_kill_mode.get()
                     cfg["default_engine"] = self.var_engine.get()

@@ -2,6 +2,35 @@
 
 All notable changes to this project are documented in this file.
 
+## [v5.19.0] - 2026-02-15
+### Added
+- **并发转换功能**：
+  - 新增多线程并发转换支持，使用 ThreadPoolExecutor 实现
+  - 可配置并发工作线程数（1-16，默认 4）
+  - 预期可提升大批量文件转换速度 3-4 倍
+  - 配置项：`enable_parallel_conversion`（开关）、`parallel_workers`（线程数）
+- **断点续传功能**：
+  - 转换过程中定期保存进度断点（默认每 10 个文件）
+  - 程序中断后重启可自动从断点恢复
+  - 可配置自动恢复或手动确认恢复
+  - 断点文件存储在 `<target>/_AI/checkpoints/` 目录
+  - 配置项：`enable_checkpoint`（开关）、`checkpoint_auto_resume`（自动恢复）、`parallel_checkpoint_interval`（保存间隔）
+- **GUI 控件**：
+  - 新增并发转换开关和并发数设置
+  - 新增断点续传开关和自动恢复选项
+  - 中英文双语提示文案
+
+### Changed
+- `run()` 方法根据 `enable_parallel_conversion` 配置自动选择串行或并发模式
+- 串行模式 `run_batch()` 现也支持断点续传功能
+
+### Technical Notes
+- COM 对象线程安全：每个并发线程独立调用 `CoInitialize()` 和 `CoUninitialize()`
+- 断点文件使用 source_folder 的 MD5 哈希作为标识，确保唯一性
+- 并发模式下使用线程锁保护共享统计数据
+
+---
+
 ## [v5.18.0] - 2026-02-15
 ### Added
 - **失败文件异常处理增强**：

@@ -127,7 +127,7 @@ try:
 except Exception:
     HAS_REPORTLAB = False
 
-__version__ = "5.18.0"
+__version__ = "5.19.0"
 
 # Office constants
 wdFormatPDF = 17
@@ -861,6 +861,7 @@ class OfficeConverter:
 
         self.config["source_folder"] = self._get_path_from_config("source_folder")
         self.config["target_folder"] = self._get_path_from_config("target_folder")
+        self.config["obsidian_root"] = self._get_path_from_config("obsidian_root")
         # Normalize source_folders: ensure list and sync source_folder to first
         src_list = self.config.get("source_folders")
         if isinstance(src_list, list) and src_list:
@@ -879,6 +880,9 @@ class OfficeConverter:
 
     def _apply_config_defaults(self):
         cfg = self.config
+        cfg.setdefault("obsidian_sync_enabled", True)
+        cfg.setdefault("obsidian_root", "")
+        cfg.setdefault("obsidian_program_name", "ZhiWei")
         cfg.setdefault("enable_corpus_manifest", True)
         if "output_enable_md" not in cfg and "enable_markdown" in cfg:
             cfg["output_enable_md"] = bool(cfg.get("enable_markdown", True))
@@ -952,6 +956,15 @@ class OfficeConverter:
         cfg.setdefault("enable_mshelp_merge_output", True)
         cfg.setdefault("enable_mshelp_output_docx", False)
         cfg.setdefault("enable_mshelp_output_pdf", False)
+
+        # 并发处理配置
+        cfg.setdefault("enable_parallel_conversion", False)
+        cfg.setdefault("parallel_workers", 4)
+        cfg.setdefault("parallel_checkpoint_interval", 10)
+
+        # 断点续传配置
+        cfg.setdefault("enable_checkpoint", True)
+        cfg.setdefault("checkpoint_auto_resume", True)
 
         if "privacy" not in cfg or not isinstance(cfg["privacy"], dict):
             cfg["privacy"] = {}
@@ -2901,12 +2914,32 @@ class OfficeConverter:
             logging.warning(f"file_done_callback failed: {e}")
 
     def run_batch(self, file_list, is_retry=False, source_alias_map=None):
+        """
+        串行批量转换方法（支持断点续传）。
+        如需并发处理，请使用 run_batch_parallel()。
+        """
         total = len(file_list)
         results = []
         source_alias_map = source_alias_map or {}
 
+        # 断点续传支持
+        checkpoint = None
+        checkpoint_interval = self.config.get("parallel_checkpoint_interval", 10)
+        pending_files = file_list
+
+        if self.config.get("enable_checkpoint", True) and not is_retry:
+            checkpoint, pending_files = self._init_checkpoint(file_list)
+            if checkpoint and len(pending_files) < total:
+                file_list = pending_files
+                total = len(file_list)
+
+        completed_count = 0
+
         for i, fpath in enumerate(file_list, 1):
             if not self.is_running:
+                # 中断时保存断点
+                if checkpoint:
+                    self._save_checkpoint(checkpoint)
                 break
 
             logical_source = source_alias_map.get(fpath, fpath)
@@ -2929,6 +2962,7 @@ class OfficeConverter:
                     fpath, target_path_initial, ext, progress_prefix, is_retry
                 )
                 elapsed = time.time() - start
+                completed_count += 1
 
                 if status.startswith("skip"):
                     print(
@@ -2965,6 +2999,13 @@ class OfficeConverter:
                     }
                     results.append(record)
                     self._emit_file_done(record)
+
+                # 定期保存断点
+                if checkpoint and completed_count % checkpoint_interval == 0:
+                    checkpoint = self._mark_file_done_in_checkpoint(checkpoint, fpath)
+                    self._save_checkpoint(checkpoint)
+                elif checkpoint:
+                    checkpoint = self._mark_file_done_in_checkpoint(checkpoint, fpath)
 
             except Exception as e:
                 elapsed = time.time() - start
@@ -3039,6 +3080,321 @@ class OfficeConverter:
                 if not is_retry:
                     self.quarantine_failed_file(fpath)
                     self.error_records.append(logical_source)
+
+                # 失败时也更新断点（记录该文件已处理）
+                completed_count += 1
+                if checkpoint:
+                    checkpoint = self._mark_file_done_in_checkpoint(checkpoint, fpath)
+                    if completed_count % checkpoint_interval == 0:
+                        self._save_checkpoint(checkpoint)
+
+        # 全部完成后清理断点
+        if checkpoint and checkpoint.get("status") == "completed":
+            self._clear_checkpoint()
+
+        return results
+
+    # ========== 断点续传和并发处理功能 ==========
+
+    def _get_checkpoint_path(self):
+        """获取当前任务的断点文件路径"""
+        target_folder = self.config.get("target_folder", "")
+        if not target_folder:
+            return None
+        checkpoint_dir = os.path.join(target_folder, "_AI", "checkpoints")
+        os.makedirs(checkpoint_dir, exist_ok=True)
+        # 使用 source_folder 的哈希作为断点文件名，确保唯一性
+        source_key = self.config.get("source_folder", "default")
+        source_hash = hashlib.md5(source_key.encode()).hexdigest()[:12]
+        return os.path.join(checkpoint_dir, f"batch_{source_hash}.json")
+
+    def _init_checkpoint(self, file_list):
+        """初始化断点，返回 (checkpoint_data, pending_files)"""
+        if not self.config.get("enable_checkpoint", True):
+            return None, file_list
+
+        checkpoint_path = self._get_checkpoint_path()
+        if not checkpoint_path:
+            return None, file_list
+
+        # 检查是否存在未完成的断点
+        if os.path.exists(checkpoint_path):
+            try:
+                with open(checkpoint_path, "r", encoding="utf-8") as f:
+                    checkpoint = json.load(f)
+
+                if checkpoint.get("status") == "running":
+                    completed = set(checkpoint.get("completed_files", []))
+                    pending = [f for f in file_list if f not in completed]
+
+                    if pending and self.config.get("checkpoint_auto_resume", True):
+                        completed_count = len(completed)
+                        total_count = len(file_list)
+                        print(
+                            f"\n[断点续传] 检测到未完成任务: 已完成 {completed_count}/{total_count}"
+                        )
+                        print(f"[断点续传] 待处理文件: {len(pending)} 个")
+
+                        # 通过回调询问是否恢复（GUI模式）
+                        if hasattr(self, "checkpoint_resume_callback") and callable(
+                            self.checkpoint_resume_callback
+                        ):
+                            should_resume = self.checkpoint_resume_callback(
+                                completed_count, total_count
+                            )
+                            if not should_resume:
+                                print("[断点续传] 用户选择不恢复，将重新开始")
+                                os.remove(checkpoint_path)
+                                return None, file_list
+
+                        print("[断点续传] 从断点恢复...")
+                        return checkpoint, pending
+            except Exception as e:
+                logging.warning(f"Failed to load checkpoint: {e}")
+
+        # 创建新断点
+        checkpoint = {
+            "version": 1,
+            "created_at": datetime.now().isoformat(timespec="seconds"),
+            "updated_at": datetime.now().isoformat(timespec="seconds"),
+            "planned_files": list(file_list),
+            "completed_files": [],
+            "status": "running",
+        }
+        self._save_checkpoint(checkpoint)
+        return checkpoint, file_list
+
+    def _save_checkpoint(self, checkpoint):
+        """保存断点到文件"""
+        if not checkpoint:
+            return
+
+        checkpoint_path = self._get_checkpoint_path()
+        if not checkpoint_path:
+            return
+
+        try:
+            checkpoint["updated_at"] = datetime.now().isoformat(timespec="seconds")
+            with open(checkpoint_path, "w", encoding="utf-8") as f:
+                json.dump(checkpoint, f, ensure_ascii=False, indent=2)
+        except Exception as e:
+            logging.warning(f"Failed to save checkpoint: {e}")
+
+    def _mark_file_done_in_checkpoint(self, checkpoint, file_path):
+        """在断点中标记文件已完成"""
+        if not checkpoint:
+            return checkpoint
+
+        completed = checkpoint.setdefault("completed_files", [])
+        file_path_normalized = os.path.abspath(file_path)
+        if file_path_normalized not in completed:
+            completed.append(file_path_normalized)
+
+        # 检查是否全部完成
+        planned = checkpoint.get("planned_files", [])
+        if len(completed) >= len(planned):
+            checkpoint["status"] = "completed"
+
+        return checkpoint
+
+    def _clear_checkpoint(self):
+        """清除断点文件"""
+        checkpoint_path = self._get_checkpoint_path()
+        if checkpoint_path and os.path.exists(checkpoint_path):
+            try:
+                os.remove(checkpoint_path)
+                logging.info(f"Checkpoint cleared: {checkpoint_path}")
+            except Exception as e:
+                logging.warning(f"Failed to clear checkpoint: {e}")
+
+    def _convert_single_file_threadsafe(
+        self, fpath, target_path_initial, ext, progress_prefix, is_retry=False
+    ):
+        """
+        线程安全的单文件转换方法。
+        每个线程独立初始化 COM，避免跨线程问题。
+        """
+        # 初始化 COM（每个线程必须独立调用）
+        if HAS_WIN32:
+            pythoncom.CoInitialize()
+
+        try:
+            # 调用现有的单文件处理逻辑
+            return self.process_single_file(
+                fpath, target_path_initial, ext, progress_prefix, is_retry
+            )
+        finally:
+            # 清理 COM
+            if HAS_WIN32:
+                pythoncom.CoUninitialize()
+
+    def run_batch_parallel(self, file_list, is_retry=False, source_alias_map=None):
+        """
+        并发批量转换方法。
+        使用 ThreadPoolExecutor 实现多线程处理。
+        注意：COM 对象不能跨线程传递，每个线程独立初始化。
+        """
+        from concurrent.futures import ThreadPoolExecutor, as_completed
+
+        total = len(file_list)
+        results = []
+        source_alias_map = source_alias_map or {}
+
+        # 获取并发配置
+        max_workers = self.config.get("parallel_workers", 4)
+        checkpoint_interval = self.config.get("parallel_checkpoint_interval", 10)
+
+        # 初始化断点
+        checkpoint, pending_files = self._init_checkpoint(file_list)
+
+        if checkpoint and len(pending_files) < total:
+            file_list = pending_files
+            total = len(file_list)
+            print(f"[并发模式] 断点续传后剩余文件: {total}")
+
+        print(f"[并发模式] 启动 {max_workers} 个工作线程处理 {total} 个文件")
+
+        # 使用线程池
+        completed_count = 0
+        lock = threading.Lock()  # 用于保护共享状态
+
+        with ThreadPoolExecutor(max_workers=max_workers) as executor:
+            # 提交所有任务
+            future_to_file = {}
+            for i, fpath in enumerate(file_list, 1):
+                if not self.is_running:
+                    break
+
+                logical_source = source_alias_map.get(fpath, fpath)
+                fname = os.path.basename(fpath)
+                ext = os.path.splitext(fpath)[1].lower()
+                target_path_initial = self.get_target_path(logical_source, ext)
+                progress_prefix = self.get_progress_prefix(i, total)
+
+                future = executor.submit(
+                    self._convert_single_file_threadsafe,
+                    fpath,
+                    target_path_initial,
+                    ext,
+                    progress_prefix,
+                    is_retry,
+                )
+                future_to_file[future] = (fpath, logical_source, fname, i)
+
+            # 收集结果
+            for future in as_completed(future_to_file):
+                if not self.is_running:
+                    executor.shutdown(wait=False, cancel_futures=True)
+                    break
+
+                fpath, logical_source, fname, idx = future_to_file[future]
+                elapsed = time.time()  # 简化计时
+
+                try:
+                    status, final_path = future.result()
+                    elapsed = time.time() - elapsed
+
+                    with lock:
+                        completed_count += 1
+
+                    if status.startswith("skip"):
+                        print(
+                            f"\r[{completed_count}/{total}] {status}: {fname} ({elapsed:.2f}s)    "
+                        )
+                        logging.info(f"{status}: {logical_source}")
+                        record = {
+                            "source_path": os.path.abspath(logical_source),
+                            "status": "skipped",
+                            "detail": status,
+                            "final_path": final_path,
+                            "elapsed": elapsed,
+                        }
+                        results.append(record)
+                        self._emit_file_done(record)
+                    else:
+                        with lock:
+                            self.stats["success"] += 1
+                        print(
+                            f"\r[{completed_count}/{total}] {status}: {fname} ({elapsed:.2f}s)    "
+                        )
+                        logging.info(f"{status}: {logical_source} -> {final_path}")
+                        is_pdf_output = str(final_path).lower().endswith(".pdf")
+                        result_status = (
+                            "success" if is_pdf_output else "success_non_pdf"
+                        )
+                        if is_pdf_output:
+                            self._append_conversion_index_record(
+                                logical_source, final_path, status
+                            )
+                        record = {
+                            "source_path": os.path.abspath(logical_source),
+                            "status": result_status,
+                            "detail": status,
+                            "final_path": final_path,
+                            "elapsed": elapsed,
+                        }
+                        results.append(record)
+                        self._emit_file_done(record)
+
+                    # 更新断点
+                    if checkpoint:
+                        checkpoint = self._mark_file_done_in_checkpoint(
+                            checkpoint, fpath
+                        )
+                        if completed_count % checkpoint_interval == 0:
+                            self._save_checkpoint(checkpoint)
+
+                except Exception as e:
+                    elapsed = time.time() - elapsed
+                    err_msg = str(e)
+
+                    with lock:
+                        completed_count += 1
+                        self.stats["failed"] += 1
+
+                    error_detail = self.record_detailed_error(
+                        logical_source,
+                        e,
+                        context={
+                            "run_mode": self.get_readable_run_mode(),
+                            "engine": self.get_readable_engine_type(),
+                            "elapsed": elapsed,
+                            "parallel": True,
+                        },
+                    )
+
+                    print(
+                        f"\r[{completed_count}/{total}] 失败({error_detail['error_type']}): {fname}    "
+                    )
+                    record = {
+                        "source_path": os.path.abspath(logical_source),
+                        "status": "failed",
+                        "detail": err_msg,
+                        "final_path": "",
+                        "elapsed": elapsed,
+                        "error": err_msg,
+                        "error_type": error_detail["error_type"],
+                        "error_category": error_detail["error_category"],
+                        "suggestion": error_detail["suggestion"],
+                        "is_retryable": error_detail["is_retryable"],
+                        "requires_manual_action": error_detail[
+                            "requires_manual_action"
+                        ],
+                    }
+                    results.append(record)
+                    self._emit_file_done(record)
+
+                    logging.error(
+                        f"failed: {logical_source} | reason: {e} | type: {error_detail['error_type']}"
+                    )
+
+                    if not is_retry:
+                        self.quarantine_failed_file(fpath)
+                        self.error_records.append(logical_source)
+
+        # 完成后清理断点
+        if checkpoint and checkpoint.get("status") == "completed":
+            self._clear_checkpoint()
 
         return results
 
@@ -5475,9 +5831,19 @@ class OfficeConverter:
         if not artifacts:
             return None
 
-        llm_root = self.config.get("llm_delivery_root") or os.path.join(
-            target_folder, "_LLM_UPLOAD"
+        obsidian_sync_enabled = bool(self.config.get("obsidian_sync_enabled", False))
+        obsidian_root = str(self.config.get("obsidian_root", "") or "").strip()
+        obsidian_program_name = (
+            str(self.config.get("obsidian_program_name", "ZhiWei") or "ZhiWei").strip()
+            or "ZhiWei"
         )
+
+        if obsidian_sync_enabled and obsidian_root:
+            llm_root = os.path.join(obsidian_root, obsidian_program_name)
+        else:
+            llm_root = self.config.get("llm_delivery_root") or os.path.join(
+                target_folder, "_LLM_UPLOAD"
+            )
         try:
             os.makedirs(llm_root, exist_ok=True)
         except Exception as e:
@@ -5486,6 +5852,8 @@ class OfficeConverter:
 
         include_pdf = self.config.get("llm_delivery_include_pdf", False)
         flatten = self.config.get("llm_delivery_flatten", False)
+        if obsidian_sync_enabled:
+            flatten = False
 
         hub_items = []
         counts = {
@@ -7138,7 +7506,16 @@ class OfficeConverter:
                 if files:
                     logging.info("start processing %s files", len(files))
                     batch_start = time.perf_counter()
-                    batch_results.extend(self.run_batch(files))
+
+                    # 根据配置选择串行或并发模式
+                    if self.config.get("enable_parallel_conversion", False):
+                        print(
+                            f"[并发模式] 使用 {self.config.get('parallel_workers', 4)} 个工作线程"
+                        )
+                        batch_results.extend(self.run_batch_parallel(files))
+                    else:
+                        batch_results.extend(self.run_batch(files))
+
                     self._add_perf_seconds(
                         "batch_seconds", time.perf_counter() - batch_start
                     )
@@ -7437,6 +7814,9 @@ def create_default_config(config_path):
             "sandbox_low_space_policy": "block",
             "enable_llm_delivery_hub": True,
             "llm_delivery_root": "",
+            "obsidian_sync_enabled": True,
+            "obsidian_root": "",
+            "obsidian_program_name": "ZhiWei",
             "llm_delivery_flatten": True,
             "llm_delivery_include_pdf": False,
             "enable_gdrive_upload": False,

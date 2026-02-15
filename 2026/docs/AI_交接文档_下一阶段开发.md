@@ -1,6 +1,6 @@
 # 知喂 (ZhiWei) — 下一阶段开发交接文档
 
-供下一位开发者或 AI 接续开发时使用。文档日期：2026-02-13。
+供下一位开发者或 AI 接续开发时使用。文档日期：2026-02-15。
 
 ---
 
@@ -9,8 +9,8 @@
 | 项目 | 说明 |
 |------|------|
 | **产品名** | 知喂 (ZhiWei)，副标题：知识投喂工具 |
-| **版本** | v5.17.0（唯一定义在 `office_converter.py` 的 `__version__`） |
-| **仓库** | 私有仓库，主分支 `main`；项目代码在 `2026/` 目录下 |
+| **版本** | v5.19.0（唯一定义在 `office_converter.py` 的 `__version__`） |
+| **仓库** | https://github.com/ts721521/ZhiWei2026.git；项目代码在 `2026/` 目录下 |
 | **界面** | 仅中文，无英文模式 |
 
 **核心定位**：为知识库与 AI 服务准备语料——Office 批量转 PDF、合并、梳理，以及面向 NotebookLM 的溯源与 LLM 上传目录。
@@ -54,34 +54,29 @@ python office_converter.py --help   # 查看参数
 - **合并输出**：`merge_filename_pattern` 可配置，占位符 `{category}`, `{timestamp}`, `{date}`, `{time}`, `{idx}`
 - **任务模式**：多组「源+目标+参数」保存与一键运行，断点续传
 - **增量同步**：账本、Added/Modified/Renamed/Deleted、增量包、MD5 去重、同名优先 Office
+- **并发转换**：多线程并发处理（ThreadPoolExecutor），可配置工作线程数，预期提速 3-4 倍
+- **断点续传**：定期保存进度，中断后可恢复继续处理
+- **失败文件处理**：错误类型自动分类（权限/锁定/损坏/超时等）、失败报告导出（JSON+TXT）、隔离目录
 - **LLM 上传目录**：`_LLM_UPLOAD` 集中输出，manifest、扁平化、去重策略
 - **沙盒与空间**：`temp_sandbox_root`、`sandbox_min_free_gb`、低空间策略（block/confirm/warn）
 - **MSHelp**：扫描 MSHelpViewer/CAB，转 Markdown，索引与合并包
 - **NotebookLM 溯源**：合并 PDF + 页码或短 ID 定位，Everything/Listary 集成
-- **产物目录**：`_MERGED/`、`_AI/Markdown/`、`_AI/ExcelJSON/`、`_AI/Records/`、`_AI/ChromaDB/`、`_AI/Update_Package/`、`_LLM_UPLOAD/` 等
+- **Google Drive 上传**：桌面 OAuth 授权，一键上传 `_LLM_UPLOAD` 目录
+- **产物目录**：`_MERGED/`、`_AI/Markdown/`、`_AI/ExcelJSON/`、`_AI/Records/`、`_AI/ChromaDB/`、`_AI/Update_Package/`、`_LLM_UPLOAD/`、`_FAILED_FILES/` 等
 
 ---
 
 ## 4. 建议的下一阶段功能（优先级供参考）
 
-以下来自现有需求与任务清单，接续开发时可从中选取：
+**当前 Phase 1-7 已全部完成**（见 `docs/TASK_LIST.md`）。以下为可选扩展方向：
 
-### 4.1 高优先级
-
-1. **大批量压测与文档**  
-   - 对 ≥10k 文件场景做压测，记录磁盘占用与耗时；将 V1.1 验收用例与文档补全（见 `docs/TASK_LIST.md` Phase 6 未勾选项）。
-
-2. **Google Drive 上传（桌面 OAuth）**  
-   - 配置项：`enable_gdrive_upload`、`gdrive_folder_id`、`gdrive_client_secrets_path`。  
-   - GUI：「上传 _LLM_UPLOAD 到 Google Drive」按钮；首次浏览器 OAuth，本地缓存 token。  
-   - **详细实现规划**：[docs/plans/Google_Drive_上传_实现规划.md](plans/Google_Drive_上传_实现规划.md)。  
-   - 详见 `docs/AI_HANDOVER_20260211.md` 第 11 节。
-
-### 4.2 中低优先级
+### 4.1 中低优先级
 
 - 非 Windows 下沙盒可用空间检测的兼容与降级策略（保守 warn）。
 - LLM 归集可选硬链接/符号链接模式（当前为复制，减少重复占用）。
-- 其它见 `docs/TASK_LIST.md` Phase 7 及 `docs/PRODUCT_REQUIREMENTS.md`。
+- 并发转换的性能优化（动态线程数调整、任务优先级队列）。
+- 断点续传的云端同步（跨设备恢复）。
+- 其它见 `docs/PRODUCT_REQUIREMENTS.md`。
 
 ---
 
@@ -130,4 +125,4 @@ python -m unittest discover -s tests -p "test_*.py" -v
 
 ---
 
-*本文档随版本与需求更新，当前对应 v5.17.0。*
+*本文档随版本与需求更新，当前对应 v5.19.0。*
