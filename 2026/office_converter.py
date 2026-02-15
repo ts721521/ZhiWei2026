@@ -127,7 +127,7 @@ try:
 except Exception:
     HAS_REPORTLAB = False
 
-__version__ = "5.19.0"
+__version__ = "5.19.1"
 
 # Office constants
 wdFormatPDF = 17

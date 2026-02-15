@@ -14,6 +14,10 @@ office_gui.py - Office 鏂囨。鎵归噺杞崲 & 姊崇悊宸ュ叿 GUI 鐗?
 
 import os
 import sys
+
+# Remove third-party site-packages (e.g. pipecad) that pollute PIL/Pillow imports
+sys.path[:] = [p for p in sys.path if "pipecad" not in p.lower()]
+
 import subprocess
 import webbrowser
 import glob
@@ -490,7 +494,26 @@ class OfficeGUI(tb.Window):
             pass
         self.after(200, self._poll_log_queue)
         self.update_idletasks()
+        self._force_refresh_all_canvases()
+        self.after(100, self._force_refresh_all_canvases)
+        self.after(500, self._force_refresh_all_canvases)
+        self.main_notebook.bind("<<NotebookTabChanged>>", self._on_tab_changed)
         self.lift()
+
+    def _force_refresh_all_canvases(self):
+        for tab_frame in getattr(self, "_all_tabs", []):
+            for child in tab_frame.winfo_children():
+                if isinstance(child, tk.Canvas):
+                    child.update_idletasks()
+                    w = child.winfo_width()
+                    if w > 1:
+                        for item_id in child.find_all():
+                            child.itemconfig(item_id, width=w)
+                        child.configure(scrollregion=child.bbox("all"))
+
+    def _on_tab_changed(self, _event=None):
+        self.after(10, self._force_refresh_all_canvases)
+        self.after(100, self._force_refresh_all_canvases)
 
     # ===================== UI 閺嬪嫬缂?=====================
 
@@ -1005,14 +1028,27 @@ class OfficeGUI(tb.Window):
         scrollbar = tb.Scrollbar(parent, orient="vertical", command=canvas.yview)
         content = tb.Frame(canvas)
         content.bind(
-            "<Configure>", lambda e: canvas.configure(scrollregion=canvas.bbox("all"))
+            "<Configure>",
+            lambda e: canvas.configure(scrollregion=canvas.bbox("all")),
         )
-        win_id = canvas.create_window(
-            (0, 0), window=content, anchor="nw", width=canvas.winfo_reqwidth()
-        )
+        win_id = canvas.create_window((0, 0), window=content, anchor="nw")
+
+        def _sync_width(retries=10):
+            w = canvas.winfo_width()
+            if w > 1:
+                canvas.itemconfig(win_id, width=w)
+                canvas.configure(scrollregion=canvas.bbox("all"))
+            elif retries > 0:
+                canvas.after(100, lambda: _sync_width(retries - 1))
 
         def on_canvas_configure(e):
-            canvas.itemconfig(win_id, width=e.width)
+            w = e.width if e.width > 1 else canvas.winfo_width()
+            if w > 1:
+                canvas.itemconfig(win_id, width=w)
+            canvas.configure(scrollregion=canvas.bbox("all"))
+
+        canvas.bind("<Map>", lambda e: canvas.after(20, _sync_width))
+        canvas.bind("<Expose>", lambda e: canvas.after(20, _sync_width))
 
         def _calc_wheel_step(event):
             # Windows uses delta in multiples of 120; macOS often uses small deltas.

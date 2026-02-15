@@ -2,6 +2,16 @@
 
 All notable changes to this project are documented in this file.
 
+## [v5.19.1] - 2026-02-15
+### Fixed
+- **GUI 滚动页面渲染修复**：修复 Canvas 内嵌窗口初始宽度为 0 导致所有 Tab 内容不可见的问题
+  - 添加 `<Map>` / `<Expose>` 事件绑定，Canvas 可见时自动同步宽度
+  - 添加启动后多次延迟刷新和 Tab 切换刷新机制
+  - 兼容不同 Python 版本和 IDE 运行环境（VSCode / 终端）
+- **PIL 导入冲突修复**：启动时清理 `sys.path` 中第三方污染路径（如 pipecad），避免加载错误的 Pillow
+
+---
+
 ## [v5.19.0] - 2026-02-15
 ### Added
 - **并发转换功能**：
