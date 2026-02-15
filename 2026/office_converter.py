@@ -41,22 +41,27 @@ try:
     import win32com.client
     import pythoncom
     import pywintypes
+
     HAS_WIN32 = True
 except ImportError:
     # Provide mock objects on non-Windows environments to avoid import failures.
     class MockComError(Exception):
         pass
-        
+
     class MockPyWinTypes:
         com_error = MockComError
-        
+
     class MockPythonCom:
-        def CoInitialize(self): pass
-        def CoUninitialize(self): pass
+        def CoInitialize(self):
+            pass
+
+        def CoUninitialize(self):
+            pass
 
     class MockWin32ComClient:
         def Dispatch(self, *args, **kwargs):
             raise RuntimeError("Win32 COM not supported")
+
         def DispatchEx(self, *args, **kwargs):
             raise RuntimeError("Win32 COM not supported")
 
@@ -122,7 +127,7 @@ try:
 except Exception:
     HAS_REPORTLAB = False
 
-__version__ = "5.17.0"
+__version__ = "5.18.0"
 
 # Office constants
 wdFormatPDF = 17
@@ -169,6 +174,194 @@ STRATEGY_PRICE_ONLY = "price_only"  # process only keyword-matching files
 ERR_RPC_SERVER_BUSY = -2147417846
 DEFAULT_SHORT_ID_LEN = 8
 
+# =============== Error Classification ===============
+# 错误类型枚举 - 用于分类和生成处理建议
+
+
+class ConversionErrorType:
+    """转换错误类型分类"""
+
+    PERMISSION_DENIED = "permission_denied"  # 权限不足
+    FILE_LOCKED = "file_locked"  # 文件被占用
+    FILE_NOT_FOUND = "file_not_found"  # 文件不存在
+    FILE_CORRUPTED = "file_corrupted"  # 文件损坏
+    COM_ERROR = "com_error"  # Office COM 错误
+    TIMEOUT = "timeout"  # 超时
+    DISK_FULL = "disk_full"  # 磁盘空间不足
+    INVALID_FORMAT = "invalid_format"  # 格式无效
+    PASSWORD_PROTECTED = "password_protected"  # 密码保护
+    UNSUPPORTED_FORMAT = "unsupported_format"  # 不支持的格式
+    UNKNOWN = "unknown"  # 未知错误
+
+
+def classify_conversion_error(exception, context=""):
+    """
+    根据异常信息分类错误类型，返回错误类型和处理建议。
+
+    Args:
+        exception: 异常对象或异常信息字符串
+        context: 额外的上下文信息（如文件路径）
+
+    Returns:
+        dict: {
+            "error_type": 错误类型,
+            "error_category": 错误分类（可重试/不可重试/需人工）,
+            "message": 用户友好消息,
+            "suggestion": 处理建议,
+            "is_retryable": 是否可自动重试,
+            "requires_manual_action": 是否需要人工干预
+        }
+    """
+    err_str = str(exception).lower() if exception else ""
+    err_type = type(exception).__name__ if hasattr(exception, "__name__") else ""
+
+    # 权限错误
+    if any(
+        kw in err_str
+        for kw in ["permission", "access denied", "拒绝访问", "权限", "unauthorized"]
+    ):
+        return {
+            "error_type": ConversionErrorType.PERMISSION_DENIED,
+            "error_category": "needs_manual",
+            "message": "文件访问权限不足",
+            "suggestion": "1. 以管理员身份运行程序\n2. 检查文件属性，取消「只读」\n3. 检查文件夹权限设置",
+            "is_retryable": False,
+            "requires_manual_action": True,
+        }
+
+    # 文件被占用
+    if any(
+        kw in err_str
+        for kw in ["being used", "locked", "占用", "正由另一程序", "sharing violation"]
+    ):
+        return {
+            "error_type": ConversionErrorType.FILE_LOCKED,
+            "error_category": "retryable",
+            "message": "文件被其他程序占用",
+            "suggestion": "1. 关闭 Word/Excel/WPS 等 Office 程序\n2. 关闭文件资源管理器中该文件的预览\n3. 等待几秒后重试",
+            "is_retryable": True,
+            "requires_manual_action": False,
+        }
+
+    # 文件不存在
+    if any(
+        kw in err_str
+        for kw in ["not found", "does not exist", "找不到", "不存在", "filenotfound"]
+    ):
+        return {
+            "error_type": ConversionErrorType.FILE_NOT_FOUND,
+            "error_category": "unrecoverable",
+            "message": "文件不存在",
+            "suggestion": "文件可能已被移动或删除，请检查源目录",
+            "is_retryable": False,
+            "requires_manual_action": True,
+        }
+
+    # 文件损坏
+    if any(
+        kw in err_str
+        for kw in [
+            "corrupt",
+            "damaged",
+            "损坏",
+            "repair",
+            "无法读取",
+            "unreadable",
+            "invalid data",
+        ]
+    ):
+        return {
+            "error_type": ConversionErrorType.FILE_CORRUPTED,
+            "error_category": "unrecoverable",
+            "message": "文件可能已损坏",
+            "suggestion": "1. 尝试用 Office 打开文件并另存为新文件\n2. 使用 Office 的「打开并修复」功能\n3. 从备份恢复文件",
+            "is_retryable": False,
+            "requires_manual_action": True,
+        }
+
+    # COM 错误（Office 相关）
+    if any(
+        kw in err_str
+        for kw in [
+            "com_error",
+            "com object",
+            "rpc",
+            "server busy",
+            "call was rejected",
+            "0x800",
+        ]
+    ):
+        return {
+            "error_type": ConversionErrorType.COM_ERROR,
+            "error_category": "retryable",
+            "message": "Office 组件通信错误",
+            "suggestion": "1. 重启 Office 程序\n2. 检查 Office 安装是否完整\n3. 尝试使用其他转换引擎（WPS/MS）",
+            "is_retryable": True,
+            "requires_manual_action": False,
+        }
+
+    # 超时
+    if any(kw in err_str for kw in ["timeout", "超时", "timed out"]):
+        return {
+            "error_type": ConversionErrorType.TIMEOUT,
+            "error_category": "retryable",
+            "message": "转换超时",
+            "suggestion": "1. 文件可能过大，尝试增加超时时间\n2. 关闭其他占用资源的程序\n3. 分批处理大文件",
+            "is_retryable": True,
+            "requires_manual_action": False,
+        }
+
+    # 磁盘空间不足
+    if any(
+        kw in err_str
+        for kw in ["disk full", "no space", "磁盘已满", "空间不足", "storage"]
+    ):
+        return {
+            "error_type": ConversionErrorType.DISK_FULL,
+            "error_category": "needs_manual",
+            "message": "磁盘空间不足",
+            "suggestion": "1. 清理磁盘空间\n2. 更换输出目录到其他磁盘\n3. 在「高级设置」中调整沙盒路径",
+            "is_retryable": False,
+            "requires_manual_action": True,
+        }
+
+    # 密码保护
+    if any(
+        kw in err_str for kw in ["password", "protected", "密码", "encrypted", "加密"]
+    ):
+        return {
+            "error_type": ConversionErrorType.PASSWORD_PROTECTED,
+            "error_category": "needs_manual",
+            "message": "文件受密码保护",
+            "suggestion": "1. 先用 Office 打开文件并移除密码保护\n2. 将文件另存为无密码版本后再转换",
+            "is_retryable": False,
+            "requires_manual_action": True,
+        }
+
+    # 格式无效
+    if any(
+        kw in err_str
+        for kw in ["invalid format", "format not supported", "格式无效", "格式错误"]
+    ):
+        return {
+            "error_type": ConversionErrorType.INVALID_FORMAT,
+            "error_category": "unrecoverable",
+            "message": "文件格式无效",
+            "suggestion": "1. 确认文件扩展名与实际内容匹配\n2. 尝试用对应 Office 程序打开并另存",
+            "is_retryable": False,
+            "requires_manual_action": True,
+        }
+
+    # 未知错误
+    return {
+        "error_type": ConversionErrorType.UNKNOWN,
+        "error_category": "unknown",
+        "message": f"未知错误: {str(exception)[:100] if exception else 'N/A'}",
+        "suggestion": "1. 查看详细日志获取更多信息\n2. 尝试手动转换该文件\n3. 如问题持续，请联系开发者",
+        "is_retryable": True,
+        "requires_manual_action": True,
+    }
+
 
 def get_app_path():
     if getattr(sys, "frozen", False):
@@ -176,8 +369,10 @@ def get_app_path():
     else:
         return os.path.dirname(os.path.abspath(__file__))
 
+
 def is_mac():
     return sys.platform == "darwin"
+
 
 def is_win():
     return sys.platform == "win32"
@@ -395,8 +590,14 @@ class OfficeConverter:
             "failed": 0,
             "timeout": 0,
             "skipped": 0,
+            "permission_denied": 0,  # 权限错误计数
+            "file_locked": 0,  # 文件锁定计数
+            "file_corrupted": 0,  # 文件损坏计数
+            "com_error": 0,  # COM错误计数
         }
-        self.error_records = []
+        self.error_records = []  # 简单路径列表（兼容旧逻辑）
+        self.detailed_error_records = []  # 结构化错误记录
+        self.failed_report_path = None  # 失败报告路径
 
     def _reset_perf_metrics(self):
         self.perf_metrics = {
@@ -535,16 +736,12 @@ class OfficeConverter:
             "pdf": bool(self.config.get("output_enable_pdf", True)),
             "md": bool(self.config.get("output_enable_md", True)),
             "merged": bool(self.config.get("output_enable_merged", True)),
-            "independent": bool(
-                self.config.get("output_enable_independent", False)
-            ),
+            "independent": bool(self.config.get("output_enable_independent", False)),
         }
 
     def _get_merge_convert_submode(self):
         raw = str(
-            self.config.get(
-                "merge_convert_submode", MERGE_CONVERT_SUBMODE_MERGE_ONLY
-            )
+            self.config.get("merge_convert_submode", MERGE_CONVERT_SUBMODE_MERGE_ONLY)
             or MERGE_CONVERT_SUBMODE_MERGE_ONLY
         ).strip()
         if raw not in (
@@ -580,7 +777,7 @@ class OfficeConverter:
             else []
         )
         if self.engine_type == ENGINE_MS or self.engine_type is None:
-            apps.extend(["winword", "excel", "powerpnt"] )
+            apps.extend(["winword", "excel", "powerpnt"])
         for app in apps:
             self._kill_process_by_name(app)
 
@@ -667,11 +864,17 @@ class OfficeConverter:
         # Normalize source_folders: ensure list and sync source_folder to first
         src_list = self.config.get("source_folders")
         if isinstance(src_list, list) and src_list:
-            self.config["source_folders"] = [os.path.abspath(str(p).strip()) for p in src_list if str(p).strip()]
+            self.config["source_folders"] = [
+                os.path.abspath(str(p).strip()) for p in src_list if str(p).strip()
+            ]
             if self.config["source_folders"]:
                 self.config["source_folder"] = self.config["source_folders"][0]
         else:
-            self.config["source_folders"] = [self.config["source_folder"]] if self.config.get("source_folder") else []
+            self.config["source_folders"] = (
+                [self.config["source_folder"]]
+                if self.config.get("source_folder")
+                else []
+            )
         self._apply_config_defaults()
 
     def _apply_config_defaults(self):
@@ -717,9 +920,7 @@ class OfficeConverter:
         cfg.setdefault("output_enable_independent", False)
         # Keep legacy key aligned to avoid split-brain behavior across versions.
         cfg["enable_markdown"] = bool(cfg.get("output_enable_md", True))
-        cfg.setdefault(
-            "merge_convert_submode", MERGE_CONVERT_SUBMODE_MERGE_ONLY
-        )
+        cfg.setdefault("merge_convert_submode", MERGE_CONVERT_SUBMODE_MERGE_ONLY)
         cfg.setdefault("temp_sandbox_root", "")
         cfg.setdefault("sandbox_min_free_gb", 10)
         cfg.setdefault("sandbox_low_space_policy", "block")
@@ -727,6 +928,10 @@ class OfficeConverter:
         cfg.setdefault("llm_delivery_root", "")
         cfg.setdefault("llm_delivery_flatten", True)
         cfg.setdefault("llm_delivery_include_pdf", False)
+        cfg.setdefault("enable_gdrive_upload", False)
+        cfg.setdefault("gdrive_client_secrets_path", "")
+        cfg.setdefault("gdrive_folder_id", "")
+        cfg.setdefault("gdrive_token_path", "")
         cfg.setdefault("overwrite_same_size", True)
         cfg.setdefault("merge_mode", MERGE_MODE_CATEGORY)
         cfg.setdefault("merge_source", "source")
@@ -768,7 +973,9 @@ class OfficeConverter:
             cfg["price_keywords"] = ["报价", "价格表", "Price", "Quotation"]
         self.price_keywords = cfg["price_keywords"]
 
-        if "excluded_folders" not in cfg or not isinstance(cfg["excluded_folders"], list):
+        if "excluded_folders" not in cfg or not isinstance(
+            cfg["excluded_folders"], list
+        ):
             cfg["excluded_folders"] = ["temp", "backup", "archive"]
         self.excluded_folders = cfg["excluded_folders"]
 
@@ -783,8 +990,12 @@ class OfficeConverter:
         self.run_mode = cfg.get("run_mode", self.run_mode)
         self.collect_mode = cfg.get("collect_mode", self.collect_mode)
         self.content_strategy = cfg.get("content_strategy", self.content_strategy)
-        self.enable_merge_index = bool(cfg.get("enable_merge_index", self.enable_merge_index))
-        self.enable_merge_excel = bool(cfg.get("enable_merge_excel", self.enable_merge_excel))
+        self.enable_merge_index = bool(
+            cfg.get("enable_merge_index", self.enable_merge_index)
+        )
+        self.enable_merge_excel = bool(
+            cfg.get("enable_merge_excel", self.enable_merge_excel)
+        )
 
         # In convert-then-merge workflow, merge should always consume target outputs.
         if self.run_mode == MODE_CONVERT_THEN_MERGE:
@@ -863,7 +1074,10 @@ class OfficeConverter:
             self.select_collect_mode()
         elif self.run_mode in (MODE_CONVERT_ONLY, MODE_CONVERT_THEN_MERGE):
             self.select_content_strategy()
-        if self.run_mode in (MODE_CONVERT_THEN_MERGE, MODE_MERGE_ONLY) and self.config.get("enable_merge", True):
+        if self.run_mode in (
+            MODE_CONVERT_THEN_MERGE,
+            MODE_MERGE_ONLY,
+        ) and self.config.get("enable_merge", True):
             self.select_merge_mode()
         if self.run_mode not in (MODE_MERGE_ONLY, MODE_COLLECT_ONLY, MODE_MSHELP_ONLY):
             self.select_engine_mode()
@@ -1076,16 +1290,22 @@ class OfficeConverter:
                     f"content_strategy: {self.content_strategy} ({self.get_readable_content_strategy()})\n"
                 )
             if self.run_mode in (MODE_CONVERT_THEN_MERGE, MODE_MERGE_ONLY):
-                f.write(f"merge_mode: {self.merge_mode} ({self.get_readable_merge_mode()})\n")
+                f.write(
+                    f"merge_mode: {self.merge_mode} ({self.get_readable_merge_mode()})\n"
+                )
             f.write(f"engine: {engine_label}\n")
             f.write(f"source_folder: {self.config['source_folder']}\n")
             f.write(f"target_folder: {self.config['target_folder']}\n")
             f.write(f"office_reuse_app: {self._should_reuse_office_app()}\n")
-            f.write(f"office_restart_every_n_files: {self._get_office_restart_every()}\n")
+            f.write(
+                f"office_restart_every_n_files: {self._get_office_restart_every()}\n"
+            )
             if self.config.get("enable_sandbox", True):
                 f.write(f"sandbox: enabled | temp: {self.temp_sandbox}\n")
             else:
-                f.write(f"sandbox: disabled | temp: {self.temp_sandbox} (PDF temp only)\n")
+                f.write(
+                    f"sandbox: disabled | temp: {self.temp_sandbox} (PDF temp only)\n"
+                )
             if self.run_mode in (MODE_CONVERT_THEN_MERGE, MODE_MERGE_ONLY):
                 f.write(f"merge_output_dir: {self.merge_output_dir}\n")
             f.write("=" * 60 + "\n")
@@ -1104,7 +1324,9 @@ class OfficeConverter:
 
     def _get_local_app(self, app_type):
         if not HAS_WIN32:
-            raise RuntimeError("Current system does not support Windows COM; Office conversion is unavailable.")
+            raise RuntimeError(
+                "Current system does not support Windows COM; Office conversion is unavailable."
+            )
 
         pythoncom.CoInitialize()
         if self.engine_type == ENGINE_WPS:
@@ -1196,6 +1418,7 @@ class OfficeConverter:
             new_path = os.path.join(conflict_dir, f"{fname}_{ts}.pdf")
             shutil.move(temp_pdf_path, new_path)
             return "conflict_saved", new_path
+
     # =============== Content scanning ===============
 
     def scan_pdf_content(self, pdf_path):
@@ -1310,31 +1533,51 @@ class OfficeConverter:
         """"""
         if not is_mac():
             return False
-            
+
         # Simplistic implementation structure - user may need to expand this
         # or rely on LibreOffice CLI if preferred.
         # For now, we try to use 'soffice' (LibreOffice) if available, or just log error.
-        
+
         # Check for soffice first (LibreOffice)
         soffice = shutil.which("soffice")
         if soffice:
-            cmd = [soffice, "--headless", "--convert-to", "pdf", "--outdir", os.path.dirname(sandbox_target_pdf), file_source]
+            cmd = [
+                soffice,
+                "--headless",
+                "--convert-to",
+                "pdf",
+                "--outdir",
+                os.path.dirname(sandbox_target_pdf),
+                file_source,
+            ]
             try:
-                subprocess.run(cmd, check=True, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+                subprocess.run(
+                    cmd,
+                    check=True,
+                    stdout=subprocess.DEVNULL,
+                    stderr=subprocess.DEVNULL,
+                )
                 # LibreOffice output name might differ, need to rename to sandbox_target_pdf
                 # But outdir is sandbox dir.
                 # Assuming standard naming: source.docx -> source.pdf
                 base = os.path.splitext(os.path.basename(file_source))[0]
-                possible_output = os.path.join(os.path.dirname(sandbox_target_pdf), base + ".pdf")
-                if os.path.exists(possible_output) and possible_output != sandbox_target_pdf:
+                possible_output = os.path.join(
+                    os.path.dirname(sandbox_target_pdf), base + ".pdf"
+                )
+                if (
+                    os.path.exists(possible_output)
+                    and possible_output != sandbox_target_pdf
+                ):
                     shutil.move(possible_output, sandbox_target_pdf)
                 return True
             except Exception as e:
                 logging.error(f"LibreOffice conversion failed: {e}")
-                
-        # If no soffice, try basic AppleScript for Word/Excel? 
+
+        # If no soffice, try basic AppleScript for Word/Excel?
         # (This is complex to implement fully robustly in one step without testing environment)
-        logging.warning("macOS Office Automation not fully implemented. Install LibreOffice for best results.")
+        logging.warning(
+            "macOS Office Automation not fully implemented. Install LibreOffice for best results."
+        )
         return False
 
     # =============== Core conversion ===============
@@ -1351,7 +1594,9 @@ class OfficeConverter:
                     return
                 # If failed, fall through logic (which might fail if no win32com)
                 if not HAS_WIN32:
-                     raise RuntimeError("macOS conversion failed (LibreOffice not found?) and win32com not available.")
+                    raise RuntimeError(
+                        "macOS conversion failed (LibreOffice not found?) and win32com not available."
+                    )
 
             if ext in self.config["allowed_extensions"]["word"]:
                 app = self._get_local_app("word")
@@ -1508,6 +1753,188 @@ class OfficeConverter:
         except Exception:
             pass
 
+    def record_detailed_error(self, source_path, exception, context=None):
+        """
+        记录详细的错误信息，包括错误分类和处理建议。
+
+        Args:
+            source_path: 失败文件的路径
+            exception: 异常对象
+            context: 额外上下文信息（如运行模式、转换引擎等）
+
+        Returns:
+            dict: 错误详情字典
+        """
+        error_info = classify_conversion_error(exception, str(source_path))
+
+        record = {
+            "source_path": os.path.abspath(source_path),
+            "file_name": os.path.basename(source_path),
+            "error_type": error_info["error_type"],
+            "error_category": error_info["error_category"],
+            "message": error_info["message"],
+            "suggestion": error_info["suggestion"],
+            "is_retryable": error_info["is_retryable"],
+            "requires_manual_action": error_info["requires_manual_action"],
+            "raw_error": str(exception)[:500] if exception else "",
+            "timestamp": datetime.now().isoformat(),
+            "context": context or {},
+        }
+
+        self.detailed_error_records.append(record)
+
+        # 更新分类统计
+        error_type = error_info["error_type"]
+        if error_type in self.stats:
+            self.stats[error_type] += 1
+
+        return record
+
+    def export_failed_files_report(self, output_dir=None):
+        """
+        导出失败文件详细报告，包括 JSON 和 可读的 TXT 格式。
+
+        Args:
+            output_dir: 输出目录，默认为 target_folder
+
+        Returns:
+            dict: {"json_path": ..., "txt_path": ..., "summary": ...}
+        """
+        if not self.detailed_error_records:
+            return {"json_path": None, "txt_path": None, "summary": "无失败记录"}
+
+        output_dir = output_dir or self.config.get("target_folder", ".")
+        timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+
+        # 1. 导出 JSON 报告
+        json_path = os.path.join(output_dir, f"failed_files_report_{timestamp}.json")
+        report_data = {
+            "generated_at": datetime.now().isoformat(),
+            "run_mode": self.get_readable_run_mode(),
+            "total_failed": len(self.detailed_error_records),
+            "statistics": {
+                "by_error_type": {},
+                "by_category": {"retryable": 0, "needs_manual": 0, "unrecoverable": 0},
+                "retryable_count": 0,
+                "manual_action_count": 0,
+            },
+            "records": self.detailed_error_records,
+        }
+
+        # 统计分类
+        for record in self.detailed_error_records:
+            et = record["error_type"]
+            report_data["statistics"]["by_error_type"][et] = (
+                report_data["statistics"]["by_error_type"].get(et, 0) + 1
+            )
+
+            cat = record["error_category"]
+            if cat in report_data["statistics"]["by_category"]:
+                report_data["statistics"]["by_category"][cat] += 1
+
+            if record["is_retryable"]:
+                report_data["statistics"]["retryable_count"] += 1
+            if record["requires_manual_action"]:
+                report_data["statistics"]["manual_action_count"] += 1
+
+        try:
+            with open(json_path, "w", encoding="utf-8") as f:
+                json.dump(report_data, f, indent=2, ensure_ascii=False)
+        except Exception as e:
+            logging.error(f"Failed to write JSON report: {e}")
+            json_path = None
+
+        # 2. 导出可读的 TXT 报告
+        txt_path = os.path.join(output_dir, f"failed_files_report_{timestamp}.txt")
+        try:
+            lines = []
+            lines.append("=" * 70)
+            lines.append("知喂 (ZhiWei) - 转换失败文件报告")
+            lines.append(f"生成时间: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}")
+            lines.append(f"运行模式: {self.get_readable_run_mode()}")
+            lines.append("=" * 70)
+            lines.append("")
+
+            # 统计摘要
+            lines.append("## 统计摘要")
+            lines.append("-" * 70)
+            lines.append(f"总失败数: {len(self.detailed_error_records)}")
+            lines.append(f"可重试: {report_data['statistics']['retryable_count']}")
+            lines.append(
+                f"需人工处理: {report_data['statistics']['manual_action_count']}"
+            )
+            lines.append("")
+
+            lines.append("### 按错误类型分布:")
+            for et, count in sorted(
+                report_data["statistics"]["by_error_type"].items(), key=lambda x: -x[1]
+            ):
+                lines.append(f"  - {et}: {count}")
+            lines.append("")
+
+            # 详细列表
+            lines.append("## 失败文件详情")
+            lines.append("-" * 70)
+
+            for i, record in enumerate(self.detailed_error_records, 1):
+                lines.append(f"\n[{i}] {record['file_name']}")
+                lines.append(f"    路径: {record['source_path']}")
+                lines.append(f"    错误类型: {record['error_type']}")
+                lines.append(f"    错误信息: {record['message']}")
+                lines.append(f"    可重试: {'是' if record['is_retryable'] else '否'}")
+                if record["requires_manual_action"]:
+                    lines.append(f"    处理建议:")
+                    for line in record["suggestion"].split("\n"):
+                        lines.append(f"        {line}")
+
+            lines.append("")
+            lines.append("=" * 70)
+            lines.append("报告结束")
+            lines.append("")
+            lines.append("提示:")
+            lines.append("- 可重试的文件可点击「重试失败文件」按钮重新处理")
+            lines.append("- 需人工处理的文件请按照建议手动修复后重新运行")
+            lines.append("- JSON 格式详细报告: " + (json_path or "生成失败"))
+            lines.append("=" * 70)
+
+            with open(txt_path, "w", encoding="utf-8") as f:
+                f.write("\n".join(lines))
+        except Exception as e:
+            logging.error(f"Failed to write TXT report: {e}")
+            txt_path = None
+
+        self.failed_report_path = txt_path
+
+        return {
+            "json_path": json_path,
+            "txt_path": txt_path,
+            "summary": f"共 {len(self.detailed_error_records)} 个失败文件，"
+            f"其中 {report_data['statistics']['retryable_count']} 个可重试",
+        }
+
+    def get_error_summary_for_display(self):
+        """
+        获取用于 GUI 显示的错误摘要。
+
+        Returns:
+            dict: 按错误类型分组的文件列表和处理建议
+        """
+        summary = {}
+
+        for record in self.detailed_error_records:
+            et = record["error_type"]
+            if et not in summary:
+                summary[et] = {
+                    "message": record["message"],
+                    "suggestion": record["suggestion"],
+                    "is_retryable": record["is_retryable"],
+                    "requires_manual_action": record["requires_manual_action"],
+                    "files": [],
+                }
+            summary[et]["files"].append(record["file_name"])
+
+        return summary
+
     @staticmethod
     def _find_files_recursive(root_dir, exts):
         results = []
@@ -1570,7 +1997,9 @@ class OfficeConverter:
         )
 
         if not self._find_files_recursive(extract_abs, (".mshc", ".htm", ".html")):
-            raise RuntimeError(f"CAB extraction produced no MSHC/HTML payload: {cab_path}")
+            raise RuntimeError(
+                f"CAB extraction produced no MSHC/HTML payload: {cab_path}"
+            )
 
     @staticmethod
     def _extract_mshc_payload(mshc_path, content_dir):
@@ -1644,9 +2073,14 @@ class OfficeConverter:
 
         for topic in topics.values():
             topic["children"].sort(
-                key=lambda cid: (topics[cid].get("title", ""), topics[cid].get("file", ""))
+                key=lambda cid: (
+                    topics[cid].get("title", ""),
+                    topics[cid].get("file", ""),
+                )
             )
-        roots.sort(key=lambda rid: (topics[rid].get("title", ""), topics[rid].get("file", "")))
+        roots.sort(
+            key=lambda rid: (topics[rid].get("title", ""), topics[rid].get("file", ""))
+        )
 
         ordered = []
         visited = set()
@@ -1748,7 +2182,9 @@ class OfficeConverter:
                 lis = node.find_all("li", recursive=False)
                 if lis:
                     for idx, li in enumerate(lis, 1):
-                        item_text = self._normalize_md_line(li.get_text(" ", strip=True))
+                        item_text = self._normalize_md_line(
+                            li.get_text(" ", strip=True)
+                        )
                         if not item_text:
                             continue
                         prefix = f"{idx}. " if name == "ol" else "- "
@@ -1849,13 +2285,17 @@ class OfficeConverter:
                 "",
             ]
             for idx, topic in enumerate(topics, 1):
-                title = self._normalize_md_line(topic.get("title", "") or topic.get("id", ""))
+                title = self._normalize_md_line(
+                    topic.get("title", "") or topic.get("id", "")
+                )
                 lines.append(f"{idx}. {title or 'Untitled'}")
             lines.append("")
 
             rendered_count = 0
             for idx, topic in enumerate(topics, 1):
-                title = self._normalize_md_line(topic.get("title", "") or topic.get("id", ""))
+                title = self._normalize_md_line(
+                    topic.get("title", "") or topic.get("id", "")
+                )
                 html_file = topic.get("file", "")
                 if not html_file or not os.path.exists(html_file):
                     continue
@@ -1866,7 +2306,9 @@ class OfficeConverter:
                 rendered_count += 1
 
             if rendered_count <= 0:
-                raise RuntimeError(f"CAB topics parsed but no readable content rendered: {cab_path}")
+                raise RuntimeError(
+                    f"CAB topics parsed but no readable content rendered: {cab_path}"
+                )
 
             with open(md_path, "w", encoding="utf-8") as f:
                 f.write("\n".join(lines).rstrip() + "\n")
@@ -1948,7 +2390,8 @@ class OfficeConverter:
         for source_root in source_roots:
             dirs.extend(self._find_mshelpviewer_dirs(source_root))
         cab_exts = tuple(
-            e.lower() for e in self.config.get("allowed_extensions", {}).get("cab", [".cab"])
+            e.lower()
+            for e in self.config.get("allowed_extensions", {}).get("cab", [".cab"])
         )
         if not cab_exts:
             cab_exts = (".cab",)
@@ -2216,7 +2659,9 @@ class OfficeConverter:
                 except Exception as e:
                     logging.warning(f"MSHelp merged PDF skipped: {e}")
 
-        self._add_perf_seconds("mshelp_merge_seconds", time.perf_counter() - merge_start)
+        self._add_perf_seconds(
+            "mshelp_merge_seconds", time.perf_counter() - merge_start
+        )
         return outputs
 
     def process_single_file(
@@ -2383,7 +2828,9 @@ class OfficeConverter:
                     if output_plan.get("need_markdown"):
                         markdown_start = time.perf_counter()
                         if final_path_res and os.path.exists(final_path_res):
-                            md_path_res = self._export_pdf_markdown(final_path_res) or ""
+                            md_path_res = (
+                                self._export_pdf_markdown(final_path_res) or ""
+                            )
                         else:
                             md_path_res = (
                                 self._export_pdf_markdown(
@@ -2522,7 +2969,23 @@ class OfficeConverter:
             except Exception as e:
                 elapsed = time.time() - start
                 err_msg = str(e)
-                if "超时" in err_msg:
+
+                # 使用新的错误分类和记录机制
+                error_detail = self.record_detailed_error(
+                    logical_source,
+                    e,
+                    context={
+                        "run_mode": self.get_readable_run_mode(),
+                        "engine": self.get_readable_engine_type(),
+                        "elapsed": elapsed,
+                    },
+                )
+
+                if (
+                    error_detail["error_type"] == ConversionErrorType.TIMEOUT
+                    or "超时" in err_msg
+                ):
+                    self.stats["timeout"] += 1
                     print(
                         f"\r{progress_prefix} 超时: {fname} (耗时: {elapsed:.2f}s)    "
                     )
@@ -2533,13 +2996,23 @@ class OfficeConverter:
                         "final_path": "",
                         "elapsed": elapsed,
                         "error": err_msg,
+                        "error_type": error_detail["error_type"],
+                        "error_category": error_detail["error_category"],
+                        "suggestion": error_detail["suggestion"],
                     }
                     results.append(record)
                     self._emit_file_done(record)
                 else:
                     self.stats["failed"] += 1
+                    # 根据错误类型显示不同提示
+                    error_type_display = error_detail["error_type"]
+                    if error_detail["requires_manual_action"]:
+                        error_type_display += " [需人工处理]"
+                    elif error_detail["is_retryable"]:
+                        error_type_display += " [可重试]"
+
                     print(
-                        f"\r{progress_prefix} 失败: {fname} (耗时: {elapsed:.2f}s)    "
+                        f"\r{progress_prefix} 失败({error_detail['error_type']}): {fname}    "
                     )
                     record = {
                         "source_path": os.path.abspath(logical_source),
@@ -2548,17 +3021,27 @@ class OfficeConverter:
                         "final_path": "",
                         "elapsed": elapsed,
                         "error": err_msg,
+                        "error_type": error_detail["error_type"],
+                        "error_category": error_detail["error_category"],
+                        "suggestion": error_detail["suggestion"],
+                        "is_retryable": error_detail["is_retryable"],
+                        "requires_manual_action": error_detail[
+                            "requires_manual_action"
+                        ],
                     }
                     results.append(record)
                     self._emit_file_done(record)
 
-                logging.error(f"failed: {logical_source} | reason: {e}")
+                logging.error(
+                    f"failed: {logical_source} | reason: {e} | type: {error_detail['error_type']}"
+                )
 
                 if not is_retry:
                     self.quarantine_failed_file(fpath)
                     self.error_records.append(logical_source)
 
         return results
+
     def ask_retry_failed_files(self, failed_count, timeout=20):
         print("\n" + "=" * 60)
         print(f"[WARN] {failed_count} files failed (including timeout).")
@@ -2611,6 +3094,7 @@ class OfficeConverter:
                 else:
                     buf += ch
             time.sleep(0.1)
+
     def _create_index_doc_and_convert(self, word_app, file_list, title):
         """"""
         try:
@@ -2648,9 +3132,9 @@ class OfficeConverter:
                 selection.ParagraphFormat.LineSpacing = 20
 
             write_header()
-            
+
             # Coordinate estimation parameters for index link placement.
-            # A4高度 ~842pt. TopMargin 72. 
+            # A4高度 ~842pt. TopMargin 72.
             # Title line (16pt) + spacing; this is an approximation.
             # In Word, 16pt lines are typically around 20-22pt high.
             # Simplified model:
@@ -2661,7 +3145,7 @@ class OfficeConverter:
             # Keep this conservative and stable across fonts/renderers.
             # Assume first line baseline starts around Y=700.
             # Fine-tune during merge if needed.
-            
+
             for i, fname in enumerate(file_list, 1):
                 if i > 1 and (i - 1) % lines_per_page == 0:
                     selection.InsertBreak(7)
@@ -2673,10 +3157,10 @@ class OfficeConverter:
                 selection.TypeText(f"{i}. {fname}\n")
 
             temp_pdf = os.path.join(self.temp_sandbox, f"index_{uuid.uuid4().hex}.pdf")
-            
+
             doc.ExportAsFixedFormat(
                 OutputFileName=temp_pdf,
-                ExportFormat=17, # wdExportFormatPDF
+                ExportFormat=17,  # wdExportFormatPDF
                 OpenAfterExport=False,
                 OptimizeFor=0,
                 CreateBookmarks=1,
@@ -2707,8 +3191,8 @@ class OfficeConverter:
             .replace("{idx}", str(idx))
         )
         # Sanitize: only allow safe filename chars (alphanumeric, dash, underscore, dot)
-        safe = re.sub(r'[^\w\-.]', '_', name)
-        safe = re.sub(r'_+', '_', safe).strip("_")
+        safe = re.sub(r"[^\w\-.]", "_", name)
+        safe = re.sub(r"_+", "_", safe).strip("_")
         if not safe:
             safe = f"Merged_{category}_{timestamp}_{idx}"
         if not safe.lower().endswith(".pdf"):
@@ -2740,7 +3224,8 @@ class OfficeConverter:
                 continue
             for root, dirs, files in os.walk(scan_folder):
                 dirs[:] = [
-                    d for d in dirs
+                    d
+                    for d in dirs
                     if os.path.abspath(os.path.join(root, d)) not in exclude_abs_paths
                 ]
 
@@ -2758,12 +3243,17 @@ class OfficeConverter:
 
         merge_tasks = []  # [(output_name, [pdf_paths])]
         now = datetime.now()
-        pattern = (self.config.get("merge_filename_pattern") or "Merged_{category}_{timestamp}_{idx}").strip()
+        pattern = (
+            self.config.get("merge_filename_pattern")
+            or "Merged_{category}_{timestamp}_{idx}"
+        ).strip()
         if not pattern:
             pattern = "Merged_{category}_{timestamp}_{idx}"
 
         if self.merge_mode == MERGE_MODE_ALL_IN_ONE:
-            output_name = self._format_merge_filename(pattern, category="All", idx=1, now=now)
+            output_name = self._format_merge_filename(
+                pattern, category="All", idx=1, now=now
+            )
             merge_tasks.append((output_name, all_pdfs))
         else:
             categories = {
@@ -2893,15 +3383,22 @@ class OfficeConverter:
         if not self.config.get("enable_merge", True):
             return []
         if not HAS_PYPDF:
-            print(
-                "\n[INFO] pypdf not found. Skip merge step. Run: pip install pypdf"
-            )
+            print("\n[INFO] pypdf not found. Skip merge step. Run: pip install pypdf")
             logging.warning("pypdf not found. Skip merge step.")
             return []
-        
+
         # Try importing pypdf generic classes used for manual link annotations.
         try:
-            from pypdf.generic import DictionaryObject, NumberObject, FloatObject, NameObject, TextStringObject, ArrayObject, RectangleObject
+            from pypdf.generic import (
+                DictionaryObject,
+                NumberObject,
+                FloatObject,
+                NameObject,
+                TextStringObject,
+                ArrayObject,
+                RectangleObject,
+            )
+
             HAS_PYPDF_GENERIC = True
         except ImportError:
             HAS_PYPDF_GENERIC = False
@@ -2963,39 +3460,41 @@ class OfficeConverter:
 
         for idx, (output_filename, group) in enumerate(merge_tasks, 1):
             print(f"  Processing [{idx}/{total_tasks}]: {output_filename}")
-            
+
             # Excel records (one row per merged source file).
             if ws_merge:
                 for sub_file in group:
                     ws_merge.append([output_filename, os.path.basename(sub_file)])
 
             output_path = os.path.join(self.merge_output_dir, output_filename)
-            
+
             try:
                 merger = PdfWriter()
                 current_page_index = 0
                 map_records = []
                 short_id_taken = set()
-                
+
                 # 1) Generate and append index pages.
                 index_pdf_path = None
                 file_basenames = [os.path.basename(p) for p in group]
-                
+
                 # Track each file's start page in merged output.
                 # Initial offset equals index page count.
-                file_start_pages = [] 
+                file_start_pages = []
 
                 if self.enable_merge_index and word_app:
-                    index_pdf_path = self._create_index_doc_and_convert(word_app, file_basenames, "File Index")
-                
+                    index_pdf_path = self._create_index_doc_and_convert(
+                        word_app, file_basenames, "File Index"
+                    )
+
                 if index_pdf_path and os.path.exists(index_pdf_path):
                     idx_reader = PdfReader(index_pdf_path)
                     index_page_count = len(idx_reader.pages)
-                    
+
                     # Append index pages first.
                     for p in idx_reader.pages:
                         merger.add_page(p)
-                    
+
                     current_page_index += index_page_count
                 else:
                     index_page_count = 0
@@ -3003,15 +3502,17 @@ class OfficeConverter:
                 # 2) Append content files and record page ranges.
                 for source_idx, pdf_file in enumerate(group, 1):
                     fname = os.path.basename(pdf_file)
-                    
+
                     # Record source start page (absolute page number in merged PDF).
                     file_start_pages.append(current_page_index)
-                    
+
                     try:
                         reader = PdfReader(pdf_file)
                         source_page_count = len(reader.pages)
                         source_md5 = self._compute_md5(pdf_file)
-                        source_short_id = self._build_short_id(source_md5, short_id_taken)
+                        source_short_id = self._build_short_id(
+                            source_md5, short_id_taken
+                        )
                         bookmark_title = fname
                         if self.config.get("bookmark_with_short_id", True):
                             bookmark_title = f"[ID:{source_short_id}] {fname}"
@@ -3030,7 +3531,8 @@ class OfficeConverter:
                         source_rel_path = source_abs_path
                         try:
                             source_rel_path = os.path.relpath(
-                                source_abs_path, self._get_source_root_for_path(source_abs_path)
+                                source_abs_path,
+                                self._get_source_root_for_path(source_abs_path),
                             )
                         except Exception:
                             pass
@@ -3070,7 +3572,7 @@ class OfficeConverter:
                     # TopMargin = 72 pt
                     # Title + space ~= 60 pt (estimated).
                     # List start Y ~= 842 - 72 - 50 = 720.
-                    
+
                     # Coordinate conversion notes:
                     # Word origin is top-left; PDF origin is bottom-left.
                     # Word TopMargin 72 -> PDF Y = 842 - 72 = 770.
@@ -3078,7 +3580,7 @@ class OfficeConverter:
                     # Empty line ~20pt -> Y ~= 720.
                     # First text line baseline is around 700-710.
                     # 行距 20pt.
-                    
+
                     start_y = 715
                     line_height = 20
 
@@ -3094,36 +3596,45 @@ class OfficeConverter:
 
                         rect_top = start_y - (row_idx * line_height)
                         rect_bottom = rect_top - line_height
-                        rect = [72, rect_bottom, 520, rect_top] # [x1, y1, x2, y2]
-                        
+                        rect = [72, rect_bottom, 520, rect_top]  # [x1, y1, x2, y2]
+
                         # Create Link annotation.
                         # Target action: GoTo target_page_num.
-                        
+
                         # Resolve target page reference (IndirectObject) with compatibility handling.
                         # pypdf version differences: 3.x+ uses indirect_ref; older may use indirect_reference.
                         target_page_obj = merger.pages[target_page_num]
                         target_page_ref = getattr(target_page_obj, "indirect_ref", None)
                         if target_page_ref is None:
-                            target_page_ref = getattr(target_page_obj, "indirect_reference", None)
-                        
+                            target_page_ref = getattr(
+                                target_page_obj, "indirect_reference", None
+                            )
+
                         if target_page_ref is None:
                             # If target reference cannot be resolved, skip this link to avoid breaking merge.
-                            logging.warning(f"cannot resolve target page reference {target_page_num} (indirect_ref/reference). skip index link.")
+                            logging.warning(
+                                f"cannot resolve target page reference {target_page_num} (indirect_ref/reference). skip index link."
+                            )
                             continue
 
                         # pypdf 2.x/3.x annotation APIs vary, so use manual annotation dict.
                         link_annotation = DictionaryObject()
-                        link_annotation.update({
-                            NameObject("/Type"): NameObject("/Annot"),
-                            NameObject("/Subtype"): NameObject("/Link"),
-                            NameObject("/Rect"): ArrayObject([FloatObject(c) for c in rect]),
-                            NameObject("/Border"): ArrayObject([NumberObject(0), NumberObject(0), NumberObject(0)]),
-                            NameObject("/Dest"): ArrayObject([
-                                target_page_ref,
-                                NameObject("/Fit")
-                            ])
-                        })
-                        
+                        link_annotation.update(
+                            {
+                                NameObject("/Type"): NameObject("/Annot"),
+                                NameObject("/Subtype"): NameObject("/Link"),
+                                NameObject("/Rect"): ArrayObject(
+                                    [FloatObject(c) for c in rect]
+                                ),
+                                NameObject("/Border"): ArrayObject(
+                                    [NumberObject(0), NumberObject(0), NumberObject(0)]
+                                ),
+                                NameObject("/Dest"): ArrayObject(
+                                    [target_page_ref, NameObject("/Fit")]
+                                ),
+                            }
+                        )
+
                         if "/Annots" not in idx_page:
                             idx_page[NameObject("/Annots")] = ArrayObject()
 
@@ -3134,10 +3645,14 @@ class OfficeConverter:
                 merger.close()
 
                 if not os.path.exists(output_path):
-                    raise RuntimeError(f"merged output file not generated: {output_path}")
+                    raise RuntimeError(
+                        f"merged output file not generated: {output_path}"
+                    )
                 try:
                     if os.path.getsize(output_path) <= 0:
-                        raise RuntimeError(f"merged output file size invalid (0 bytes): {output_path}")
+                        raise RuntimeError(
+                            f"merged output file size invalid (0 bytes): {output_path}"
+                        )
                 except OSError:
                     pass
 
@@ -3154,17 +3669,19 @@ class OfficeConverter:
 
                 if self.config.get("enable_merge_map", True):
                     try:
-                        csv_path, json_path = self._write_merge_map(output_path, map_records)
+                        csv_path, json_path = self._write_merge_map(
+                            output_path, map_records
+                        )
                         if csv_path and json_path:
                             generated_map_outputs.extend([csv_path, json_path])
                             logging.info(f"map file generated: {csv_path}")
                             logging.info(f"map file generated: {json_path}")
                     except Exception as e:
                         logging.error(f"failed to write map files {output_path}: {e}")
-                
+
                 if index_pdf_path and os.path.exists(index_pdf_path):
                     os.remove(index_pdf_path)
-                    
+
             except Exception as e:
                 print(f" [FAILED] {e}")
                 logging.error(f"merge task failed {output_filename}: {e}")
@@ -3201,9 +3718,13 @@ class OfficeConverter:
                 logging.error(f"failed to save Excel merge list: {e}")
 
         if total_tasks <= 0:
-            print("\n  [INFO] No merge tasks generated. Ensure PDF files exist in scan results.")
+            print(
+                "\n  [INFO] No merge tasks generated. Ensure PDF files exist in scan results."
+            )
         elif len(generated_outputs) <= 0:
-            print("\n  [INFO] Merge tasks executed, but no output was generated. Check logs and output permissions.")
+            print(
+                "\n  [INFO] Merge tasks executed, but no output was generated. Check logs and output permissions."
+            )
         else:
             print("\n  Merged output files:")
             for p in generated_outputs:
@@ -3273,9 +3794,7 @@ class OfficeConverter:
         matched = set()
         ts = datetime.now().strftime("%Y%m%d_%H%M%S")
         for cat_label, prefix in categories.items():
-            group = [
-                p for p in md_files if os.path.basename(p).startswith(prefix)
-            ]
+            group = [p for p in md_files if os.path.basename(p).startswith(prefix)]
             if not group:
                 continue
             matched.update(group)
@@ -3383,10 +3902,9 @@ class OfficeConverter:
                 if pref["pdf"] and self.config.get("enable_merge", True):
                     merged_outputs.extend(self.merge_pdfs() or [])
                 if pref["md"]:
-                    md_candidates = (
-                        [p for p in self.generated_markdown_outputs if os.path.exists(p)]
-                        or self._scan_merge_candidates_by_ext(".md")
-                    )
+                    md_candidates = [
+                        p for p in self.generated_markdown_outputs if os.path.exists(p)
+                    ] or self._scan_merge_candidates_by_ext(".md")
                     if not md_candidates:
                         if not self._confirm_continue_missing_md_merge():
                             raise RuntimeError("Markdown merge canceled by user.")
@@ -3407,7 +3925,6 @@ class OfficeConverter:
                 else:
                     merged_outputs.extend(self.merge_markdowns(md_candidates) or [])
         return merged_outputs
-
 
     # =============== File indexing and dedup ==================
 
@@ -3589,7 +4106,9 @@ class OfficeConverter:
         if not self.conversion_index_records:
             return None
         if not HAS_OPENPYXL:
-            print("\n[INFO] openpyxl not found. Conversion index Excel will not be generated.")
+            print(
+                "\n[INFO] openpyxl not found. Conversion index Excel will not be generated."
+            )
             logging.warning("openpyxl missing; conversion index Excel skipped.")
             return None
 
@@ -3837,7 +4356,11 @@ class OfficeConverter:
     def _looks_like_header_row(row_values):
         if not row_values:
             return False
-        non_empty = [v for v in row_values if not (v is None or (isinstance(v, str) and v.strip() == ""))]
+        non_empty = [
+            v
+            for v in row_values
+            if not (v is None or (isinstance(v, str) and v.strip() == ""))
+        ]
         if not non_empty:
             return False
         string_like = [v for v in non_empty if isinstance(v, str)]
@@ -3941,7 +4464,9 @@ class OfficeConverter:
         refs = set()
         # Matches quoted and unquoted sheet references like:
         # 'Sheet A'!A1, Sheet1!B2, [Book.xlsx]Sheet1!A1
-        for m in re.finditer(r"(?:'((?:[^']|'')+)'|([A-Za-z0-9_.\[\]]+))!", formula_text):
+        for m in re.finditer(
+            r"(?:'((?:[^']|'')+)'|([A-Za-z0-9_.\[\]]+))!", formula_text
+        ):
             cand = m.group(1) if m.group(1) is not None else m.group(2)
             cand = (cand or "").replace("''", "'").strip()
             if not cand:
@@ -4012,7 +4537,9 @@ class OfficeConverter:
                     num_ref = getattr(ref_obj, "numRef", None)
                     str_ref = getattr(ref_obj, "strRef", None)
                     for ref in (num_ref, str_ref):
-                        formula_ref = getattr(ref, "f", None) if ref is not None else None
+                        formula_ref = (
+                            getattr(ref, "f", None) if ref is not None else None
+                        )
                         if formula_ref:
                             refs.append(str(formula_ref))
             dedup_refs = sorted(set(refs))
@@ -4425,11 +4952,15 @@ class OfficeConverter:
                     raw = f.read()
             except Exception:
                 continue
-            chunks = self._chunk_text_for_vector(raw, max_chars=max_chars, overlap=overlap)
+            chunks = self._chunk_text_for_vector(
+                raw, max_chars=max_chars, overlap=overlap
+            )
             if not chunks:
                 continue
             source_pdf = md_to_pdf.get(md_path, "")
-            path_hash = hashlib.sha1(md_path.encode("utf-8", errors="ignore")).hexdigest()[:16]
+            path_hash = hashlib.sha1(
+                md_path.encode("utf-8", errors="ignore")
+            ).hexdigest()[:16]
             for idx, chunk in enumerate(chunks, 1):
                 doc_id = f"md_{path_hash}_{idx:05d}"
                 docs.append(
@@ -4535,7 +5066,9 @@ class OfficeConverter:
             outputs.append(jsonl_path)
         self.generated_chromadb_outputs = outputs
         self.chromadb_export_manifest_path = manifest_path
-        logging.info(f"ChromaDB export status={status}, records={len(docs)}: {manifest_path}")
+        logging.info(
+            f"ChromaDB export status={status}, records={len(docs)}: {manifest_path}"
+        )
         return manifest_path
 
     def _export_single_excel_json(self, source_excel_path):
@@ -4611,7 +5144,9 @@ class OfficeConverter:
             wb_values = None
             wb_formula = None
             try:
-                wb_values = load_workbook(source_excel_path, data_only=True, read_only=True)
+                wb_values = load_workbook(
+                    source_excel_path, data_only=True, read_only=True
+                )
                 if include_formulas or extract_sheet_links or include_merged_ranges:
                     # Open a non-readonly workbook for formula and merged-range metadata.
                     wb_formula = load_workbook(
@@ -4652,9 +5187,13 @@ class OfficeConverter:
                         vals = [self._json_safe_value(v) for v in raw_vals]
                         formula_map = {}
 
-                        if ws_formula is not None and (include_formulas or extract_sheet_links):
+                        if ws_formula is not None and (
+                            include_formulas or extract_sheet_links
+                        ):
                             for ci in range(1, max_cols + 1):
-                                fval = ws_formula.cell(row=row_count_scanned, column=ci).value
+                                fval = ws_formula.cell(
+                                    row=row_count_scanned, column=ci
+                                ).value
                                 if isinstance(fval, str) and fval.startswith("="):
                                     formula_map[ci - 1] = fval
                                     formula_cells_count += 1
@@ -4664,11 +5203,15 @@ class OfficeConverter:
                                             {
                                                 "cell": addr,
                                                 "formula": fval,
-                                                "value": vals[ci - 1] if ci - 1 < len(vals) else None,
+                                                "value": vals[ci - 1]
+                                                if ci - 1 < len(vals)
+                                                else None,
                                             }
                                         )
                                     if extract_sheet_links:
-                                        refs = self._extract_formula_sheet_refs(fval, ws.title)
+                                        refs = self._extract_formula_sheet_refs(
+                                            fval, ws.title
+                                        )
                                         for ref_sheet in refs:
                                             sheet_link_counts[ref_sheet] = (
                                                 sheet_link_counts.get(ref_sheet, 0) + 1
@@ -4680,7 +5223,9 @@ class OfficeConverter:
                         # Trim trailing empty cells, but keep trailing formula cells.
                         last_keep_idx = -1
                         for idx in range(len(vals)):
-                            if (not self._is_empty_json_cell(vals[idx])) or (idx in formula_map):
+                            if (not self._is_empty_json_cell(vals[idx])) or (
+                                idx in formula_map
+                            ):
                                 last_keep_idx = idx
                         if last_keep_idx >= 0:
                             vals = vals[: last_keep_idx + 1]
@@ -4819,7 +5364,10 @@ class OfficeConverter:
                         "to_sheet": k[1],
                         "ref_count": v,
                     }
-                    for k, v in sorted(workbook_link_counts.items(), key=lambda kv: (kv[0][0], kv[0][1]))
+                    for k, v in sorted(
+                        workbook_link_counts.items(),
+                        key=lambda kv: (kv[0][0], kv[0][1]),
+                    )
                 ]
             except Exception as e:
                 payload["parse_status"] = "parse_failed"
@@ -4845,7 +5393,8 @@ class OfficeConverter:
             return []
 
         excel_exts = set(
-            e.lower() for e in self.config.get("allowed_extensions", {}).get("excel", [])
+            e.lower()
+            for e in self.config.get("allowed_extensions", {}).get("excel", [])
         )
         source_paths = []
         seen = set()
@@ -4904,7 +5453,9 @@ class OfficeConverter:
             "path_abs": abs_path,
             "path_rel_to_target": rel_path,
             "size_bytes": int(stat.st_size),
-            "mtime": datetime.fromtimestamp(stat.st_mtime).isoformat(timespec="seconds"),
+            "mtime": datetime.fromtimestamp(stat.st_mtime).isoformat(
+                timespec="seconds"
+            ),
             "md5": md5_value,
             "sha256": sha256_value,
         }
@@ -4946,22 +5497,28 @@ class OfficeConverter:
 
         # Kind whitelist: only include content files useful for LLM ingestion
         _LLM_CONTENT_KINDS = {
-            "markdown_export",        # Converted Markdown from Office/PDF
-            "merged_markdown",        # General merged markdown packages
-            "mshelp_merged_markdown", # MSHelp merged documentation
+            "markdown_export",  # Converted Markdown from Office/PDF
+            "merged_markdown",  # General merged markdown packages
+            "mshelp_merged_markdown",  # MSHelp merged documentation
             "excel_structured_json",  # Structured Excel data (JSON)
         }
         _LLM_PDF_KINDS = {
-            "merged_pdf",             # Merged PDF volumes
-            "converted_pdf",          # Individual converted PDFs
-            "mshelp_merged_pdf",      # MSHelp merged PDF
+            "merged_pdf",  # Merged PDF volumes
+            "converted_pdf",  # Individual converted PDFs
+            "mshelp_merged_pdf",  # MSHelp merged PDF
         }
 
         # ---- Merge dedup: if merged docs exist, skip individual sources ----
         dedup_enabled = self.config.get("upload_dedup_merged", True)
-        has_merged_pdf = dedup_enabled and any(a.get("kind") == "merged_pdf" for a in artifacts)
-        has_merged_md = dedup_enabled and any(a.get("kind") == "merged_markdown" for a in artifacts)
-        has_mshelp_merged = dedup_enabled and any(a.get("kind") == "mshelp_merged_markdown" for a in artifacts)
+        has_merged_pdf = dedup_enabled and any(
+            a.get("kind") == "merged_pdf" for a in artifacts
+        )
+        has_merged_md = dedup_enabled and any(
+            a.get("kind") == "merged_markdown" for a in artifacts
+        )
+        has_mshelp_merged = dedup_enabled and any(
+            a.get("kind") == "mshelp_merged_markdown" for a in artifacts
+        )
 
         # Collect paths of individual MSHelp markdowns (they are in _AI/MSHelp/ but NOT in Merged/)
         _mshelp_source_paths = set()
@@ -5101,12 +5658,20 @@ class OfficeConverter:
                 readme_lines.append("")
                 readme_lines.append("--- Notes ---")
                 if has_merged_pdf:
-                    readme_lines.append("* Individual converted PDFs are excluded (already in merged volumes).")
+                    readme_lines.append(
+                        "* Individual converted PDFs are excluded (already in merged volumes)."
+                    )
                 if has_merged_md:
-                    readme_lines.append("* Individual markdown files are excluded (already in merged markdown packages).")
+                    readme_lines.append(
+                        "* Individual markdown files are excluded (already in merged markdown packages)."
+                    )
                 if has_mshelp_merged:
-                    readme_lines.append("* Individual MSHelp markdowns are excluded (already in merged packages).")
-                readme_lines.append("* Metadata files (manifests, quality reports, index) are excluded.")
+                    readme_lines.append(
+                        "* Individual MSHelp markdowns are excluded (already in merged packages)."
+                    )
+                readme_lines.append(
+                    "* Metadata files (manifests, quality reports, index) are excluded."
+                )
                 readme_lines.append("")
                 with open(readme_path, "w", encoding="utf-8") as f:
                     f.write("\n".join(readme_lines))
@@ -5162,7 +5727,7 @@ class OfficeConverter:
 
         for p in self.generated_pdfs:
             _append("converted_pdf", p)
-        for p in (merge_outputs or self.generated_merge_outputs or []):
+        for p in merge_outputs or self.generated_merge_outputs or []:
             p_low = str(p).lower()
             if p_low.endswith(".md"):
                 _append("merged_markdown", p)
@@ -5364,7 +5929,9 @@ class OfficeConverter:
                 break
             if len(files) == 1:
                 src_path, ext = files[0]
-                rel = os.path.relpath(src_path, self._get_source_root_for_path(src_path))
+                rel = os.path.relpath(
+                    src_path, self._get_source_root_for_path(src_path)
+                )
                 dst_path = os.path.join(target_root, rel)
                 unique_records.append(
                     {
@@ -5385,7 +5952,9 @@ class OfficeConverter:
             for file_hash, same_hash_files in hash_groups.items():
                 if len(same_hash_files) == 1:
                     src_path, ext = same_hash_files[0]
-                    rel = os.path.relpath(src_path, self._get_source_root_for_path(src_path))
+                    rel = os.path.relpath(
+                        src_path, self._get_source_root_for_path(src_path)
+                    )
                     dst_path = os.path.join(target_root, rel)
                     unique_records.append(
                         {
@@ -5401,7 +5970,9 @@ class OfficeConverter:
                     group_id_counter += 1
 
                     keep_src, keep_ext = same_hash_files[0]
-                    keep_rel = os.path.relpath(keep_src, self._get_source_root_for_path(keep_src))
+                    keep_rel = os.path.relpath(
+                        keep_src, self._get_source_root_for_path(keep_src)
+                    )
                     keep_dst = os.path.join(target_root, keep_rel)
 
                     unique_records.append(
@@ -5617,7 +6188,11 @@ class OfficeConverter:
         match = ""
         for r in roots:
             r = os.path.abspath(r)
-            if abs_path == r or abs_path.startswith(r + os.sep) or abs_path.startswith(r + "/"):
+            if (
+                abs_path == r
+                or abs_path.startswith(r + os.sep)
+                or abs_path.startswith(r + "/")
+            ):
                 if len(r) > len(match):
                     match = r
         return match or (roots[0] if roots else self.config.get("source_folder", ""))
@@ -5689,9 +6264,17 @@ class OfficeConverter:
             return files, []
 
         office_exts = set()
-        office_exts.update(e.lower() for e in self.config.get("allowed_extensions", {}).get("word", []))
-        office_exts.update(e.lower() for e in self.config.get("allowed_extensions", {}).get("excel", []))
-        office_exts.update(e.lower() for e in self.config.get("allowed_extensions", {}).get("powerpoint", []))
+        office_exts.update(
+            e.lower() for e in self.config.get("allowed_extensions", {}).get("word", [])
+        )
+        office_exts.update(
+            e.lower()
+            for e in self.config.get("allowed_extensions", {}).get("excel", [])
+        )
+        office_exts.update(
+            e.lower()
+            for e in self.config.get("allowed_extensions", {}).get("powerpoint", [])
+        )
 
         office_keys = {}
         for p in files:
@@ -5739,11 +6322,19 @@ class OfficeConverter:
 
     def _ext_bucket(self, path):
         ext = os.path.splitext(path)[1].lower()
-        if ext in [e.lower() for e in self.config.get("allowed_extensions", {}).get("word", [])]:
+        if ext in [
+            e.lower() for e in self.config.get("allowed_extensions", {}).get("word", [])
+        ]:
             return "word"
-        if ext in [e.lower() for e in self.config.get("allowed_extensions", {}).get("excel", [])]:
+        if ext in [
+            e.lower()
+            for e in self.config.get("allowed_extensions", {}).get("excel", [])
+        ]:
             return "excel"
-        if ext in [e.lower() for e in self.config.get("allowed_extensions", {}).get("powerpoint", [])]:
+        if ext in [
+            e.lower()
+            for e in self.config.get("allowed_extensions", {}).get("powerpoint", [])
+        ]:
             return "powerpoint"
         if ext == ".pdf":
             return "pdf"
@@ -5762,7 +6353,9 @@ class OfficeConverter:
             try:
                 md5_value = self._compute_md5(path)
             except Exception as e:
-                logging.warning(f"[global_md5] failed to compute MD5, keep file: {path} | {e}")
+                logging.warning(
+                    f"[global_md5] failed to compute MD5, keep file: {path} | {e}"
+                )
                 kept.append(path)
                 continue
 
@@ -5791,9 +6384,16 @@ class OfficeConverter:
         configured = str(self.config.get("incremental_registry_path", "") or "").strip()
         if configured:
             if not os.path.isabs(configured):
-                return os.path.abspath(os.path.join(self.config.get("target_folder", ""), configured))
+                return os.path.abspath(
+                    os.path.join(self.config.get("target_folder", ""), configured)
+                )
             return configured
-        return os.path.join(self.config.get("target_folder", ""), "_AI", "registry", "incremental_registry.json")
+        return os.path.join(
+            self.config.get("target_folder", ""),
+            "_AI",
+            "registry",
+            "incremental_registry.json",
+        )
 
     def _build_source_meta(self, path, include_hash=False):
         abs_path = os.path.abspath(path)
@@ -5807,14 +6407,20 @@ class OfficeConverter:
             try:
                 source_hash = self._compute_file_hash(abs_path)
             except Exception as e:
-                logging.warning(f"[incremental] failed to compute source hash: {abs_path} | {e}")
+                logging.warning(
+                    f"[incremental] failed to compute source hash: {abs_path} | {e}"
+                )
 
         return {
             "source_path": abs_path,
             "ext": os.path.splitext(abs_path)[1].lower(),
             "source_size": int(stat.st_size),
-            "source_mtime_ns": int(getattr(stat, "st_mtime_ns", int(stat.st_mtime * 1_000_000_000))),
-            "source_mtime": datetime.fromtimestamp(stat.st_mtime).isoformat(timespec="seconds"),
+            "source_mtime_ns": int(
+                getattr(stat, "st_mtime_ns", int(stat.st_mtime * 1_000_000_000))
+            ),
+            "source_mtime": datetime.fromtimestamp(stat.st_mtime).isoformat(
+                timespec="seconds"
+            ),
             "source_hash_sha256": source_hash,
         }
 
@@ -6093,7 +6699,9 @@ class OfficeConverter:
             "processed_result_count": len(result_map),
         }
         registry.save(run_summary=run_summary)
-        logging.info(f"[incremental] registry updated: {context.get('registry_path', '')}")
+        logging.info(
+            f"[incremental] registry updated: {context.get('registry_path', '')}"
+        )
 
     def _resolve_update_package_root(self):
         configured = str(self.config.get("update_package_root", "") or "").strip()
@@ -6258,7 +6866,9 @@ class OfficeConverter:
                     packaged_pdfs.append(packaged_pdf_path)
                     packaged_pdf_md5 = self._compute_md5(packaged_pdf_path)
                 except Exception as e:
-                    detail = f"{detail}; copy_failed={e}" if detail else f"copy_failed={e}"
+                    detail = (
+                        f"{detail}; copy_failed={e}" if detail else f"copy_failed={e}"
+                    )
 
             record = {
                 "seq": idx,
@@ -6486,14 +7096,18 @@ class OfficeConverter:
                     files = self._scan_convert_candidates()
                     logging.info("scan candidate file count: %s", len(files))
 
-                    files, source_priority_skips = self._apply_source_priority_filter(files)
+                    files, source_priority_skips = self._apply_source_priority_filter(
+                        files
+                    )
                     if source_priority_skips:
                         self.stats["skipped"] += len(source_priority_skips)
                         batch_results.extend(source_priority_skips)
 
                     files, incremental_ctx = self._apply_incremental_filter(files)
                     if incremental_ctx.get("enabled"):
-                        self.stats["skipped"] += incremental_ctx.get("unchanged_count", 0)
+                        self.stats["skipped"] += incremental_ctx.get(
+                            "unchanged_count", 0
+                        )
                         renamed_pairs = incremental_ctx.get("renamed_pairs", []) or []
                         if renamed_pairs and not incremental_ctx.get(
                             "reprocess_renamed", False
@@ -6514,7 +7128,9 @@ class OfficeConverter:
                     if dedup_skips:
                         self.stats["skipped"] += len(dedup_skips)
                         batch_results.extend(dedup_skips)
-                    self._add_perf_seconds("scan_seconds", time.perf_counter() - scan_start)
+                    self._add_perf_seconds(
+                        "scan_seconds", time.perf_counter() - scan_start
+                    )
 
                 self._emit_file_plan(files)
 
@@ -6530,9 +7146,13 @@ class OfficeConverter:
                     if resume_file_list is not None:
                         print("\n[INFO] Resume mode: no pending files.")
                     elif incremental_ctx.get("enabled"):
-                        print("\n[INFO] Incremental mode: no added/modified files found.")
+                        print(
+                            "\n[INFO] Incremental mode: no added/modified files found."
+                        )
                     else:
-                        print("\n[INFO] No convertible Office files found in source directory.")
+                        print(
+                            "\n[INFO] No convertible Office files found in source directory."
+                        )
 
                 self.close_office_apps()
 
@@ -6543,7 +7163,9 @@ class OfficeConverter:
                         should_retry = True
                         print(f"\n[CONFIG] Auto retry failed files ({failed_count})...")
                     elif self.interactive:
-                        should_retry = self.ask_retry_failed_files(failed_count, timeout=20)
+                        should_retry = self.ask_retry_failed_files(
+                            failed_count, timeout=20
+                        )
 
                 if should_retry:
                     print("\n" + "=" * 60)
@@ -6557,11 +7179,17 @@ class OfficeConverter:
                     retry_files = []
                     retry_alias_map = {}
                     if os.path.exists(self.failed_dir):
-                        if self.config.get("enable_sandbox", True) and not os.path.exists(self.temp_sandbox):
+                        if self.config.get(
+                            "enable_sandbox", True
+                        ) and not os.path.exists(self.temp_sandbox):
                             os.makedirs(self.temp_sandbox)
 
                         valid_exts = [
-                            e for sub in self.config.get("allowed_extensions", {}).values() for e in sub
+                            e
+                            for sub in self.config.get(
+                                "allowed_extensions", {}
+                            ).values()
+                            for e in sub
                         ]
                         for f in os.listdir(self.failed_dir):
                             if f.startswith("~$"):
@@ -6629,11 +7257,14 @@ class OfficeConverter:
                 if bool(self.config.get("output_enable_pdf", True)):
                     merge_outputs.extend(self.merge_pdfs() or [])
                 if bool(self.config.get("output_enable_md", True)):
-                    md_outputs = self.merge_markdowns(
-                        candidates=self.generated_markdown_outputs
-                    ) or []
+                    md_outputs = (
+                        self.merge_markdowns(candidates=self.generated_markdown_outputs)
+                        or []
+                    )
                     merge_outputs.extend(md_outputs)
-                self._add_perf_seconds("merge_seconds", time.perf_counter() - merge_start)
+                self._add_perf_seconds(
+                    "merge_seconds", time.perf_counter() - merge_start
+                )
 
             summary = (
                 f"\n=== 最终统计(v{__version__}) ===\n"
@@ -6687,6 +7318,21 @@ class OfficeConverter:
             self._write_corpus_manifest(merge_outputs=merge_outputs)
         except Exception as e:
             logging.error(f"failed to write corpus manifest: {e}")
+
+        # 导出失败文件详细报告
+        if self.detailed_error_records:
+            try:
+                report_result = self.export_failed_files_report()
+                if report_result.get("txt_path"):
+                    failed_summary = (
+                        f"\n=== 失败文件报告 ===\n"
+                        f"报告路径: {report_result['txt_path']}\n"
+                        f"摘要: {report_result['summary']}\n"
+                    )
+                    print(failed_summary)
+                    logging.info(failed_summary)
+            except Exception as e:
+                logging.error(f"failed to export failed files report: {e}")
         self._add_perf_seconds(
             "postprocess_seconds", time.perf_counter() - postprocess_start
         )
@@ -6697,7 +7343,11 @@ class OfficeConverter:
 
         try:
             open_dir = self.config["target_folder"]
-            if merge_outputs and self.merge_output_dir and os.path.isdir(self.merge_output_dir):
+            if (
+                merge_outputs
+                and self.merge_output_dir
+                and os.path.isdir(self.merge_output_dir)
+            ):
                 open_dir = self.merge_output_dir
             os.startfile(open_dir)
         except Exception:
@@ -6708,6 +7358,8 @@ class OfficeConverter:
                 shutil.rmtree(self.temp_sandbox, ignore_errors=True)
             except Exception:
                 pass
+
+
 def create_default_config(config_path):
     """Create a default config file."""
     try:
@@ -6787,6 +7439,10 @@ def create_default_config(config_path):
             "llm_delivery_root": "",
             "llm_delivery_flatten": True,
             "llm_delivery_include_pdf": False,
+            "enable_gdrive_upload": False,
+            "gdrive_client_secrets_path": "",
+            "gdrive_folder_id": "",
+            "gdrive_token_path": "",
             "enable_upload_readme": True,
             "enable_upload_json_manifest": True,
             "upload_dedup_merged": True,
@@ -6798,23 +7454,18 @@ def create_default_config(config_path):
                 "enabled": True,
                 "es_path": "",
                 "prefer_path_exact": True,
-                "timeout_ms": 1500
+                "timeout_ms": 1500,
             },
-            "listary": {
-                "enabled": True,
-                "copy_query_on_locate": True
-            },
-            "privacy": {
-                "mask_md5_in_logs": True
-            },
+            "listary": {"enabled": True, "copy_query_on_locate": True},
+            "privacy": {"mask_md5_in_logs": True},
             "ui": {
                 "tooltip_delay_ms": 500,
                 "tooltip_bg": "#FFF7D6",
                 "tooltip_fg": "#202124",
                 "tooltip_font_family": "System",
                 "tooltip_font_size": 9,
-                "tooltip_auto_theme": True
-            }
+                "tooltip_auto_theme": True,
+            },
         }
         with open(config_path, "w", encoding="utf-8") as f:
             json.dump(default_config, f, indent=4, ensure_ascii=False)

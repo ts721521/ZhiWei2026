@@ -67,9 +67,13 @@
 - [ ] 大批量场景压测（>=10k 文件）并记录磁盘占用曲线
 - [ ] 完成 V1.1 文档与验收用例回填
 
-## Phase 7：云端上传与自动化（后续阶段）
-- [ ] 新增 `enable_gdrive_upload` 开关配置项
-- [ ] Google Drive 桌面 OAuth 授权接入（单用户本机场景）
-- [ ] 在 GUI 中增加"上传 `_LLM_UPLOAD` 到 Google Drive"按钮
-- [ ] 支持配置 `gdrive_folder_id` 与本地 `gdrive_client_secrets_path` 路径
-- [ ] 上传完成后在日志与 `llm_upload_manifest.json` 中记录远端目录信息
+## Phase 7：云端上传与自动化（已完成）
+- [x] 新增 `enable_gdrive_upload` 开关配置项
+- [x] Google Drive 桌面 OAuth 授权接入（单用户本机场景）
+- [x] 在 GUI 中增加"上传 `_LLM_UPLOAD` 到 Google Drive"按钮
+- [x] 支持配置 `gdrive_folder_id` 与本地 `gdrive_client_secrets_path` 路径
+- [x] 上传完成后在日志与 `llm_upload_manifest.json` 中记录远端目录信息
+- [x] GUI 增加「获取远程目录结构」功能便于选择目标文件夹
+- [x] GUI 增加「一键安装 Google Drive 依赖」按钮
+
+> 状态：Phase 7 已完成（2026-02-15 验证）

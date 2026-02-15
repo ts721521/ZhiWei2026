@@ -8,7 +8,6 @@ TRANSLATIONS = {
         "theme_light": "Light Mode",
         "lang_toggle": "中文",
         "lang_switch_tooltip": "Switch to Chinese",
-        
         # Sidebar Sections
         "sec_mode": "1. Operation Mode",
         "sec_paths": "2. Paths",
@@ -32,6 +31,42 @@ TRANSLATIONS = {
         "grp_task_runtime": "Task Manager",
         "grp_upload_manifest": "Upload Manifest",
         "grp_upload_dedup": "Upload Dedup Policy",
+        "grp_gdrive_upload": "Google Drive Upload",
+        "tip_section_gdrive_upload": "Upload _LLM_UPLOAD folder to your Google Drive; requires OAuth client secrets.",
+        "chk_enable_gdrive_upload": "Enable Google Drive upload",
+        "lbl_gdrive_client_secrets_path": "Client secrets JSON path (client_secrets.json)",
+        "link_gdrive_get_secrets": "Get credentials",
+        "tip_gdrive_open_console": "Open Google Cloud Console credentials page to create OAuth client and download JSON",
+        "link_gdrive_enable_api": "Enable Drive API",
+        "tip_gdrive_enable_api": "Enable Google Drive API for your project (required if you see 403 accessNotConfigured)",
+        "tip_gdrive_client_secrets_path": "Path to OAuth 2.0 client secrets from Google Cloud Console; do not commit.",
+        "lbl_gdrive_folder_id": "Target folder ID (optional; leave empty to create under root)",
+        "tip_gdrive_folder_id": "Upload to this folder when set; otherwise a root folder is created.",
+        "btn_upload_llm_to_gdrive": "Upload _LLM_UPLOAD to Google Drive",
+        "btn_fetch_gdrive_structure": "Fetch remote structure",
+        "tip_fetch_gdrive_structure": "List Drive folder structure (知喂上传 and Run_* subfolders) for testing",
+        "title_gdrive_structure": "Google Drive remote structure",
+        "btn_gdrive_set_target": "Set as target folder",
+        "btn_gdrive_open_in_browser": "Open in browser",
+        "msg_gdrive_select_line": "Please select a line that contains a folder (click and drag to select).",
+        "msg_gdrive_target_set": "Target folder ID set: {folder_id}",
+        "msg_gdrive_upload_failed": "Google Drive upload failed",
+        "msg_gdrive_no_deps": "Install: pip install google-auth-oauthlib google-api-python-client",
+        "msg_gdrive_no_llm_folder": "_LLM_UPLOAD folder not found; set output path or run convert first.",
+        "msg_gdrive_no_secrets": "Please set the client secrets JSON path.",
+        "msg_gdrive_upload_success": "Upload succeeded",
+        "msg_gdrive_upload_success_detail": "Uploaded {file_count} file(s) to Google Drive; folder ID: {folder_id}",
+        "msg_gdrive_upload_running": "Upload is running in the background (OAuth will open in browser if needed). Please wait.",
+        "msg_gdrive_folder_link": "Open in Drive: https://drive.google.com/drive/folders/{folder_id}",
+        "lbl_gdrive_install_title": "Google Drive dependencies",
+        "btn_install_gdrive_deps": "Install Google Drive dependencies",
+        "tip_install_gdrive_deps": "Run: pip install google-auth-oauthlib google-api-python-client",
+        "msg_gdrive_install_running": "Installing packages in background. A message will show when done.",
+        "msg_gdrive_install_ok": "Install succeeded",
+        "msg_gdrive_install_ok_detail": "Google Drive dependencies installed. You can close this dialog and use Upload.",
+        "msg_gdrive_install_failed": "Install failed",
+        "msg_gdrive_install_failed_detail": "pip install failed:\n{detail}",
+        "msg_gdrive_install_timeout": "Install timed out (over 2 minutes). Try running in terminal: pip install google-auth-oauthlib google-api-python-client",
         "chk_enable_upload_readme": "Generate readable file list (README_UPLOAD_LIST.txt)",
         "chk_enable_upload_json_manifest": "Generate JSON manifest (llm_upload_manifest.json)",
         "chk_upload_dedup_merged": "Exclude individual files already contained in merged documents",
@@ -66,7 +101,6 @@ TRANSLATIONS = {
         "lbl_cfg_dirty_none": "Unsaved sections: None",
         "lbl_cfg_dirty_sections": "Unsaved sections: {}",
         "btn_cfg_focus_dirty": "Go to Unsaved",
-        
         # App mode (task vs classic)
         "app_mode_classic": "Classic",
         "app_mode_task": "Task",
@@ -81,7 +115,6 @@ TRANSLATIONS = {
         "btn_merge_only": "Merge & Convert",
         "btn_convert_merge": "Cvrt+Mrg",
         "btn_collect": "Collect",
-        
         # Common
         "btn_browse": "...",
         "btn_open": "Open",
@@ -100,7 +133,6 @@ TRANSLATIONS = {
         "btn_task_resume": "Resume",
         "btn_task_stop": "Stop Task",
         "chk_task_force_full_rebuild": "Force Full Rebuild (ignore incremental for this run)",
-        
         # Advanced
         "lbl_engine": "Converter Engine:",
         "lbl_sandbox": "Safe Mode (Sandbox)",
@@ -147,13 +179,11 @@ TRANSLATIONS = {
         "chk_mshelp_merge_output": "Generate merged MSHelp package",
         "chk_mshelp_output_docx": "Also export DOCX",
         "chk_mshelp_output_pdf": "Also export PDF",
-        
         # Filters
         "lbl_strategy": "Content Strategy:",
         "lbl_filter_date": "Date Filter",
         "rad_after": "After",
         "rad_before": "Before",
-        
         # Process
         "lbl_kill_mode": "Termination:",
         "rad_auto_kill": "Auto Kill",
@@ -186,7 +216,6 @@ TRANSLATIONS = {
         "msg_tooltip_reset": "Tooltip settings reset to default values.",
         "msg_tooltip_invalid_color": "Tooltip settings: invalid color value for {} (use #RRGGBB).",
         "msg_tooltip_invalid_number": "Tooltip settings: invalid number for {}.",
-        
         # Lists
         "lbl_excluded": "Excluded Folders (one/line):",
         "lbl_keywords": "Price Keywords (one/line):",
@@ -234,7 +263,6 @@ TRANSLATIONS = {
         "msg_validation_invalid_date": "Input validation: {} must use YYYY-MM-DD format.",
         "msg_validation_invalid_short_id": "Input validation: {} must be 4-32 letters or digits.",
         "msg_validation_fix_before_run": "Please fix invalid inputs highlighted in red before running.",
-        
         # Footer Actions
         "btn_save_cfg": "Save Config",
         "btn_load_cfg": "Load Config",
@@ -260,7 +288,6 @@ TRANSLATIONS = {
         "btn_cancel": "Cancel",
         "btn_start": "Start",
         "btn_stop": "Stop",
-        
         # Right Panel
         "lbl_status": "STATUS",
         "lbl_logs": "Logs",
@@ -291,7 +318,19 @@ TRANSLATIONS = {
         "log_artifacts_llm_hub": "LLM hub: {}",
         "log_artifacts_update_package": "Update package: {}",
         "log_artifacts_incremental": "Incremental: added {} | modified {} | renamed {} | unchanged {} | deleted {}",
-        
+        # Failed files report
+        "log_artifacts_failed_title": "[Failed Files] Detailed error report generated",
+        "log_artifacts_failed_type": "  - {}: {} file(s)",
+        "log_artifacts_failed_report": "Failed files report: {}",
+        "log_artifacts_failed_summary": "Total failed: {} | Retryable: {} | Requires manual action: {}",
+        # Error type suggestions (shown in report)
+        "log_error_suggestion_permission_denied": "Run as administrator or check file permissions",
+        "log_error_suggestion_file_locked": "Close Office programs and retry",
+        "log_error_suggestion_file_corrupted": "Try repairing file in Office",
+        "log_error_suggestion_com_error": "Restart Office or try different engine",
+        "log_error_suggestion_timeout": "Increase timeout or reduce file size",
+        "log_error_suggestion_disk_full": "Free disk space or change output directory",
+        "log_error_suggestion_password_protected": "Remove password protection first",
         # Messages
         "msg_save_ok": "Configuration saved successfully.",
         "msg_save_fail": "Failed to save configuration:\n{}",
@@ -365,7 +404,7 @@ TRANSLATIONS = {
         "msg_task_name_duplicate": "A task with this name already exists. Please use a different name.",
         "msg_task_resume_not_ready": "No resumable checkpoint found for this task.",
         "msg_task_resume_empty": "No remaining files to resume. Checkpoint has been cleared.",
-        "msg_task_delete_confirm": "Delete task \"{}\" and its checkpoint?",
+        "msg_task_delete_confirm": 'Delete task "{}" and its checkpoint?',
         "msg_source_folder_required": "Please add at least one valid source folder first.",
         "msg_target_folder_required": "Please set a valid target folder first.",
         "msg_runtime_error_title": "Runtime Error",
@@ -493,7 +532,7 @@ TRANSLATIONS = {
         "tip_add_source_folder": "Add a source folder to the list.",
         "tip_remove_source_folder": "Remove the selected source folder.",
         "tip_clear_source_folders": "Clear all source folders.",
-        "msg_multi_select_folders": "Do you want to select multiple folders?\n\nChoose \"Yes\" to open multi-select folder dialog\nChoose \"No\" to open single-select folder dialog",
+        "msg_multi_select_folders": 'Do you want to select multiple folders?\n\nChoose "Yes" to open multi-select folder dialog\nChoose "No" to open single-select folder dialog',
         "msg_multi_select_title": "Multi-Select Source Folders",
         # Gray control reason (disabled by mode / merge options)
         "tip_disabled_by_mode": "This control is disabled because run mode is {}; it is not used in this run.",
@@ -517,7 +556,6 @@ TRANSLATIONS = {
         "theme_light": "浅色模式",
         "lang_toggle": "English",
         "lang_switch_tooltip": "切换到英文",
-        
         # Sidebar Sections
         "sec_mode": "1. 运行模式",
         "sec_paths": "2. 路径设置",
@@ -541,6 +579,42 @@ TRANSLATIONS = {
         "grp_task_runtime": "任务管理",
         "grp_upload_manifest": "上传清单",
         "grp_upload_dedup": "上传去重策略",
+        "grp_gdrive_upload": "Google Drive 上传",
+        "tip_section_gdrive_upload": "将 _LLM_UPLOAD 目录一键上传到您自己的 Google Drive；需先配置 OAuth 客户端密钥。",
+        "chk_enable_gdrive_upload": "启用 Google Drive 上传",
+        "lbl_gdrive_client_secrets_path": "客户端密钥 JSON 路径 (client_secrets.json)",
+        "link_gdrive_get_secrets": "前往获取",
+        "tip_gdrive_open_console": "打开 Google Cloud 控制台「凭据」页面，创建 OAuth 客户端并下载 JSON 文件",
+        "link_gdrive_enable_api": "启用 Drive API",
+        "tip_gdrive_enable_api": "若出现 403 或“未启用 Drive API”，请在此为当前项目启用 Google Drive API",
+        "tip_gdrive_client_secrets_path": "从 Google Cloud 控制台下载的 OAuth 2.0 客户端密钥文件路径，勿放入版本库。",
+        "lbl_gdrive_folder_id": "上传目标文件夹 ID（可选，留空则在网盘根下创建「知喂上传」）",
+        "tip_gdrive_folder_id": "指定后文件将上传到该文件夹下；留空则自动在根目录创建「知喂上传」及当次 Run 子文件夹。",
+        "btn_upload_llm_to_gdrive": "上传 _LLM_UPLOAD 到 Google Drive",
+        "btn_fetch_gdrive_structure": "获取远程目录结构",
+        "tip_fetch_gdrive_structure": "列出 Drive 上「知喂上传」及 Run_* 子文件夹结构，便于测试",
+        "title_gdrive_structure": "Google Drive 远程目录结构",
+        "btn_gdrive_set_target": "设为目标文件夹",
+        "btn_gdrive_open_in_browser": "在浏览器中打开",
+        "msg_gdrive_select_line": "请先选中一行（点击并拖动选中包含文件夹 ID 的那一行）。",
+        "msg_gdrive_target_set": "已设为目标文件夹，ID：{folder_id}",
+        "msg_gdrive_upload_failed": "Google Drive 上传失败",
+        "msg_gdrive_no_deps": "请先安装依赖：pip install google-auth-oauthlib google-api-python-client",
+        "msg_gdrive_no_llm_folder": "未找到 _LLM_UPLOAD 目录，请先设置成果目录或完成一次转换。",
+        "msg_gdrive_no_secrets": "请先配置「客户端密钥 JSON 路径」。",
+        "msg_gdrive_upload_success": "上传成功",
+        "msg_gdrive_upload_success_detail": "已上传 {file_count} 个文件到 Google Drive，文件夹 ID：{folder_id}",
+        "msg_gdrive_upload_running": "正在后台上传（如需授权会打开浏览器，请完成登录）。请稍候。",
+        "msg_gdrive_folder_link": "在 Drive 中打开：https://drive.google.com/drive/folders/{folder_id}",
+        "lbl_gdrive_install_title": "安装 Google Drive 依赖",
+        "btn_install_gdrive_deps": "一键安装 Google Drive 依赖",
+        "tip_install_gdrive_deps": "执行：pip install google-auth-oauthlib google-api-python-client",
+        "msg_gdrive_install_running": "正在后台安装依赖，完成后会弹出提示。请稍候。",
+        "msg_gdrive_install_ok": "安装成功",
+        "msg_gdrive_install_ok_detail": "Google Drive 依赖已安装完成。请关闭本窗口后使用「上传到 Google Drive」功能。",
+        "msg_gdrive_install_failed": "安装失败",
+        "msg_gdrive_install_failed_detail": "pip 安装失败：\n{detail}",
+        "msg_gdrive_install_timeout": "安装超时（超过 2 分钟）。请在本机终端执行：pip install google-auth-oauthlib google-api-python-client",
         "chk_enable_upload_readme": "生成可读文件清单 (README_UPLOAD_LIST.txt)",
         "chk_enable_upload_json_manifest": "生成 JSON 清单 (llm_upload_manifest.json)",
         "chk_upload_dedup_merged": "排除已包含在合并文档中的单体文件",
@@ -575,7 +649,6 @@ TRANSLATIONS = {
         "lbl_cfg_dirty_none": "未保存分区：无",
         "lbl_cfg_dirty_sections": "未保存分区：{}",
         "btn_cfg_focus_dirty": "跳转未保存分区",
-        
         # App mode (task vs classic)
         "app_mode_classic": "传统模式",
         "app_mode_task": "任务模式",
@@ -590,7 +663,6 @@ TRANSLATIONS = {
         "btn_merge_only": "合并与转换",
         "btn_convert_merge": "转+合",
         "btn_collect": "归集",
-        
         # Common
         "btn_browse": "...",
         "btn_open": "打开",
@@ -609,7 +681,6 @@ TRANSLATIONS = {
         "lbl_source": "源文件夹:",
         "lbl_target": "目标文件夹:",
         "lbl_config": "配置文件:",
-        
         # Advanced
         "lbl_engine": "转换引擎:",
         "lbl_sandbox": "沙箱安全模式",
@@ -656,13 +727,11 @@ TRANSLATIONS = {
         "chk_mshelp_merge_output": "生成MSHelp合并包",
         "chk_mshelp_output_docx": "同时导出DOCX",
         "chk_mshelp_output_pdf": "同时导出PDF",
-        
         # Filters
         "lbl_strategy": "内容策略:",
         "lbl_filter_date": "日期过滤",
         "rad_after": "之后",
         "rad_before": "之前",
-        
         # Process
         "lbl_kill_mode": "进程终止:",
         "rad_auto_kill": "自动",
@@ -695,7 +764,6 @@ TRANSLATIONS = {
         "msg_tooltip_reset": "悬停提示设置已恢复默认值。",
         "msg_tooltip_invalid_color": "悬停提示设置：{} 颜色值无效（请使用 #RRGGBB）。",
         "msg_tooltip_invalid_number": "悬停提示设置：{} 数值无效。",
-        
         # Lists
         "lbl_excluded": "排除文件夹 (每行一个):",
         "lbl_keywords": "价格关键字 (每行一个):",
@@ -743,7 +811,6 @@ TRANSLATIONS = {
         "msg_validation_invalid_date": "输入校验：{} 必须是 YYYY-MM-DD 格式。",
         "msg_validation_invalid_short_id": "输入校验：{} 仅支持 4-32 位字母或数字。",
         "msg_validation_fix_before_run": "请先修正红色高亮的无效输入，再启动任务。",
-        
         # Footer Actions
         "btn_save_cfg": "保存配置",
         "btn_load_cfg": "加载配置",
@@ -769,7 +836,6 @@ TRANSLATIONS = {
         "btn_cancel": "取消",
         "btn_start": "开始运行",
         "btn_stop": "停止任务",
-        
         # Right Panel
         "lbl_status": "当前状态",
         "lbl_logs": "运行日志",
@@ -797,11 +863,20 @@ TRANSLATIONS = {
         "log_artifacts_excel_json": "Excel JSON: {}",
         "log_artifacts_records_json": "Records JSON: {}",
         "log_artifacts_chromadb": "ChromaDB: {}",
-        "log_artifacts_llm_hub": "LLM 集中目录: {}",
-        "log_artifacts_update_package": "增量包: {}",
+        "log_artifacts_llm_hub": "LLM hub: {}",
+        "log_artifacts_update_package": "Update package: {}",
         "log_artifacts_incremental": "增量统计: 新增{} | 修改{} | 重命名{} | 未变更{} | 删除{}",
-        
-        # Messages
+        "log_artifacts_failed_title": "[失败文件] 已生成详细错误报告",
+        "log_artifacts_failed_type": "  - {}: {} 个文件",
+        "log_artifacts_failed_report": "失败文件报告: {}",
+        "log_artifacts_failed_summary": "失败总计: {} | 可重试: {} | 需人工处理: {}",
+        "log_error_suggestion_permission_denied": "以管理员身份运行或检查文件权限",
+        "log_error_suggestion_file_locked": "关闭 Office 程序后重试",
+        "log_error_suggestion_file_corrupted": "尝试用 Office 修复文件",
+        "log_error_suggestion_com_error": "重启 Office 或尝试其他转换引擎",
+        "log_error_suggestion_timeout": "增加超时时间或减小文件大小",
+        "log_error_suggestion_disk_full": "释放磁盘空间或更换输出目录",
+        "log_error_suggestion_password_protected": "先移除文件密码保护",
         "msg_save_ok": "配置已成功保存。",
         "msg_save_fail": "保存配置失败：\n{}",
         "msg_load_ok": "配置已成功加载。",
@@ -992,5 +1067,5 @@ TRANSLATIONS = {
         "msg_coercion_merge_source": "merge_source: {} -> target（转换+合并模式固定为目标目录）",
         "msg_coercion_max_mb_ignored": "max_merge_size_mb: 已忽略（单文件合并模式）",
         "msg_coercion_max_mb_default": "max_merge_size_mb: 无效 -> {}（已用默认值）",
-    }
+    },
 }

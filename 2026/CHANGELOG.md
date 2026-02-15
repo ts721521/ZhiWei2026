@@ -2,8 +2,31 @@
 
 All notable changes to this project are documented in this file.
 
+## [v5.18.0] - 2026-02-15
+### Added
+- **失败文件异常处理增强**：
+  - 新增错误类型自动分类：权限不足、文件被占用、文件损坏、COM错误、超时、磁盘空间不足、密码保护等
+  - 每种错误类型提供针对性的处理建议
+  - 转换失败时自动记录详细错误信息（错误类型、是否可重试、是否需人工处理）
+- **失败文件报告导出**：
+  - 自动生成 JSON 格式详细报告 (`failed_files_report_YYYYMMDD_HHMMSS.json`)
+  - 自动生成可读文本报告 (`failed_files_report_YYYYMMDD_HHMMSS.txt`)
+  - 报告包含：统计摘要、按错误类型分组的文件列表、处理建议
+- **GUI 失败文件摘要显示**：运行结束后在日志面板显示失败文件统计和处理建议
+- **统计信息增强**：新增按错误类型分类的计数（permission_denied、file_locked、file_corrupted 等）
+
+### Changed
+- 错误日志更详细：记录错误类型而不仅仅是原始异常信息
+- 失败文件复制到 `_FAILED_FILES` 目录时保留原有功能
+
+### Documentation
+- 使用说明书新增「失败文件处理指南」章节，包含错误类型说明和处理建议
+
+---
+
 ## [v5.17.0] - 2026-02-13
 ### Added
+- **Google Drive 上传**：在「成果文件」Tab 中可将 `_LLM_UPLOAD` 目录一键上传到用户自己的 Google Drive。支持 OAuth 桌面流程、可选目标文件夹 ID、上传后更新 `llm_upload_manifest.json` 的 gdrive 区段；client_secrets 与 token 不入库、不写日志，详见 `docs/plans/Google_Drive_上传_实现规划.md`。
 - Merge output filename pattern: configurable `merge_filename_pattern` in config and GUI (placeholders: `{category}`, `{timestamp}`, `{date}`, `{time}`, `{idx}`). Default: `Merged_{category}_{timestamp}_{idx}`.
 - Build script `build_exe.py`: exe output name now includes version (e.g. `ZhiWei_v5.17.0.exe`), version read from `office_converter.py`; **packaging now clears `dist` and `build` before building**.
 - **README.md** for GitHub: project intro, features, install, run, build, and doc links.

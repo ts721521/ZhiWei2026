@@ -15,6 +15,7 @@ office_gui.py - Office 鏂囨。鎵归噺杞崲 & 姊崇悊宸ュ叿 GUI 鐗?
 import os
 import sys
 import subprocess
+import webbrowser
 import glob
 
 import json
@@ -37,9 +38,11 @@ try:
     import ttkbootstrap as tb
     from ttkbootstrap.constants import *
     from ttkbootstrap.widgets.scrolled import ScrolledText
+
     HAS_TTKBOOTSTRAP = True
 except ModuleNotFoundError:
     from tkinter.scrolledtext import ScrolledText as _TkScrolledText
+
     HAS_TTKBOOTSTRAP = False
 
     class _FallbackStyle:
@@ -263,7 +266,10 @@ class HoverTip:
     def _resolve_position(self):
         if self._last_x_root is not None and self._last_y_root is not None:
             return self._last_x_root + 12, self._last_y_root + 18
-        return self.widget.winfo_rootx() + 14, self.widget.winfo_rooty() + self.widget.winfo_height() + 8
+        return (
+            self.widget.winfo_rootx() + 14,
+            self.widget.winfo_rooty() + self.widget.winfo_height() + 8,
+        )
 
     def _cancel_schedule(self):
         if self._after_id is not None:
@@ -405,10 +411,11 @@ class OfficeGUI(tb.Window):
             default_w, default_h = 1280, 860
         self.geometry(f"{default_w}x{default_h}")
         self.minsize(1000, 700)
-        
+        self.update_idletasks()
+
         # Ensure style is available for theme toggling
-        # tb.Window automatically creates a style object, accessible via self.style if needed, 
-        # but self.style is not a standard attribute of tk.Tk. 
+        # tb.Window automatically creates a style object, accessible via self.style if needed,
+        # but self.style is not a standard attribute of tk.Tk.
         # ttkbootstrap.Window has a 'style' attribute.
 
         self.script_dir = get_app_path()
@@ -450,25 +457,40 @@ class OfficeGUI(tb.Window):
         # sys.stdout = TkLogHandler()
         # sys.stderr = TkLogHandler()
 
+        # 先出窗口：显示「正在加载界面…」，再在 after 回调里构建完整 UI，避免主线程长时间阻塞导致窗口不显示
+        self._loading_frame = tk.Frame(self)
+        tk.Label(
+            self._loading_frame,
+            text="正在加载界面…",
+            font=("Microsoft YaHei", 14),
+        ).pack(expand=True)
+        self._loading_frame.pack(fill=tk.BOTH, expand=True)
+        self.update_idletasks()
+        self.lift()
+        self.after(50, self._finish_init)
+
+    def _finish_init(self):
+        """延迟执行：创建默认配置、构建主 UI、加载配置。保证主窗口已显示后再做重活。"""
+        try:
+            self._loading_frame.destroy()
+        except Exception:
+            pass
+        self._loading_frame = None
         if not os.path.exists(self.config_path):
             success = create_default_config(self.config_path)
             if success:
                 info_title = "提示"
                 messagebox.showinfo(info_title, self.tr("msg_no_config"))
-
         self._build_ui()
         self._load_config_to_ui()
         self.locator_short_id_index = {}
-
-        # 璁颁綇绐楀彛鍏抽棴鍓嶇殑灏哄涓庝綅缃?
         try:
             self.protocol("WM_DELETE_WINDOW", self._on_close_main_window)
         except Exception:
             pass
-
-        # 瀹氭椂鍒锋柊鏃ュ織
         self.after(200, self._poll_log_queue)
-
+        self.update_idletasks()
+        self.lift()
 
     # ===================== UI 閺嬪嫬缂?=====================
 
@@ -543,15 +565,27 @@ class OfficeGUI(tb.Window):
             self.tr("lbl_sandbox"): "tip_toggle_sandbox",
             self.tr("chk_corpus_manifest"): "tip_toggle_corpus_manifest",
             self.tr("chk_export_markdown"): "tip_toggle_export_markdown",
-            self.tr("chk_markdown_strip_header_footer"): "tip_toggle_markdown_strip_header_footer",
-            self.tr("chk_markdown_structured_headings"): "tip_toggle_markdown_structured_headings",
-            self.tr("chk_markdown_quality_report"): "tip_toggle_markdown_quality_report",
+            self.tr(
+                "chk_markdown_strip_header_footer"
+            ): "tip_toggle_markdown_strip_header_footer",
+            self.tr(
+                "chk_markdown_structured_headings"
+            ): "tip_toggle_markdown_structured_headings",
+            self.tr(
+                "chk_markdown_quality_report"
+            ): "tip_toggle_markdown_quality_report",
             self.tr("chk_export_records_json"): "tip_toggle_export_records_json",
             self.tr("chk_chromadb_export"): "tip_toggle_chromadb_export",
             self.tr("chk_incremental_mode"): "tip_toggle_incremental_mode",
-            self.tr("chk_incremental_verify_hash"): "tip_toggle_incremental_verify_hash",
-            self.tr("chk_incremental_reprocess_renamed"): "tip_toggle_incremental_reprocess_renamed",
-            self.tr("chk_source_priority_skip_pdf"): "tip_toggle_source_priority_skip_pdf",
+            self.tr(
+                "chk_incremental_verify_hash"
+            ): "tip_toggle_incremental_verify_hash",
+            self.tr(
+                "chk_incremental_reprocess_renamed"
+            ): "tip_toggle_incremental_reprocess_renamed",
+            self.tr(
+                "chk_source_priority_skip_pdf"
+            ): "tip_toggle_source_priority_skip_pdf",
             self.tr("chk_global_md5_dedup"): "tip_toggle_global_md5_dedup",
             self.tr("chk_enable_update_package"): "tip_toggle_enable_update_package",
             self.tr("chk_enable_merge"): "tip_toggle_enable_merge",
@@ -562,8 +596,12 @@ class OfficeGUI(tb.Window):
             self.tr("chk_output_md"): "tip_toggle_output_md",
             self.tr("chk_output_merged"): "tip_toggle_output_merged",
             self.tr("chk_output_independent"): "tip_toggle_output_independent",
-            self.tr("rad_merge_convert_merge_only"): "tip_option_merge_submode_merge_only",
-            self.tr("rad_merge_convert_pdf_to_md"): "tip_option_merge_submode_pdf_to_md",
+            self.tr(
+                "rad_merge_convert_merge_only"
+            ): "tip_option_merge_submode_merge_only",
+            self.tr(
+                "rad_merge_convert_pdf_to_md"
+            ): "tip_option_merge_submode_pdf_to_md",
             self.tr("rad_category"): "tip_option_merge_mode_category",
             self.tr("rad_all_in_one"): "tip_option_merge_mode_all_in_one",
             self.tr("rad_src_dir"): "tip_option_merge_source_source",
@@ -669,7 +707,9 @@ class OfficeGUI(tb.Window):
             self.tr("lbl_pdf_wait"): "tip_input_pdf_wait_seconds",
             self.tr("lbl_ppt_timeout"): "tip_input_ppt_timeout_seconds",
             self.tr("lbl_ppt_wait"): "tip_input_ppt_pdf_wait_seconds",
-            self.tr("lbl_office_restart_every"): "tip_input_office_restart_every_n_files",
+            self.tr(
+                "lbl_office_restart_every"
+            ): "tip_input_office_restart_every_n_files",
             self.tr("lbl_max_mb"): "tip_input_max_merge_size_mb",
             self.tr("lbl_mshelp_folder_name"): "tip_input_mshelp_folder_name",
             self.tr("lbl_locator_merged"): "tip_input_locator_merged",
@@ -695,7 +735,10 @@ class OfficeGUI(tb.Window):
             ("ent_pdf_wait_seconds", "tip_input_pdf_wait_seconds"),
             ("ent_ppt_timeout_seconds", "tip_input_ppt_timeout_seconds"),
             ("ent_ppt_pdf_wait_seconds", "tip_input_ppt_pdf_wait_seconds"),
-            ("ent_office_restart_every_n_files", "tip_input_office_restart_every_n_files"),
+            (
+                "ent_office_restart_every_n_files",
+                "tip_input_office_restart_every_n_files",
+            ),
             ("ent_max_merge_size_mb", "tip_input_max_merge_size_mb"),
             ("ent_tooltip_delay", "tip_input_tooltip_delay_ms"),
             ("ent_tooltip_font_size", "tip_input_tooltip_font_size"),
@@ -721,7 +764,9 @@ class OfficeGUI(tb.Window):
             if mapped_key:
                 self._attach_tooltip(child, mapped_key)
                 continue
-            base = self.tr("tip_auto_config_item").format(label_text or child.winfo_class())
+            base = self.tr("tip_auto_config_item").format(
+                label_text or child.winfo_class()
+            )
             if fallback_section_tip_key:
                 base = f"{base}\n{self.tr(fallback_section_tip_key)}"
             self._attach_tooltip_text(child, base)
@@ -794,7 +839,11 @@ class OfficeGUI(tb.Window):
         self.var_app_mode = tk.StringVar(value="classic")
         frm_app_mode = tb.Frame(ctrl_frame, bootstyle="light")
         frm_app_mode.pack(side=LEFT, padx=(0, 12))
-        tb.Label(frm_app_mode, text=self.tr("app_mode_classic") + " / " + self.tr("app_mode_task") + ":", font=("System", 9)).pack(side=LEFT, padx=(0, 4))
+        tb.Label(
+            frm_app_mode,
+            text=self.tr("app_mode_classic") + " / " + self.tr("app_mode_task") + ":",
+            font=("System", 9),
+        ).pack(side=LEFT, padx=(0, 4))
         tb.Radiobutton(
             frm_app_mode,
             text=self.tr("app_mode_classic"),
@@ -818,7 +867,9 @@ class OfficeGUI(tb.Window):
             new_theme = "superhero" if t == "cosmo" else "cosmo"
             # 无 ttkbootstrap 时 FallbackStyle.theme_use 仅存名称不生效，提示用户安装
             if not HAS_TTKBOOTSTRAP and new_theme == "superhero":
-                messagebox.showinfo("主题", "深色主题需要安装 ttkbootstrap：pip install ttkbootstrap")
+                messagebox.showinfo(
+                    "主题", "深色主题需要安装 ttkbootstrap：pip install ttkbootstrap"
+                )
                 return
             try:
                 self.style.theme_use(new_theme)
@@ -874,7 +925,9 @@ class OfficeGUI(tb.Window):
         # 椤跺眰 7 涓姛鑳?tab锛?
         # 1) 妯″紡涓庤矾寰? 2) 杞崲閫夐」  3) 鍚堝苟/姊崇悊  4) MSHelp  5) 瀹氫綅  6) 鎴愭灉鏂囦欢  7) 楂樼骇璁剧疆
         self.main_notebook.add(self.tab_run_shared, text=self.tr("grp_shared_runtime"))
-        self.main_notebook.add(self.tab_run_convert, text=self.tr("grp_convert_runtime"))
+        self.main_notebook.add(
+            self.tab_run_convert, text=self.tr("grp_convert_runtime")
+        )
         self.main_notebook.add(
             self.tab_run_merge,
             text=f"{self.tr('grp_merge_runtime')} / {self.tr('grp_collect_runtime')}",
@@ -951,8 +1004,12 @@ class OfficeGUI(tb.Window):
         canvas = tk.Canvas(parent, highlightthickness=0)
         scrollbar = tb.Scrollbar(parent, orient="vertical", command=canvas.yview)
         content = tb.Frame(canvas)
-        content.bind("<Configure>", lambda e: canvas.configure(scrollregion=canvas.bbox("all")))
-        win_id = canvas.create_window((0, 0), window=content, anchor="nw", width=canvas.winfo_reqwidth())
+        content.bind(
+            "<Configure>", lambda e: canvas.configure(scrollregion=canvas.bbox("all"))
+        )
+        win_id = canvas.create_window(
+            (0, 0), window=content, anchor="nw", width=canvas.winfo_reqwidth()
+        )
 
         def on_canvas_configure(e):
             canvas.itemconfig(win_id, width=e.width)
@@ -1017,7 +1074,9 @@ class OfficeGUI(tb.Window):
     def _create_path_row(self, parent, label_key, var, cmd_browse, cmd_open):
         f = tb.Frame(parent)
         f.pack(fill=X, pady=(5, 0))
-        tb.Label(f, text=self.tr(label_key), font=("System", 9, "bold")).pack(anchor="w")
+        tb.Label(f, text=self.tr(label_key), font=("System", 9, "bold")).pack(
+            anchor="w"
+        )
 
         f_in = tb.Frame(f)
         f_in.pack(fill=X)
@@ -1031,11 +1090,15 @@ class OfficeGUI(tb.Window):
         tip_key = path_tip_key_by_label.get(label_key)
         if tip_key:
             self._attach_tooltip(entry, tip_key)
-        btn_browse = tb.Button(f_in, text="...", command=cmd_browse, bootstyle="outline", width=3)
+        btn_browse = tb.Button(
+            f_in, text="...", command=cmd_browse, bootstyle="outline", width=3
+        )
         btn_browse.pack(side=LEFT, padx=(2, 0))
         self._attach_tooltip(btn_browse, "tip_browse_folder")
         if cmd_open:
-            btn_open = tb.Button(f_in, text=">", command=cmd_open, bootstyle="link", width=2)
+            btn_open = tb.Button(
+                f_in, text=">", command=cmd_open, bootstyle="link", width=2
+            )
             btn_open.pack(side=LEFT)
             self._attach_tooltip(btn_open, "tip_open_folder")
 
@@ -1058,30 +1121,52 @@ class OfficeGUI(tb.Window):
         grid_frame = tb.Frame(lf_mode)
         grid_frame.pack(fill=X)
         tb.Radiobutton(
-            grid_frame, text=self.tr("mode_convert"), variable=self.var_run_mode, value=MODE_CONVERT_ONLY,
-            command=self._on_run_mode_change, bootstyle="toolbutton-outline"
+            grid_frame,
+            text=self.tr("mode_convert"),
+            variable=self.var_run_mode,
+            value=MODE_CONVERT_ONLY,
+            command=self._on_run_mode_change,
+            bootstyle="toolbutton-outline",
         ).grid(row=0, column=0, sticky="ew", padx=2, pady=2)
         tb.Radiobutton(
-            grid_frame, text=self.tr("mode_merge"), variable=self.var_run_mode, value=MODE_MERGE_ONLY,
-            command=self._on_run_mode_change, bootstyle="toolbutton-outline"
+            grid_frame,
+            text=self.tr("mode_merge"),
+            variable=self.var_run_mode,
+            value=MODE_MERGE_ONLY,
+            command=self._on_run_mode_change,
+            bootstyle="toolbutton-outline",
         ).grid(row=0, column=1, sticky="ew", padx=2, pady=2)
         tb.Radiobutton(
-            grid_frame, text=self.tr("mode_convert_merge"), variable=self.var_run_mode, value=MODE_CONVERT_THEN_MERGE,
-            command=self._on_run_mode_change, bootstyle="toolbutton-outline"
+            grid_frame,
+            text=self.tr("mode_convert_merge"),
+            variable=self.var_run_mode,
+            value=MODE_CONVERT_THEN_MERGE,
+            command=self._on_run_mode_change,
+            bootstyle="toolbutton-outline",
         ).grid(row=1, column=0, sticky="ew", padx=2, pady=2)
         tb.Radiobutton(
-            grid_frame, text=self.tr("mode_collect"), variable=self.var_run_mode, value=MODE_COLLECT_ONLY,
-            command=self._on_run_mode_change, bootstyle="toolbutton-outline"
+            grid_frame,
+            text=self.tr("mode_collect"),
+            variable=self.var_run_mode,
+            value=MODE_COLLECT_ONLY,
+            command=self._on_run_mode_change,
+            bootstyle="toolbutton-outline",
         ).grid(row=1, column=1, sticky="ew", padx=2, pady=2)
         tb.Radiobutton(
-            grid_frame, text=self.tr("mode_mshelp"), variable=self.var_run_mode, value=MODE_MSHELP_ONLY,
-            command=self._on_run_mode_change, bootstyle="toolbutton-outline"
+            grid_frame,
+            text=self.tr("mode_mshelp"),
+            variable=self.var_run_mode,
+            value=MODE_MSHELP_ONLY,
+            command=self._on_run_mode_change,
+            bootstyle="toolbutton-outline",
         ).grid(row=2, column=0, columnspan=2, sticky="ew", padx=2, pady=2)
         grid_frame.columnconfigure(0, weight=1)
         grid_frame.columnconfigure(1, weight=1)
 
         # Global output controls (prominent and mode-agnostic)
-        lf_output = tb.Labelframe(parent, text=self.tr("grp_output_controls"), padding=6)
+        lf_output = tb.Labelframe(
+            parent, text=self.tr("grp_output_controls"), padding=6
+        )
         lf_output.pack(fill=X, pady=3)
         self.var_output_enable_pdf = tk.IntVar(value=1)
         self.var_output_enable_md = tk.IntVar(value=1)
@@ -1137,19 +1222,27 @@ class OfficeGUI(tb.Window):
         # Tab 妗嗘灦鍜屾粴鍔ㄩ〉闈㈠凡鍦?_build_ui 涓垱寤猴紝涓嶅啀闇€瑕佸瓙 Notebook
 
         # 銆屾⒊鐞嗐€嶉€夐」涓庡悎骞堕€夐」鍚堝苟鍒板悓涓€椤碉紝鍑忓皯绌虹櫧
-        lf_collect = tb.Labelframe(self._scroll_merge, text=self.tr("grp_collect_runtime"), padding=6)
+        lf_collect = tb.Labelframe(
+            self._scroll_merge, text=self.tr("grp_collect_runtime"), padding=6
+        )
         lf_collect.pack(fill=X, pady=3)
-        tb.Label(lf_collect, text=self.tr("lbl_collect_mode"), font=("System", 9, "bold")).pack(anchor="w")
+        tb.Label(
+            lf_collect, text=self.tr("lbl_collect_mode"), font=("System", 9, "bold")
+        ).pack(anchor="w")
         self.frm_collect_opts = tb.Frame(lf_collect, padding=(10, 5))
         self.frm_collect_opts.pack(fill=X)
         self.var_collect_mode = tk.StringVar(value=COLLECT_MODE_COPY_AND_INDEX)
         tb.Radiobutton(
-            self.frm_collect_opts, text="Copy + Index",
-            variable=self.var_collect_mode, value=COLLECT_MODE_COPY_AND_INDEX
+            self.frm_collect_opts,
+            text="Copy + Index",
+            variable=self.var_collect_mode,
+            value=COLLECT_MODE_COPY_AND_INDEX,
         ).pack(anchor="w")
         tb.Radiobutton(
-            self.frm_collect_opts, text="Index Only",
-            variable=self.var_collect_mode, value=COLLECT_MODE_INDEX_ONLY
+            self.frm_collect_opts,
+            text="Index Only",
+            variable=self.var_collect_mode,
+            value=COLLECT_MODE_INDEX_ONLY,
         ).pack(anchor="w")
 
         lf_mshelp_runtime = tb.Labelframe(
@@ -1201,23 +1294,35 @@ class OfficeGUI(tb.Window):
         )
 
         # Section 2: paths (runtime only)
-        lf_paths = tb.Labelframe(self._scroll_shared, text=self.tr("grp_shared_runtime"), padding=6)
+        lf_paths = tb.Labelframe(
+            self._scroll_shared, text=self.tr("grp_shared_runtime"), padding=6
+        )
         lf_paths.pack(fill=X, pady=3)
         self._add_section_help(lf_paths, "tip_section_run_paths")
 
         # Source Folders (Multi-select)
         frm_src = tb.Frame(lf_paths)
         frm_src.pack(fill=X, pady=(5, 0))
-        tb.Label(frm_src, text=self.tr("lbl_source"), font=("System", 9, "bold")).pack(anchor="w")
+        tb.Label(frm_src, text=self.tr("lbl_source"), font=("System", 9, "bold")).pack(
+            anchor="w"
+        )
 
         frm_src_body = tb.Frame(frm_src)
         frm_src_body.pack(fill=X, expand=YES)
 
-        self.lst_source_folders = tk.Listbox(frm_src_body, height=6, selectmode=EXTENDED, font=("System", 9), activestyle="dotbox")
+        self.lst_source_folders = tk.Listbox(
+            frm_src_body,
+            height=6,
+            selectmode=EXTENDED,
+            font=("System", 9),
+            activestyle="dotbox",
+        )
         self.lst_source_folders.pack(side=LEFT, fill=X, expand=YES)
         self._attach_tooltip(self.lst_source_folders, "tip_input_source_folder")
 
-        scr_src = tb.Scrollbar(frm_src_body, orient="vertical", command=self.lst_source_folders.yview)
+        scr_src = tb.Scrollbar(
+            frm_src_body, orient="vertical", command=self.lst_source_folders.yview
+        )
         scr_src.pack(side=LEFT, fill=Y)
         self.lst_source_folders.configure(yscrollcommand=scr_src.set)
         self.lst_source_folders.bind("<Double-Button-1>", self.open_source_folder)
@@ -1225,15 +1330,33 @@ class OfficeGUI(tb.Window):
         frm_src_btns = tb.Frame(frm_src_body)
         frm_src_btns.pack(side=LEFT, fill=Y, padx=(5, 0))
 
-        self.btn_add_src = tb.Button(frm_src_btns, text="+", width=3, command=self.add_source_folder, bootstyle="success-outline")
+        self.btn_add_src = tb.Button(
+            frm_src_btns,
+            text="+",
+            width=3,
+            command=self.add_source_folder,
+            bootstyle="success-outline",
+        )
         self.btn_add_src.pack(pady=1)
         self._attach_tooltip(self.btn_add_src, "tip_add_source_folder")
 
-        self.btn_del_src = tb.Button(frm_src_btns, text="-", width=3, command=self.remove_source_folder, bootstyle="danger-outline")
+        self.btn_del_src = tb.Button(
+            frm_src_btns,
+            text="-",
+            width=3,
+            command=self.remove_source_folder,
+            bootstyle="danger-outline",
+        )
         self.btn_del_src.pack(pady=1)
         self._attach_tooltip(self.btn_del_src, "tip_remove_source_folder")
 
-        self.btn_clr_src = tb.Button(frm_src_btns, text="C", width=3, command=self.clear_source_folders, bootstyle="secondary-outline")
+        self.btn_clr_src = tb.Button(
+            frm_src_btns,
+            text="C",
+            width=3,
+            command=self.clear_source_folders,
+            bootstyle="secondary-outline",
+        )
         self.btn_clr_src.pack(pady=1)
         self._attach_tooltip(self.btn_clr_src, "tip_clear_source_folders")
 
@@ -1241,7 +1364,13 @@ class OfficeGUI(tb.Window):
         self.var_source_folder = tk.StringVar()
 
         self.var_target_folder = tk.StringVar()
-        self._create_path_row(lf_paths, "lbl_target", self.var_target_folder, self.browse_target, self.open_target_folder)
+        self._create_path_row(
+            lf_paths,
+            "lbl_target",
+            self.var_target_folder,
+            self.browse_target,
+            self.open_target_folder,
+        )
         self.var_enable_corpus_manifest = tk.IntVar(value=1)
         self.chk_corpus_manifest = tb.Checkbutton(
             lf_paths,
@@ -1253,7 +1382,9 @@ class OfficeGUI(tb.Window):
         self._attach_tooltip(self.chk_corpus_manifest, "tip_toggle_corpus_manifest")
 
         # Section 3: feature-specific runtime options锛堣浆鎹㈤€夐」锛氬乏鍙冲弻鍒楀竷灞€锛?
-        lf_settings = tb.Labelframe(self._scroll_convert, text=self.tr("grp_convert_runtime"), padding=6)
+        lf_settings = tb.Labelframe(
+            self._scroll_convert, text=self.tr("grp_convert_runtime"), padding=6
+        )
         lf_settings.pack(fill=BOTH, pady=3)
         self._add_section_help(lf_settings, "tip_section_run_advanced")
 
@@ -1270,28 +1401,49 @@ class OfficeGUI(tb.Window):
         frm_convert_cols.columnconfigure(0, weight=1)
         frm_convert_cols.columnconfigure(1, weight=1)
 
-        lf_convert_runtime = tb.Labelframe(col_left, text=self.tr("grp_convert_runtime"), padding=8)
+        lf_convert_runtime = tb.Labelframe(
+            col_left, text=self.tr("grp_convert_runtime"), padding=8
+        )
         lf_convert_runtime.pack(fill=X, pady=(2, 6))
         self.group_exec = tb.Frame(lf_convert_runtime)
         self.group_exec.pack(fill=X, pady=5)
-        tb.Label(self.group_exec, text=self.tr("lbl_engine"), bootstyle="primary").pack(anchor="w")
+        tb.Label(self.group_exec, text=self.tr("lbl_engine"), bootstyle="primary").pack(
+            anchor="w"
+        )
         self.var_engine = tk.StringVar(value=ENGINE_WPS)
         frm_eng = tb.Frame(self.group_exec)
         frm_eng.pack(anchor="w")
-        tb.Radiobutton(frm_eng, text="WPS Office", variable=self.var_engine, value=ENGINE_WPS).pack(side=LEFT, padx=5)
-        tb.Radiobutton(frm_eng, text="MS Office", variable=self.var_engine, value=ENGINE_MS).pack(side=LEFT, padx=5)
+        tb.Radiobutton(
+            frm_eng, text="WPS Office", variable=self.var_engine, value=ENGINE_WPS
+        ).pack(side=LEFT, padx=5)
+        tb.Radiobutton(
+            frm_eng, text="MS Office", variable=self.var_engine, value=ENGINE_MS
+        ).pack(side=LEFT, padx=5)
         self.var_enable_sandbox = tk.IntVar(value=1)
         self.chk_enable_sandbox = tb.Checkbutton(
-            self.group_exec, text=self.tr("lbl_sandbox"), variable=self.var_enable_sandbox,
-            bootstyle="success-round-toggle", command=self._on_toggle_sandbox
+            self.group_exec,
+            text=self.tr("lbl_sandbox"),
+            variable=self.var_enable_sandbox,
+            bootstyle="success-round-toggle",
+            command=self._on_toggle_sandbox,
         )
         self.chk_enable_sandbox.pack(anchor="w", pady=(10, 2))
         self.frm_sandbox_path = tb.Frame(self.group_exec)
         self.frm_sandbox_path.pack(fill=X, padx=20)
         self.var_temp_sandbox_root = tk.StringVar()
-        self.entry_temp_sandbox_root = tb.Entry(self.frm_sandbox_path, textvariable=self.var_temp_sandbox_root, font=("Consolas", 8))
+        self.entry_temp_sandbox_root = tb.Entry(
+            self.frm_sandbox_path,
+            textvariable=self.var_temp_sandbox_root,
+            font=("Consolas", 8),
+        )
         self.entry_temp_sandbox_root.pack(side=LEFT, fill=X, expand=YES)
-        self.btn_temp_sandbox_root = tb.Button(self.frm_sandbox_path, text=self.tr("btn_browse"), command=self.browse_temp_sandbox_root, bootstyle="outline", width=3)
+        self.btn_temp_sandbox_root = tb.Button(
+            self.frm_sandbox_path,
+            text=self.tr("btn_browse"),
+            command=self.browse_temp_sandbox_root,
+            bootstyle="outline",
+            width=3,
+        )
         self.btn_temp_sandbox_root.pack(side=LEFT, padx=2)
         self._attach_tooltip(self.btn_temp_sandbox_root, "tip_choose_temp")
 
@@ -1322,9 +1474,13 @@ class OfficeGUI(tb.Window):
             self.cb_sandbox_low_space_policy, "tip_input_sandbox_low_space_policy"
         )
 
-        lf_merge_runtime = tb.Labelframe(self._scroll_merge, text=self.tr("grp_merge_runtime"), padding=8)
+        lf_merge_runtime = tb.Labelframe(
+            self._scroll_merge, text=self.tr("grp_merge_runtime"), padding=8
+        )
         lf_merge_runtime.pack(fill=X, pady=(2, 0))
-        self.lbl_merge = tb.Label(lf_merge_runtime, text=self.tr("lbl_merge_logic"), bootstyle="primary")
+        self.lbl_merge = tb.Label(
+            lf_merge_runtime, text=self.tr("lbl_merge_logic"), bootstyle="primary"
+        )
         self.lbl_merge.pack(anchor="w")
         self.var_enable_merge = tk.IntVar(value=1)
         self.chk_enable_merge = tb.Checkbutton(
@@ -1337,23 +1493,53 @@ class OfficeGUI(tb.Window):
         self.frm_merge_opts = tb.Frame(lf_merge_runtime, padding=(20, 0))
         self.frm_merge_opts.pack(fill=X)
         self.var_merge_mode = tk.StringVar(value=MERGE_MODE_CATEGORY)
-        tb.Radiobutton(self.frm_merge_opts, text=self.tr("rad_category"), variable=self.var_merge_mode, value=MERGE_MODE_CATEGORY).pack(anchor="w")
-        tb.Radiobutton(self.frm_merge_opts, text=self.tr("rad_all_in_one"), variable=self.var_merge_mode, value=MERGE_MODE_ALL_IN_ONE).pack(anchor="w")
+        tb.Radiobutton(
+            self.frm_merge_opts,
+            text=self.tr("rad_category"),
+            variable=self.var_merge_mode,
+            value=MERGE_MODE_CATEGORY,
+        ).pack(anchor="w")
+        tb.Radiobutton(
+            self.frm_merge_opts,
+            text=self.tr("rad_all_in_one"),
+            variable=self.var_merge_mode,
+            value=MERGE_MODE_ALL_IN_ONE,
+        ).pack(anchor="w")
         tb.Separator(self.frm_merge_opts).pack(fill=X, pady=5)
         self.var_enable_merge_index = tk.IntVar(value=0)
-        self.chk_merge_index = tb.Checkbutton(self.frm_merge_opts, text=self.tr("chk_merge_index"), variable=self.var_enable_merge_index)
+        self.chk_merge_index = tb.Checkbutton(
+            self.frm_merge_opts,
+            text=self.tr("chk_merge_index"),
+            variable=self.var_enable_merge_index,
+        )
         self.chk_merge_index.pack(anchor="w")
         self.var_enable_merge_excel = tk.IntVar(value=0)
-        self.chk_merge_excel = tb.Checkbutton(self.frm_merge_opts, text=self.tr("chk_merge_excel"), variable=self.var_enable_merge_excel)
+        self.chk_merge_excel = tb.Checkbutton(
+            self.frm_merge_opts,
+            text=self.tr("chk_merge_excel"),
+            variable=self.var_enable_merge_excel,
+        )
         self.chk_merge_excel.pack(anchor="w")
         tb.Separator(self.frm_merge_opts).pack(fill=X, pady=5)
-        self.lbl_m_src = tb.Label(self.frm_merge_opts, text=self.tr("lbl_merge_src"), font=("System", 9))
+        self.lbl_m_src = tb.Label(
+            self.frm_merge_opts, text=self.tr("lbl_merge_src"), font=("System", 9)
+        )
         self.lbl_m_src.pack(anchor="w")
         self.var_merge_source = tk.StringVar(value="source")
         self.frm_merge_src = tb.Frame(self.frm_merge_opts)
         self.frm_merge_src.pack(fill=X)
-        tb.Radiobutton(self.frm_merge_src, text=self.tr("rad_src_dir"), variable=self.var_merge_source, value="source").pack(side=LEFT)
-        tb.Radiobutton(self.frm_merge_src, text=self.tr("rad_tgt_dir"), variable=self.var_merge_source, value="target").pack(side=LEFT, padx=10)
+        tb.Radiobutton(
+            self.frm_merge_src,
+            text=self.tr("rad_src_dir"),
+            variable=self.var_merge_source,
+            value="source",
+        ).pack(side=LEFT)
+        tb.Radiobutton(
+            self.frm_merge_src,
+            text=self.tr("rad_tgt_dir"),
+            variable=self.var_merge_source,
+            value="target",
+        ).pack(side=LEFT, padx=10)
         tb.Separator(self.frm_merge_opts).pack(fill=X, pady=5)
         self.lbl_merge_output_summary = tb.Label(
             self.frm_merge_opts, text="", bootstyle="secondary", wraplength=420
@@ -1364,11 +1550,22 @@ class OfficeGUI(tb.Window):
         )
         self.lbl_merge_inline_hint.pack(anchor="w", pady=(2, 0))
         try:
-            self.var_output_enable_merged.trace_add("write", lambda *a: self.after(0, self._on_merge_output_or_mode_change))
-            self.var_merge_mode.trace_add("write", lambda *a: self.after(0, self._on_merge_output_or_mode_change))
-            for _v in ("var_output_enable_pdf", "var_output_enable_md", "var_output_enable_independent"):
+            self.var_output_enable_merged.trace_add(
+                "write", lambda *a: self.after(0, self._on_merge_output_or_mode_change)
+            )
+            self.var_merge_mode.trace_add(
+                "write", lambda *a: self.after(0, self._on_merge_output_or_mode_change)
+            )
+            for _v in (
+                "var_output_enable_pdf",
+                "var_output_enable_md",
+                "var_output_enable_independent",
+            ):
                 if hasattr(self, _v):
-                    getattr(self, _v).trace_add("write", lambda *a: self.after(0, self._update_output_summary_label))
+                    getattr(self, _v).trace_add(
+                        "write",
+                        lambda *a: self.after(0, self._update_output_summary_label),
+                    )
         except Exception:
             pass
         self._update_output_summary_label()
@@ -1459,9 +1656,7 @@ class OfficeGUI(tb.Window):
         self._attach_tooltip(
             self.chk_export_records_json, "tip_toggle_export_records_json"
         )
-        self._attach_tooltip(
-            self.chk_chromadb_export, "tip_toggle_chromadb_export"
-        )
+        self._attach_tooltip(self.chk_chromadb_export, "tip_toggle_chromadb_export")
         try:
             self.var_output_enable_md.trace_add(
                 "write", lambda *_: self._sync_markdown_master_with_global_output()
@@ -1551,7 +1746,9 @@ class OfficeGUI(tb.Window):
             variable=self.var_enable_upload_json_manifest,
         )
         self.chk_enable_upload_json_manifest.pack(anchor="w")
-        self._attach_tooltip(self.chk_enable_upload_json_manifest, "tip_toggle_upload_json_manifest")
+        self._attach_tooltip(
+            self.chk_enable_upload_json_manifest, "tip_toggle_upload_json_manifest"
+        )
 
         # Section: Upload dedup policy
         lf_upload_dedup = tb.Labelframe(
@@ -1567,7 +1764,138 @@ class OfficeGUI(tb.Window):
             variable=self.var_upload_dedup_merged,
         )
         self.chk_upload_dedup_merged.pack(anchor="w")
-        self._attach_tooltip(self.chk_upload_dedup_merged, "tip_toggle_upload_dedup_merged")
+        self._attach_tooltip(
+            self.chk_upload_dedup_merged, "tip_toggle_upload_dedup_merged"
+        )
+
+        # Section: Google Drive 上传
+        lf_gdrive = tb.Labelframe(
+            self._scroll_output, text=self.tr("grp_gdrive_upload"), padding=(8, 6)
+        )
+        lf_gdrive.pack(fill=X, pady=3)
+        self._add_section_help(lf_gdrive, "tip_section_gdrive_upload")
+        self.var_enable_gdrive_upload = tk.IntVar(value=0)
+        self.chk_enable_gdrive_upload = tb.Checkbutton(
+            lf_gdrive,
+            text=self.tr("chk_enable_gdrive_upload"),
+            variable=self.var_enable_gdrive_upload,
+        )
+        self.chk_enable_gdrive_upload.pack(anchor="w")
+        self._frm_gdrive_sub = tb.Frame(lf_gdrive)
+        self._frm_gdrive_sub.pack(fill=X, padx=(16, 0))
+        frm_gdrive_secrets = tb.Frame(self._frm_gdrive_sub)
+        frm_gdrive_secrets.pack(fill=X, pady=(2, 2))
+        frm_gdrive_secrets_label = tb.Frame(frm_gdrive_secrets)
+        frm_gdrive_secrets_label.pack(fill=X)
+        tb.Label(
+            frm_gdrive_secrets_label,
+            text=self.tr("lbl_gdrive_client_secrets_path"),
+            font=("System", 9),
+        ).pack(side=LEFT, anchor="w")
+        self.btn_gdrive_open_console = tb.Button(
+            frm_gdrive_secrets_label,
+            text=self.tr("link_gdrive_get_secrets"),
+            bootstyle="link",
+            command=self._on_open_gdrive_console,
+        )
+        self.btn_gdrive_open_console.pack(side=LEFT, padx=(8, 0))
+        self._attach_tooltip(self.btn_gdrive_open_console, "tip_gdrive_open_console")
+        self.btn_gdrive_enable_api = tb.Button(
+            frm_gdrive_secrets_label,
+            text=self.tr("link_gdrive_enable_api"),
+            bootstyle="link",
+            command=self._on_open_gdrive_enable_api,
+        )
+        self.btn_gdrive_enable_api.pack(side=LEFT, padx=(8, 0))
+        self._attach_tooltip(self.btn_gdrive_enable_api, "tip_gdrive_enable_api")
+        frm_gdrive_secrets_row = tb.Frame(frm_gdrive_secrets)
+        frm_gdrive_secrets_row.pack(fill=X, pady=(2, 0))
+        self.var_gdrive_client_secrets_path = tk.StringVar()
+        self.entry_gdrive_client_secrets_path = tb.Entry(
+            frm_gdrive_secrets_row,
+            textvariable=self.var_gdrive_client_secrets_path,
+            font=("Consolas", 8),
+        )
+        self.entry_gdrive_client_secrets_path.pack(side=LEFT, fill=X, expand=YES)
+        self.btn_browse_gdrive_secrets = tb.Button(
+            frm_gdrive_secrets_row,
+            text=self.tr("btn_browse"),
+            width=6,
+            command=self._on_browse_gdrive_secrets,
+        )
+        self.btn_browse_gdrive_secrets.pack(side=LEFT, padx=4)
+        self._attach_tooltip(
+            self.entry_gdrive_client_secrets_path, "tip_gdrive_client_secrets_path"
+        )
+        tb.Label(
+            self._frm_gdrive_sub,
+            text=self.tr("lbl_gdrive_folder_id"),
+            font=("System", 9),
+        ).pack(anchor="w", pady=(4, 0))
+        self.var_gdrive_folder_id = tk.StringVar()
+        self.entry_gdrive_folder_id = tb.Entry(
+            self._frm_gdrive_sub,
+            textvariable=self.var_gdrive_folder_id,
+            font=("Consolas", 8),
+        )
+        self.entry_gdrive_folder_id.pack(fill=X, pady=(2, 0))
+        self._attach_tooltip(self.entry_gdrive_folder_id, "tip_gdrive_folder_id")
+        frm_gdrive_btns = tb.Frame(self._frm_gdrive_sub)
+        frm_gdrive_btns.pack(anchor="w", pady=(8, 0))
+        self.btn_install_gdrive_deps = tb.Button(
+            frm_gdrive_btns,
+            text=self.tr("btn_install_gdrive_deps"),
+            bootstyle="secondary-outline",
+            command=self._on_install_gdrive_deps,
+        )
+        self.btn_install_gdrive_deps.pack(side=LEFT, padx=(0, 8))
+        self._attach_tooltip(self.btn_install_gdrive_deps, "tip_install_gdrive_deps")
+        self.btn_upload_to_gdrive = tb.Button(
+            frm_gdrive_btns,
+            text=self.tr("btn_upload_llm_to_gdrive"),
+            bootstyle="primary-outline",
+            command=self._on_upload_llm_to_gdrive,
+        )
+        self.btn_upload_to_gdrive.pack(side=LEFT)
+        self.btn_fetch_gdrive_structure = tb.Button(
+            frm_gdrive_btns,
+            text=self.tr("btn_fetch_gdrive_structure"),
+            bootstyle="secondary-outline",
+            command=self._on_fetch_gdrive_structure,
+        )
+        self.btn_fetch_gdrive_structure.pack(side=LEFT, padx=(8, 0))
+        self._attach_tooltip(
+            self.btn_fetch_gdrive_structure, "tip_fetch_gdrive_structure"
+        )
+        try:
+            import gdrive_upload as _gd
+
+            if not getattr(_gd, "HAS_GDEPEND", True):
+                for w in (
+                    self.chk_enable_gdrive_upload,
+                    self.entry_gdrive_client_secrets_path,
+                    self.btn_gdrive_open_console,
+                    self.btn_gdrive_enable_api,
+                    self.btn_browse_gdrive_secrets,
+                    self.entry_gdrive_folder_id,
+                    self.btn_upload_to_gdrive,
+                    self.btn_fetch_gdrive_structure,
+                ):
+                    w.configure(state="disabled")
+                self._attach_tooltip(lf_gdrive, "msg_gdrive_no_deps")
+        except Exception:
+            for w in (
+                self.chk_enable_gdrive_upload,
+                self.entry_gdrive_client_secrets_path,
+                self.btn_gdrive_open_console,
+                self.btn_gdrive_enable_api,
+                self.btn_browse_gdrive_secrets,
+                self.entry_gdrive_folder_id,
+                self.btn_upload_to_gdrive,
+                self.btn_fetch_gdrive_structure,
+            ):
+                w.configure(state="disabled")
+            self._attach_tooltip(lf_gdrive, "msg_gdrive_no_deps")
 
         # Section 7: incremental / dedup (convert-specific锛屽彸鍒?
         lf_incremental = tb.Labelframe(
@@ -1631,9 +1959,7 @@ class OfficeGUI(tb.Window):
         self._attach_tooltip(
             self.chk_source_priority_skip_pdf, "tip_toggle_source_priority_skip_pdf"
         )
-        self._attach_tooltip(
-            self.chk_global_md5_dedup, "tip_toggle_global_md5_dedup"
-        )
+        self._attach_tooltip(self.chk_global_md5_dedup, "tip_toggle_global_md5_dedup")
         self._attach_tooltip(
             self.chk_enable_update_package, "tip_toggle_enable_update_package"
         )
@@ -1651,7 +1977,12 @@ class OfficeGUI(tb.Window):
         today_str = datetime.now().strftime("%Y-%m-%d")
         self.var_date_str = tk.StringVar(value=today_str)
         try:
-            self.ent_date = tb.DateEntry(self.frm_date, dateformat="%Y-%m-%d", firstweekday=0, startdate=datetime.now())
+            self.ent_date = tb.DateEntry(
+                self.frm_date,
+                dateformat="%Y-%m-%d",
+                firstweekday=0,
+                startdate=datetime.now(),
+            )
             self.ent_date.entry.configure(textvariable=self.var_date_str)
             self.ent_date.pack(fill=X)
         except Exception:
@@ -1660,56 +1991,123 @@ class OfficeGUI(tb.Window):
         self.var_filter_mode = tk.StringVar(value="after")
         frm_dt_mode = tb.Frame(self.frm_date)
         frm_dt_mode.pack(fill=X)
-        self.rb_filter_after = tb.Radiobutton(frm_dt_mode, text=self.tr("rad_after"), variable=self.var_filter_mode, value="after")
+        self.rb_filter_after = tb.Radiobutton(
+            frm_dt_mode,
+            text=self.tr("rad_after"),
+            variable=self.var_filter_mode,
+            value="after",
+        )
         self.rb_filter_after.pack(side=LEFT)
-        self.rb_filter_before = tb.Radiobutton(frm_dt_mode, text=self.tr("rad_before"), variable=self.var_filter_mode, value="before")
+        self.rb_filter_before = tb.Radiobutton(
+            frm_dt_mode,
+            text=self.tr("rad_before"),
+            variable=self.var_filter_mode,
+            value="before",
+        )
         self.rb_filter_before.pack(side=LEFT, padx=10)
 
         # Section 5: NotebookLM locator (runtime) 鈥斺€?涓?MSHelp 鍚堝苟鍒板悓涓€ tab
-        lf_locator = tb.Labelframe(self._scroll_locator, text=self.tr("sec_locator"), padding=10)
+        lf_locator = tb.Labelframe(
+            self._scroll_locator, text=self.tr("sec_locator"), padding=10
+        )
         lf_locator.pack(fill=X, pady=5)
         self._add_section_help(lf_locator, "tip_section_run_locator")
         tb.Label(lf_locator, text=self.tr("lbl_locator_merged")).pack(anchor="w")
         self.var_locator_merged = tk.StringVar()
-        self.cb_locator_merged = tb.Combobox(lf_locator, textvariable=self.var_locator_merged, state="readonly", values=[])
+        self.cb_locator_merged = tb.Combobox(
+            lf_locator,
+            textvariable=self.var_locator_merged,
+            state="readonly",
+            values=[],
+        )
         self.cb_locator_merged.pack(fill=X, pady=(0, 4))
         self._attach_tooltip(self.cb_locator_merged, "tip_input_locator_merged")
         row_locator = tb.Frame(lf_locator)
         row_locator.pack(fill=X)
         tb.Label(row_locator, text=self.tr("lbl_locator_page")).pack(side=LEFT)
         self.var_locator_page = tk.StringVar()
-        self.ent_locator_page = tb.Entry(row_locator, textvariable=self.var_locator_page, width=8)
+        self.ent_locator_page = tb.Entry(
+            row_locator, textvariable=self.var_locator_page, width=8
+        )
         self.ent_locator_page.pack(side=LEFT, padx=(6, 12))
         self._attach_tooltip(self.ent_locator_page, "tip_input_locator_page")
         tb.Label(row_locator, text=self.tr("lbl_locator_id")).pack(side=LEFT)
         self.var_locator_short_id = tk.StringVar()
-        self.ent_locator_short_id = tb.Entry(row_locator, textvariable=self.var_locator_short_id, width=14)
+        self.ent_locator_short_id = tb.Entry(
+            row_locator, textvariable=self.var_locator_short_id, width=14
+        )
         self.ent_locator_short_id.pack(side=LEFT, padx=(6, 0))
         self._attach_tooltip(self.ent_locator_short_id, "tip_input_locator_short_id")
-        row_locator_btn = tb.Labelframe(lf_locator, text=self.tr("lbl_locator_group_actions"), padding=(8, 6))
+        row_locator_btn = tb.Labelframe(
+            lf_locator, text=self.tr("lbl_locator_group_actions"), padding=(8, 6)
+        )
         row_locator_btn.pack(fill=X, pady=(6, 0))
-        self.btn_locator_refresh = tb.Button(row_locator_btn, text=self.tr("btn_locator_refresh"), command=self.refresh_locator_maps, bootstyle="secondary-outline", width=12)
+        self.btn_locator_refresh = tb.Button(
+            row_locator_btn,
+            text=self.tr("btn_locator_refresh"),
+            command=self.refresh_locator_maps,
+            bootstyle="secondary-outline",
+            width=12,
+        )
         self.btn_locator_refresh.pack(side=LEFT, padx=2)
         self._attach_tooltip(self.btn_locator_refresh, "tip_locator_refresh")
-        self.btn_locator_locate = tb.Button(row_locator_btn, text=self.tr("btn_locator_locate"), command=self.run_locator_query, bootstyle="primary", width=10)
+        self.btn_locator_locate = tb.Button(
+            row_locator_btn,
+            text=self.tr("btn_locator_locate"),
+            command=self.run_locator_query,
+            bootstyle="primary",
+            width=10,
+        )
         self.btn_locator_locate.pack(side=LEFT, padx=2)
         self._attach_tooltip(self.btn_locator_locate, "tip_locator_locate")
-        self.btn_locator_open_file = tb.Button(row_locator_btn, text=self.tr("btn_locator_open_file"), command=self.open_locator_file, bootstyle="success-outline", width=10)
+        self.btn_locator_open_file = tb.Button(
+            row_locator_btn,
+            text=self.tr("btn_locator_open_file"),
+            command=self.open_locator_file,
+            bootstyle="success-outline",
+            width=10,
+        )
         self.btn_locator_open_file.pack(side=LEFT, padx=2)
         self._attach_tooltip(self.btn_locator_open_file, "tip_locator_open_file")
-        self.btn_locator_open_dir = tb.Button(row_locator_btn, text=self.tr("btn_locator_open_dir"), command=self.open_locator_folder, bootstyle="info-outline", width=10)
+        self.btn_locator_open_dir = tb.Button(
+            row_locator_btn,
+            text=self.tr("btn_locator_open_dir"),
+            command=self.open_locator_folder,
+            bootstyle="info-outline",
+            width=10,
+        )
         self.btn_locator_open_dir.pack(side=LEFT, padx=2)
         self._attach_tooltip(self.btn_locator_open_dir, "tip_locator_open_dir")
-        row_locator_btn2 = tb.Labelframe(lf_locator, text=self.tr("lbl_locator_group_external"), padding=(8, 6))
+        row_locator_btn2 = tb.Labelframe(
+            lf_locator, text=self.tr("lbl_locator_group_external"), padding=(8, 6)
+        )
         row_locator_btn2.pack(fill=X, pady=(4, 0))
-        self.btn_locator_everything = tb.Button(row_locator_btn2, text=self.tr("btn_locator_everything"), command=self.search_with_everything, bootstyle="warning-outline", width=14)
+        self.btn_locator_everything = tb.Button(
+            row_locator_btn2,
+            text=self.tr("btn_locator_everything"),
+            command=self.search_with_everything,
+            bootstyle="warning-outline",
+            width=14,
+        )
         self.btn_locator_everything.pack(side=LEFT, padx=2)
         self._attach_tooltip(self.btn_locator_everything, "tip_locator_everything")
-        self.btn_locator_copy_listary = tb.Button(row_locator_btn2, text=self.tr("btn_locator_copy_listary"), command=self.copy_listary_query, bootstyle="dark-outline", width=16)
+        self.btn_locator_copy_listary = tb.Button(
+            row_locator_btn2,
+            text=self.tr("btn_locator_copy_listary"),
+            command=self.copy_listary_query,
+            bootstyle="dark-outline",
+            width=16,
+        )
         self.btn_locator_copy_listary.pack(side=LEFT, padx=2)
         self._attach_tooltip(self.btn_locator_copy_listary, "tip_locator_listary")
         self.var_locator_result = tk.StringVar(value=self.tr("msg_locator_waiting"))
-        tb.Label(lf_locator, textvariable=self.var_locator_result, bootstyle="secondary", wraplength=880, justify=LEFT).pack(anchor="w", pady=(6, 0))
+        tb.Label(
+            lf_locator,
+            textvariable=self.var_locator_result,
+            bootstyle="secondary",
+            wraplength=880,
+            justify=LEFT,
+        ).pack(anchor="w", pady=(6, 0))
         self.last_locate_record = None
         self._set_locator_action_state(False)
         self._auto_attach_action_tooltips(lf_mode)
@@ -1732,10 +2130,28 @@ class OfficeGUI(tb.Window):
         self._attach_tooltip(self.entry_temp_sandbox_root, "tip_input_sandbox_root")
         self._attach_tooltip(self.cb_strat, "tip_input_strategy")
         self._attach_tooltip(self.ent_date, "tip_input_date")
-        self._bind_var_validation(self.var_locator_page, lambda: self._normalize_then_validate(self.var_locator_page, self._normalize_numeric_var, "locator"))
-        self._bind_var_validation(self.var_locator_short_id, lambda: self._normalize_then_validate(self.var_locator_short_id, self._normalize_short_id_var, "locator"))
-        self._bind_var_validation(self.var_date_str, lambda: self._normalize_then_validate(self.var_date_str, self._normalize_date_var, "run"))
-        self._bind_var_validation(self.var_enable_date_filter, lambda: self.validate_runtime_inputs(silent=False, scope="run"))
+        self._bind_var_validation(
+            self.var_locator_page,
+            lambda: self._normalize_then_validate(
+                self.var_locator_page, self._normalize_numeric_var, "locator"
+            ),
+        )
+        self._bind_var_validation(
+            self.var_locator_short_id,
+            lambda: self._normalize_then_validate(
+                self.var_locator_short_id, self._normalize_short_id_var, "locator"
+            ),
+        )
+        self._bind_var_validation(
+            self.var_date_str,
+            lambda: self._normalize_then_validate(
+                self.var_date_str, self._normalize_date_var, "run"
+            ),
+        )
+        self._bind_var_validation(
+            self.var_enable_date_filter,
+            lambda: self.validate_runtime_inputs(silent=False, scope="run"),
+        )
 
     def _build_task_tab_content(self):
         parent = self._scroll_tasks
@@ -1746,7 +2162,16 @@ class OfficeGUI(tb.Window):
         self.tree_tasks = ttk.Treeview(
             lf_tasks, columns=cols, show="headings", height=12, selectmode="browse"
         )
-        for c, key in zip(cols, ("col_task_name", "col_task_source", "col_task_target", "col_task_status", "col_task_last_run")):
+        for c, key in zip(
+            cols,
+            (
+                "col_task_name",
+                "col_task_source",
+                "col_task_target",
+                "col_task_status",
+                "col_task_last_run",
+            ),
+        ):
             self.tree_tasks.heading(c, text=self.tr(key))
         self.tree_tasks.column("name", width=160)
         self.tree_tasks.column("source", width=180)
@@ -1845,8 +2270,12 @@ class OfficeGUI(tb.Window):
         )
         self.chk_task_force_full_rebuild.pack(anchor="w", pady=(4, 2))
 
-        tk.Label(parent, text=self.tr("lbl_task_config_section"), font=("System", 9, "bold")).pack(anchor=W, pady=(6, 2))
-        self.txt_task_detail = ScrolledText(parent, height=40, wrap=tk.WORD, font=("Consolas", 9))
+        tk.Label(
+            parent, text=self.tr("lbl_task_config_section"), font=("System", 9, "bold")
+        ).pack(anchor=W, pady=(6, 2))
+        self.txt_task_detail = ScrolledText(
+            parent, height=40, wrap=tk.WORD, font=("Consolas", 9)
+        )
         self.txt_task_detail.pack(fill=BOTH, expand=YES, pady=(0, 4))
         try:
             self.txt_task_detail.insert(tk.END, self.tr("msg_task_none_selected"))
@@ -1856,8 +2285,12 @@ class OfficeGUI(tb.Window):
 
         self._auto_attach_action_tooltips(lf_tasks)
         self._auto_attach_input_tooltips(lf_tasks, "tip_section_run_mode")
-        if not getattr(self, "_task_tab_app_mode_trace_done", False) and hasattr(self, "var_app_mode"):
-            self.var_app_mode.trace_add("write", lambda *a: self.after(0, self._on_app_mode_change_for_task_tab))
+        if not getattr(self, "_task_tab_app_mode_trace_done", False) and hasattr(
+            self, "var_app_mode"
+        ):
+            self.var_app_mode.trace_add(
+                "write", lambda *a: self.after(0, self._on_app_mode_change_for_task_tab)
+            )
             self._task_tab_app_mode_trace_done = True
         self._refresh_task_list_ui()
 
@@ -1889,7 +2322,9 @@ class OfficeGUI(tb.Window):
             target = self._short_path(task.get("target_folder", ""))
             status = str(task.get("status", "idle"))
             last_run = (task.get("last_run_at") or "")[:16]
-            self.tree_tasks.insert("", END, iid=task_id, values=(name, source, target, status, last_run))
+            self.tree_tasks.insert(
+                "", END, iid=task_id, values=(name, source, target, status, last_run)
+            )
         if selected_id and self.tree_tasks.exists(selected_id):
             self.tree_tasks.selection_set(selected_id)
             self.tree_tasks.focus(selected_id)
@@ -1903,7 +2338,9 @@ class OfficeGUI(tb.Window):
                 try:
                     self.txt_task_detail.configure(state="normal")
                     self.txt_task_detail.delete("1.0", tk.END)
-                    self.txt_task_detail.insert(tk.END, self.tr("msg_task_none_selected"))
+                    self.txt_task_detail.insert(
+                        tk.END, self.tr("msg_task_none_selected")
+                    )
                     self.txt_task_detail.configure(state="disabled")
                 except Exception:
                     pass
@@ -1939,8 +2376,10 @@ class OfficeGUI(tb.Window):
             "",
             "--- " + (self.tr("lbl_task_full_config") or "Task full config") + " ---",
             "name: " + str(task.get("name", "")),
-            "description: " + str((task.get("description") or "").replace("\n", " ")[:200]),
-            "source_folders: " + str(task.get("source_folders", []) or [task.get("source_folder", "")]),
+            "description: "
+            + str((task.get("description") or "").replace("\n", " ")[:200]),
+            "source_folders: "
+            + str(task.get("source_folders", []) or [task.get("source_folder", "")]),
             "target_folder: " + str(task.get("target_folder", "")),
             "run_incremental: " + str(task.get("run_incremental", True)),
             "status: " + str(task.get("status", "idle")),
@@ -1973,7 +2412,9 @@ class OfficeGUI(tb.Window):
             return
         is_classic = self.var_app_mode.get() == "classic"
         if hasattr(self, "main_notebook") and hasattr(self, "tab_run_tasks"):
-            self._set_run_tab_state(self.tab_run_tasks, "hidden" if is_classic else "normal")
+            self._set_run_tab_state(
+                self.tab_run_tasks, "hidden" if is_classic else "normal"
+            )
         # 打开任务模式后任务管理标签页显示为绿色
         self._set_task_tab_highlight(not is_classic)
         if not hasattr(self, "btn_task_run"):
@@ -2049,7 +2490,9 @@ class OfficeGUI(tb.Window):
             return current
 
         base = self._normalize_task_cfg_for_compare(
-            project_cfg if isinstance(project_cfg, dict) else self._load_config_for_write()
+            project_cfg
+            if isinstance(project_cfg, dict)
+            else self._load_config_for_write()
         )
         overrides = {}
         for key, value in current.items():
@@ -2104,7 +2547,9 @@ class OfficeGUI(tb.Window):
         content_holder.pack(fill=BOTH, expand=True)
         # 可滚动区域，避免第 3 步配置项被挡住
         canvas = tk.Canvas(content_holder, bg=_bg, highlightthickness=0)
-        scrollbar = tk.Scrollbar(content_holder, orient="vertical", command=canvas.yview)
+        scrollbar = tk.Scrollbar(
+            content_holder, orient="vertical", command=canvas.yview
+        )
         scrollbar.pack(side=tk.RIGHT, fill=tk.Y)
         canvas.pack(side=tk.LEFT, fill=tk.BOTH, expand=True)
         container = tk.Frame(canvas, bg=_bg)
@@ -2136,14 +2581,18 @@ class OfficeGUI(tb.Window):
         f2 = tk.Frame(container, bg=_bg)
         f3 = tk.Frame(container, bg=_bg)
         f4 = tk.Frame(container, bg=_bg)
-        tk.Label(f1, text=self.tr("wizard_step1"), font=("System", 11, "bold"), bg=_bg).pack(anchor=W)
+        tk.Label(
+            f1, text=self.tr("wizard_step1"), font=("System", 11, "bold"), bg=_bg
+        ).pack(anchor=W)
         tk.Label(f1, text=self.tr("msg_task_input_name"), bg=_bg).pack(anchor=W)
         ent_name = tk.Entry(f1, width=50)
         ent_name.pack(fill=X, pady=(0, 8))
         tk.Label(f1, text=self.tr("lbl_task_description"), bg=_bg).pack(anchor=W)
         txt_desc = tk.Text(f1, height=3, width=50)
         txt_desc.pack(fill=X, pady=(0, 8))
-        tk.Label(f2, text=self.tr("wizard_step2"), font=("System", 11, "bold"), bg=_bg).pack(anchor=W)
+        tk.Label(
+            f2, text=self.tr("wizard_step2"), font=("System", 11, "bold"), bg=_bg
+        ).pack(anchor=W)
         tk.Label(f2, text=self.tr("lbl_source"), bg=_bg).pack(anchor=W)
         f2_src = tk.Frame(f2, bg=_bg)
         f2_src.pack(fill=X)
@@ -2154,26 +2603,31 @@ class OfficeGUI(tb.Window):
         lst_src.configure(yscrollcommand=scr_src.set)
         f2_src_btns = tk.Frame(f2_src, bg=_bg)
         f2_src_btns.pack(side=LEFT, fill=Y)
+
         def add_src():
             # Ask user if they want to select multiple folders
             result = messagebox.askyesno(
                 self.tr("msg_task_pick_source"),
                 self.tr("msg_multi_select_folders"),
                 icon="question",
-                parent=win
+                parent=win,
             )
             if result:
                 # Multi-select mode - open multi-folder dialog
                 self._open_task_multi_folder_dialog(win, lst_src)
             else:
                 # Single-select mode
-                p = filedialog.askdirectory(title=self.tr("msg_task_pick_source"), parent=win)
+                p = filedialog.askdirectory(
+                    title=self.tr("msg_task_pick_source"), parent=win
+                )
                 if p and p not in lst_src.get(0, END):
                     lst_src.insert(END, p)
+
         def remove_src():
             sel = lst_src.curselection()
             if sel:
                 lst_src.delete(sel[0])
+
         tk.Button(f2_src_btns, text="+", command=add_src, width=3).pack(pady=2)
         tk.Button(f2_src_btns, text="-", command=remove_src, width=3).pack(pady=2)
         tk.Label(f2, text=self.tr("lbl_target"), bg=_bg).pack(anchor=W, pady=(8, 0))
@@ -2181,15 +2635,25 @@ class OfficeGUI(tb.Window):
         f2_tgt.pack(fill=X)
         ent_tgt = tk.Entry(f2_tgt, width=40)
         ent_tgt.pack(side=LEFT, fill=X, expand=True, padx=(0, 4))
+
         def pick_tgt():
-            p = filedialog.askdirectory(title=self.tr("msg_task_pick_target"), parent=win)
+            p = filedialog.askdirectory(
+                title=self.tr("msg_task_pick_target"), parent=win
+            )
             if p:
                 ent_tgt.delete(0, END)
                 ent_tgt.insert(0, p)
-        tk.Button(f2_tgt, text=self.tr("btn_browse"), command=pick_tgt, width=4).pack(side=LEFT)
+
+        tk.Button(f2_tgt, text=self.tr("btn_browse"), command=pick_tgt, width=4).pack(
+            side=LEFT
+        )
         var_inc = tk.IntVar(value=1)
-        tk.Checkbutton(f2, text=self.tr("chk_incremental_mode"), variable=var_inc, bg=_bg).pack(anchor=W, pady=(8, 0))
-        tk.Label(f3, text=self.tr("wizard_step3"), font=("System", 11, "bold"), bg=_bg).pack(anchor=W)
+        tk.Checkbutton(
+            f2, text=self.tr("chk_incremental_mode"), variable=var_inc, bg=_bg
+        ).pack(anchor=W, pady=(8, 0))
+        tk.Label(
+            f3, text=self.tr("wizard_step3"), font=("System", 11, "bold"), bg=_bg
+        ).pack(anchor=W)
         var_mode = tk.StringVar(value=MODE_CONVERT_THEN_MERGE)
         for val, key in [
             (MODE_CONVERT_ONLY, "mode_convert"),
@@ -2198,20 +2662,56 @@ class OfficeGUI(tb.Window):
             (MODE_COLLECT_ONLY, "mode_collect"),
             (MODE_MSHELP_ONLY, "mode_mshelp"),
         ]:
-            tk.Radiobutton(f3, text=self.tr(key), variable=var_mode, value=val, bg=_bg).pack(anchor=W)
-        tk.Label(f3, text=self.tr("grp_output_controls"), font=("System", 9, "bold"), bg=_bg).pack(anchor=W, pady=(8, 0))
+            tk.Radiobutton(
+                f3, text=self.tr(key), variable=var_mode, value=val, bg=_bg
+            ).pack(anchor=W)
+        tk.Label(
+            f3, text=self.tr("grp_output_controls"), font=("System", 9, "bold"), bg=_bg
+        ).pack(anchor=W, pady=(8, 0))
         var_output_choice = tk.StringVar(value="both")
-        tk.Radiobutton(f3, text=self.tr("wizard_output_only_independent"), variable=var_output_choice, value="only_independent", bg=_bg).pack(anchor=W)
-        tk.Radiobutton(f3, text=self.tr("wizard_output_only_merged"), variable=var_output_choice, value="only_merged", bg=_bg).pack(anchor=W)
-        tk.Radiobutton(f3, text=self.tr("wizard_output_both"), variable=var_output_choice, value="both", bg=_bg).pack(anchor=W)
+        tk.Radiobutton(
+            f3,
+            text=self.tr("wizard_output_only_independent"),
+            variable=var_output_choice,
+            value="only_independent",
+            bg=_bg,
+        ).pack(anchor=W)
+        tk.Radiobutton(
+            f3,
+            text=self.tr("wizard_output_only_merged"),
+            variable=var_output_choice,
+            value="only_merged",
+            bg=_bg,
+        ).pack(anchor=W)
+        tk.Radiobutton(
+            f3,
+            text=self.tr("wizard_output_both"),
+            variable=var_output_choice,
+            value="both",
+            bg=_bg,
+        ).pack(anchor=W)
         f3_merge = tk.Frame(f3, bg=_bg)
         f3_merge.pack(fill=X, pady=(8, 0))
         var_merge_how = tk.StringVar(value=MERGE_MODE_CATEGORY)
-        tk.Radiobutton(f3_merge, text=self.tr("wizard_merge_single_file"), variable=var_merge_how, value=MERGE_MODE_ALL_IN_ONE, bg=_bg).pack(anchor=W)
-        tk.Radiobutton(f3_merge, text=self.tr("wizard_merge_by_size"), variable=var_merge_how, value=MERGE_MODE_CATEGORY, bg=_bg).pack(anchor=W)
+        tk.Radiobutton(
+            f3_merge,
+            text=self.tr("wizard_merge_single_file"),
+            variable=var_merge_how,
+            value=MERGE_MODE_ALL_IN_ONE,
+            bg=_bg,
+        ).pack(anchor=W)
+        tk.Radiobutton(
+            f3_merge,
+            text=self.tr("wizard_merge_by_size"),
+            variable=var_merge_how,
+            value=MERGE_MODE_CATEGORY,
+            bg=_bg,
+        ).pack(anchor=W)
         f3_mb = tk.Frame(f3_merge, bg=_bg)
         f3_mb.pack(fill=X, pady=(2, 0))
-        tk.Label(f3_mb, text=self.tr("wizard_merge_size_mb"), bg=_bg).pack(side=LEFT, padx=(0, 4))
+        tk.Label(f3_mb, text=self.tr("wizard_merge_size_mb"), bg=_bg).pack(
+            side=LEFT, padx=(0, 4)
+        )
         var_mb = tk.StringVar(value="80")
         ent_mb = tk.Entry(f3_mb, width=6, textvariable=var_mb)
         ent_mb.pack(side=LEFT)
@@ -2231,18 +2731,30 @@ class OfficeGUI(tb.Window):
                     lbl_mb_tip.configure(text=self.tr("tip_wizard_merge_size_disabled"))
             else:
                 f3_merge.pack_forget()
+
         var_output_choice.trace_add("write", lambda *a: _wizard_update_merge_ui())
         var_merge_how.trace_add("write", lambda *a: _wizard_update_merge_ui())
         _wizard_update_merge_ui()
         var_pdf = tk.IntVar(value=1)
         var_md = tk.IntVar(value=1)
-        tk.Checkbutton(f3, text=self.tr("chk_output_pdf"), variable=var_pdf, bg=_bg).pack(anchor=W, pady=(4, 0))
-        tk.Checkbutton(f3, text=self.tr("chk_output_md"), variable=var_md, bg=_bg).pack(anchor=W)
-        tk.Label(f4, text=self.tr("wizard_step4"), font=("System", 11, "bold"), bg=_bg).pack(anchor=W)
+        tk.Checkbutton(
+            f3, text=self.tr("chk_output_pdf"), variable=var_pdf, bg=_bg
+        ).pack(anchor=W, pady=(4, 0))
+        tk.Checkbutton(f3, text=self.tr("chk_output_md"), variable=var_md, bg=_bg).pack(
+            anchor=W
+        )
+        tk.Label(
+            f4, text=self.tr("wizard_step4"), font=("System", 11, "bold"), bg=_bg
+        ).pack(anchor=W)
         lbl_summary = tk.Label(f4, text="", justify=LEFT, wraplength=450, bg=_bg)
         lbl_summary.pack(anchor=W, pady=(8, 0))
         var_run_after_save = tk.IntVar(value=0)
-        chk_run_after = tk.Checkbutton(f4, text=self.tr("chk_wizard_run_after_save"), variable=var_run_after_save, bg=_bg)
+        chk_run_after = tk.Checkbutton(
+            f4,
+            text=self.tr("chk_wizard_run_after_save"),
+            variable=var_run_after_save,
+            bg=_bg,
+        )
         chk_run_after.pack(anchor=W, pady=(8, 0))
 
         def _show(step):
@@ -2272,18 +2784,24 @@ class OfficeGUI(tb.Window):
                 return self.tr("wizard_merge_summary_none")
             if d.get("merge_mode") == MERGE_MODE_ALL_IN_ONE:
                 return self.tr("wizard_merge_summary_single")
-            return self.tr("wizard_merge_summary_split").format(d.get("max_merge_size_mb", 80))
+            return self.tr("wizard_merge_summary_split").format(
+                d.get("max_merge_size_mb", 80)
+            )
 
         def _refresh_summary():
             d = win._wizard_data
-            src_display = d["source_folder"] if len(d.get("source_folders", [])) <= 1 else f"{d['source_folder']} (+{len(d['source_folders'])-1})"
+            src_display = (
+                d["source_folder"]
+                if len(d.get("source_folders", [])) <= 1
+                else f"{d['source_folder']} (+{len(d['source_folders']) - 1})"
+            )
             lbl_summary.configure(
                 text=f"{self.tr('msg_task_input_name')} {d['name']}\n"
-                     f"{self.tr('lbl_source')} {src_display}\n"
-                     f"{self.tr('lbl_target')} {d['target_folder']}\n"
-                     f"{self.tr('chk_incremental_mode')}: {'Y' if d['run_incremental'] else 'N'}\n"
-                     f"Run mode: {d['run_mode']}\n"
-                     f"{_merge_summary_text(d)}"
+                f"{self.tr('lbl_source')} {src_display}\n"
+                f"{self.tr('lbl_target')} {d['target_folder']}\n"
+                f"{self.tr('chk_incremental_mode')}: {'Y' if d['run_incremental'] else 'N'}\n"
+                f"Run mode: {d['run_mode']}\n"
+                f"{_merge_summary_text(d)}"
             )
 
         def _collect():
@@ -2309,7 +2827,11 @@ class OfficeGUI(tb.Window):
                 data["output_enable_independent"] = True
             data["merge_how"] = var_merge_how.get()
             data["max_merge_size_mb"] = self._safe_positive_int(var_mb.get(), 80)
-            data["merge_mode"] = data["merge_how"] if data["output_enable_merged"] else MERGE_MODE_ALL_IN_ONE
+            data["merge_mode"] = (
+                data["merge_how"]
+                if data["output_enable_merged"]
+                else MERGE_MODE_ALL_IN_ONE
+            )
 
         def _go(delta):
             _collect()
@@ -2321,28 +2843,52 @@ class OfficeGUI(tb.Window):
             _collect()
             d = win._wizard_data
             if not d["name"]:
-                messagebox.showwarning(self.tr("win_task_wizard"), self.tr("msg_task_input_name"), parent=win)
+                messagebox.showwarning(
+                    self.tr("win_task_wizard"),
+                    self.tr("msg_task_input_name"),
+                    parent=win,
+                )
                 return
             name_trim = d["name"].strip()
-            for t in (self.task_store.list_tasks() or []):
+            for t in self.task_store.list_tasks() or []:
                 if isinstance(t, dict) and (t.get("name") or "").strip() == name_trim:
                     messagebox.showwarning(
-                        self.tr("win_task_wizard"), self.tr("msg_task_name_duplicate"), parent=win
+                        self.tr("win_task_wizard"),
+                        self.tr("msg_task_name_duplicate"),
+                        parent=win,
                     )
                     return
-            source_folders = [p.strip() for p in (d.get("source_folders") or []) if p and str(p).strip()]
+            source_folders = [
+                p.strip()
+                for p in (d.get("source_folders") or [])
+                if p and str(p).strip()
+            ]
             if not source_folders:
-                messagebox.showwarning(self.tr("win_task_wizard"), self.tr("msg_source_folder_required"), parent=win)
+                messagebox.showwarning(
+                    self.tr("win_task_wizard"),
+                    self.tr("msg_source_folder_required"),
+                    parent=win,
+                )
                 return
             for p in source_folders:
                 if not os.path.isdir(p):
-                    messagebox.showwarning(self.tr("win_task_wizard"), self.tr("msg_source_folder_required"), parent=win)
+                    messagebox.showwarning(
+                        self.tr("win_task_wizard"),
+                        self.tr("msg_source_folder_required"),
+                        parent=win,
+                    )
                     return
             if not d["target_folder"] or not os.path.isdir(d["target_folder"]):
-                messagebox.showwarning(self.tr("win_task_wizard"), self.tr("msg_target_folder_required"), parent=win)
+                messagebox.showwarning(
+                    self.tr("win_task_wizard"),
+                    self.tr("msg_target_folder_required"),
+                    parent=win,
+                )
                 return
             project_cfg = self._load_config_for_write()
-            overrides = self._build_task_overrides_from_ui(project_cfg=project_cfg, only_diff=True)
+            overrides = self._build_task_overrides_from_ui(
+                project_cfg=project_cfg, only_diff=True
+            )
             overrides["run_mode"] = d["run_mode"]
             overrides["output_enable_pdf"] = d["output_enable_pdf"]
             overrides["output_enable_md"] = d["output_enable_md"]
@@ -2373,15 +2919,27 @@ class OfficeGUI(tb.Window):
             run_after_save = bool(var_run_after_save.get())
             self._refresh_task_list_ui()
             win.destroy()
-            if run_after_save and saved_id and hasattr(self, "tree_tasks") and self.tree_tasks.exists(saved_id):
+            if (
+                run_after_save
+                and saved_id
+                and hasattr(self, "tree_tasks")
+                and self.tree_tasks.exists(saved_id)
+            ):
                 self.tree_tasks.selection_set(saved_id)
                 self.tree_tasks.focus(saved_id)
                 self.after(200, lambda: self._on_click_task_run(False))
 
         # 在 _go/_save 定义之后再创建按钮，避免 Python 3.12 闭包 "free variable not associated" 错误
-        btn_back = tk.Button(nav, text=self.tr("btn_wizard_back"), state="disabled", command=lambda: _go(-1))
+        btn_back = tk.Button(
+            nav,
+            text=self.tr("btn_wizard_back"),
+            state="disabled",
+            command=lambda: _go(-1),
+        )
         btn_back.pack(side=LEFT, padx=4)
-        btn_next = tk.Button(nav, text=self.tr("btn_wizard_next"), command=lambda: _go(1))
+        btn_next = tk.Button(
+            nav, text=self.tr("btn_wizard_next"), command=lambda: _go(1)
+        )
         btn_next.pack(side=LEFT, padx=4)
         btn_save = tk.Button(nav, text=self.tr("btn_wizard_save"), command=_save)
         btn_save.pack(side=LEFT, padx=4)
@@ -2414,7 +2972,9 @@ class OfficeGUI(tb.Window):
             return
         name = name.strip()
         if not name:
-            messagebox.showinfo(self.tr("win_task_edit"), self.tr("msg_task_input_name"))
+            messagebox.showinfo(
+                self.tr("win_task_edit"), self.tr("msg_task_input_name")
+            )
             return
         source = task.get("source_folder", "")
         target = task.get("target_folder", "")
@@ -2484,7 +3044,9 @@ class OfficeGUI(tb.Window):
         if not task:
             return
         try:
-            cfg = build_task_runtime_config(self._load_config_for_write(), task, force_full_rebuild=False)
+            cfg = build_task_runtime_config(
+                self._load_config_for_write(), task, force_full_rebuild=False
+            )
         except Exception as e:
             messagebox.showerror(self.tr("btn_task_load_to_ui"), str(e))
             return
@@ -2497,28 +3059,43 @@ class OfficeGUI(tb.Window):
             self.lst_source_folders.delete(0, END)
             for p in self.source_folders_list:
                 self.lst_source_folders.insert(END, p)
-            self.var_source_folder.set(self.source_folders_list[0] if self.source_folders_list else "")
+            self.var_source_folder.set(
+                self.source_folders_list[0] if self.source_folders_list else ""
+            )
             self.var_target_folder.set(cfg.get("target_folder") or "")
             self.var_run_mode.set(cfg.get("run_mode", MODE_CONVERT_THEN_MERGE))
-            self.var_output_enable_pdf.set(1 if cfg.get("output_enable_pdf", True) else 0)
+            self.var_output_enable_pdf.set(
+                1 if cfg.get("output_enable_pdf", True) else 0
+            )
             self.var_output_enable_md.set(1 if cfg.get("output_enable_md", True) else 0)
-            self.var_output_enable_merged.set(1 if cfg.get("output_enable_merged", True) else 0)
-            self.var_output_enable_independent.set(1 if cfg.get("output_enable_independent", False) else 0)
+            self.var_output_enable_merged.set(
+                1 if cfg.get("output_enable_merged", True) else 0
+            )
+            self.var_output_enable_independent.set(
+                1 if cfg.get("output_enable_independent", False) else 0
+            )
             self.var_merge_mode.set(cfg.get("merge_mode", MERGE_MODE_CATEGORY))
             self.var_max_merge_size_mb.set(str(cfg.get("max_merge_size_mb", 80)))
             self.var_merge_filename_pattern.set(
-                cfg.get("merge_filename_pattern") or "Merged_{category}_{timestamp}_{idx}"
+                cfg.get("merge_filename_pattern")
+                or "Merged_{category}_{timestamp}_{idx}"
             )
         finally:
             self._suspend_cfg_dirty = False
-        messagebox.showinfo(self.tr("btn_task_load_to_ui"), self.tr("msg_task_load_to_ui_done"), parent=self)
+        messagebox.showinfo(
+            self.tr("btn_task_load_to_ui"),
+            self.tr("msg_task_load_to_ui_done"),
+            parent=self,
+        )
 
     def _apply_runtime_cfg_to_converter(self, converter, runtime_cfg):
         converter.config = dict(runtime_cfg)
         converter._apply_config_defaults()
         converter._init_paths_from_config()
         converter.run_mode = converter.config.get("run_mode", converter.run_mode)
-        converter.collect_mode = converter.config.get("collect_mode", converter.collect_mode)
+        converter.collect_mode = converter.config.get(
+            "collect_mode", converter.collect_mode
+        )
         converter.content_strategy = converter.config.get(
             "content_strategy", converter.content_strategy
         )
@@ -2529,11 +3106,15 @@ class OfficeGUI(tb.Window):
         converter.enable_merge_excel = bool(
             converter.config.get("enable_merge_excel", converter.enable_merge_excel)
         )
-        converter.engine_type = converter.config.get("default_engine", self.var_engine.get())
+        converter.engine_type = converter.config.get(
+            "default_engine", self.var_engine.get()
+        )
 
     def _on_click_task_run(self, resume=False):
         if self.worker_thread and self.worker_thread.is_alive():
-            messagebox.showinfo(self.tr("btn_start"), self.tr("msg_task_already_running"))
+            messagebox.showinfo(
+                self.tr("btn_start"), self.tr("msg_task_already_running")
+            )
             return
         task_id = self._get_selected_task_id()
         if not task_id:
@@ -2575,7 +3156,9 @@ class OfficeGUI(tb.Window):
         if coercion_msgs:
             self._log_coercion_summary(coercion_msgs, show_dialog=True)
         if force_full_rebuild:
-            remove_task_registry_if_exists(task_id, runtime_cfg.get("target_folder", ""))
+            remove_task_registry_if_exists(
+                task_id, runtime_cfg.get("target_folder", "")
+            )
             self.task_store.clear_checkpoint(task_id)
 
         self.stop_requested = False
@@ -2709,30 +3292,60 @@ class OfficeGUI(tb.Window):
         lf_cfg_path.pack(fill=X, pady=3)
         self._add_section_help(lf_cfg_path, "tip_section_cfg_paths")
         self.var_config_path = tk.StringVar(value=self.config_path)
-        self._create_path_row(lf_cfg_path, "lbl_config", self.var_config_path, self.open_config_folder, None)
+        self._create_path_row(
+            lf_cfg_path,
+            "lbl_config",
+            self.var_config_path,
+            self.open_config_folder,
+            None,
+        )
 
         # Shared defaults: process strategy锛堝乏鍒楋級
-        lf_proc_shared = tb.Labelframe(settings_left, text=self.tr("grp_cfg_shared_process"), padding=6)
+        lf_proc_shared = tb.Labelframe(
+            settings_left, text=self.tr("grp_cfg_shared_process"), padding=6
+        )
         lf_proc_shared.pack(fill=X, pady=3)
         self._add_section_help(lf_proc_shared, "tip_section_cfg_process")
-        tb.Label(lf_proc_shared, text=self.tr("lbl_kill_mode"), font=("System", 9)).pack(anchor="w")
+        tb.Label(
+            lf_proc_shared, text=self.tr("lbl_kill_mode"), font=("System", 9)
+        ).pack(anchor="w")
         self.var_kill_mode = tk.StringVar(value=KILL_MODE_AUTO)
         frm_kill = tb.Frame(lf_proc_shared)
         frm_kill.pack(fill=X)
-        tb.Radiobutton(frm_kill, text=self.tr("rad_auto_kill"), variable=self.var_kill_mode, value=KILL_MODE_AUTO).pack(side=LEFT)
-        tb.Radiobutton(frm_kill, text=self.tr("rad_keep_running"), variable=self.var_kill_mode, value=KILL_MODE_KEEP).pack(side=LEFT, padx=10)
+        tb.Radiobutton(
+            frm_kill,
+            text=self.tr("rad_auto_kill"),
+            variable=self.var_kill_mode,
+            value=KILL_MODE_AUTO,
+        ).pack(side=LEFT)
+        tb.Radiobutton(
+            frm_kill,
+            text=self.tr("rad_keep_running"),
+            variable=self.var_kill_mode,
+            value=KILL_MODE_KEEP,
+        ).pack(side=LEFT, padx=10)
 
         # Shared defaults: log output锛堝乏鍒楋級
-        lf_cfg_log = tb.Labelframe(settings_left, text=self.tr("grp_cfg_shared_log"), padding=6)
+        lf_cfg_log = tb.Labelframe(
+            settings_left, text=self.tr("grp_cfg_shared_log"), padding=6
+        )
         lf_cfg_log.pack(fill=X, pady=3)
-        tb.Label(lf_cfg_log, text=self.tr("lbl_log_folder"), font=("System", 9)).pack(anchor="w", pady=(0, 0))
+        tb.Label(lf_cfg_log, text=self.tr("lbl_log_folder"), font=("System", 9)).pack(
+            anchor="w", pady=(0, 0)
+        )
         frm_log = tb.Frame(lf_cfg_log)
         frm_log.pack(fill=X)
         self.var_log_folder = tk.StringVar(value="./logs")
         self.ent_log_folder = tb.Entry(frm_log, textvariable=self.var_log_folder)
         self.ent_log_folder.pack(side=LEFT, fill=X, expand=YES)
         self._attach_tooltip(self.ent_log_folder, "tip_input_log_folder")
-        self.btn_log_folder = tb.Button(frm_log, text=self.tr("btn_browse"), command=self.browse_log_folder, bootstyle="outline", width=3)
+        self.btn_log_folder = tb.Button(
+            frm_log,
+            text=self.tr("btn_browse"),
+            command=self.browse_log_folder,
+            bootstyle="outline",
+            width=3,
+        )
         self.btn_log_folder.pack(side=LEFT, padx=2)
         self._attach_tooltip(self.btn_log_folder, "tip_choose_log")
         (
@@ -2742,13 +3355,17 @@ class OfficeGUI(tb.Window):
         ) = self._add_cfg_section_reset_action(settings_left, "shared")
 
         # Convert defaults锛堝乏鍒楋級
-        lf_proc_convert = tb.Labelframe(settings_left, text=self.tr("grp_cfg_convert"), padding=6)
+        lf_proc_convert = tb.Labelframe(
+            settings_left, text=self.tr("grp_cfg_convert"), padding=6
+        )
         lf_proc_convert.pack(fill=X, pady=3)
         self._add_section_help(lf_proc_convert, "tip_section_cfg_process")
         frm_time = tb.Frame(lf_proc_convert)
         frm_time.pack(fill=X, pady=5)
         self.var_timeout_seconds = tk.StringVar(value="60")
-        tb.Label(frm_time, text=self.tr("lbl_gen_timeout")).grid(row=0, column=0, sticky="e")
+        tb.Label(frm_time, text=self.tr("lbl_gen_timeout")).grid(
+            row=0, column=0, sticky="e"
+        )
         spinbox_cls = getattr(tb, "Spinbox", None)
         if spinbox_cls is None:
             from tkinter import Spinbox as spinbox_cls  # type: ignore
@@ -2762,7 +3379,9 @@ class OfficeGUI(tb.Window):
         self.ent_timeout_seconds.grid(row=0, column=1, sticky="w", padx=5)
         self._attach_tooltip(self.ent_timeout_seconds, "tip_input_timeout_seconds")
         self.var_pdf_wait_seconds = tk.StringVar(value="15")
-        tb.Label(frm_time, text=self.tr("lbl_pdf_wait")).grid(row=0, column=2, sticky="e")
+        tb.Label(frm_time, text=self.tr("lbl_pdf_wait")).grid(
+            row=0, column=2, sticky="e"
+        )
         self.ent_pdf_wait_seconds = spinbox_cls(
             frm_time,
             textvariable=self.var_pdf_wait_seconds,
@@ -2773,7 +3392,9 @@ class OfficeGUI(tb.Window):
         self.ent_pdf_wait_seconds.grid(row=0, column=3, sticky="w", padx=5)
         self._attach_tooltip(self.ent_pdf_wait_seconds, "tip_input_pdf_wait_seconds")
         self.var_ppt_timeout_seconds = tk.StringVar(value="180")
-        tb.Label(frm_time, text=self.tr("lbl_ppt_timeout")).grid(row=1, column=0, sticky="e")
+        tb.Label(frm_time, text=self.tr("lbl_ppt_timeout")).grid(
+            row=1, column=0, sticky="e"
+        )
         self.ent_ppt_timeout_seconds = spinbox_cls(
             frm_time,
             textvariable=self.var_ppt_timeout_seconds,
@@ -2782,9 +3403,13 @@ class OfficeGUI(tb.Window):
             to=9999,
         )
         self.ent_ppt_timeout_seconds.grid(row=1, column=1, sticky="w", padx=5)
-        self._attach_tooltip(self.ent_ppt_timeout_seconds, "tip_input_ppt_timeout_seconds")
+        self._attach_tooltip(
+            self.ent_ppt_timeout_seconds, "tip_input_ppt_timeout_seconds"
+        )
         self.var_ppt_pdf_wait_seconds = tk.StringVar(value="30")
-        tb.Label(frm_time, text=self.tr("lbl_ppt_wait")).grid(row=1, column=2, sticky="e")
+        tb.Label(frm_time, text=self.tr("lbl_ppt_wait")).grid(
+            row=1, column=2, sticky="e"
+        )
         self.ent_ppt_pdf_wait_seconds = spinbox_cls(
             frm_time,
             textvariable=self.var_ppt_pdf_wait_seconds,
@@ -2793,14 +3418,18 @@ class OfficeGUI(tb.Window):
             to=9999,
         )
         self.ent_ppt_pdf_wait_seconds.grid(row=1, column=3, sticky="w", padx=5)
-        self._attach_tooltip(self.ent_ppt_pdf_wait_seconds, "tip_input_ppt_pdf_wait_seconds")
+        self._attach_tooltip(
+            self.ent_ppt_pdf_wait_seconds, "tip_input_ppt_pdf_wait_seconds"
+        )
         self.var_office_reuse_app = tk.IntVar(value=1)
         self.chk_office_reuse_app = tb.Checkbutton(
             frm_time,
             text=self.tr("chk_office_reuse_app"),
             variable=self.var_office_reuse_app,
         )
-        self.chk_office_reuse_app.grid(row=2, column=0, columnspan=2, sticky="w", pady=(4, 0))
+        self.chk_office_reuse_app.grid(
+            row=2, column=0, columnspan=2, sticky="w", pady=(4, 0)
+        )
         self._attach_tooltip(self.chk_office_reuse_app, "tip_toggle_office_reuse_app")
         self.var_office_restart_every_n_files = tk.StringVar(value="25")
         tb.Label(frm_time, text=self.tr("lbl_office_restart_every")).grid(
@@ -2855,18 +3484,28 @@ class OfficeGUI(tb.Window):
         self.ent_max_merge_size_mb.pack(side=LEFT, padx=(5, 0))
         self._attach_tooltip(self.ent_max_merge_size_mb, "tip_input_max_merge_size_mb")
         try:
-            self.var_max_merge_size_mb.trace_add("write", lambda *a: self.after(0, self._update_output_summary_label))
+            self.var_max_merge_size_mb.trace_add(
+                "write", lambda *a: self.after(0, self._update_output_summary_label)
+            )
         except Exception:
             pass
-        tb.Label(lf_proc_merge_output, text=self.tr("lbl_merge_filename_pattern"), font=("System", 9)).pack(anchor="w", pady=(8, 0))
-        self.var_merge_filename_pattern = tk.StringVar(value="Merged_{category}_{timestamp}_{idx}")
+        tb.Label(
+            lf_proc_merge_output,
+            text=self.tr("lbl_merge_filename_pattern"),
+            font=("System", 9),
+        ).pack(anchor="w", pady=(8, 0))
+        self.var_merge_filename_pattern = tk.StringVar(
+            value="Merged_{category}_{timestamp}_{idx}"
+        )
         self.ent_merge_filename_pattern = tb.Entry(
             lf_proc_merge_output,
             textvariable=self.var_merge_filename_pattern,
             width=45,
         )
         self.ent_merge_filename_pattern.pack(fill=X, pady=(2, 0))
-        self._attach_tooltip(self.ent_merge_filename_pattern, "tip_input_merge_filename_pattern")
+        self._attach_tooltip(
+            self.ent_merge_filename_pattern, "tip_input_merge_filename_pattern"
+        )
         (
             frm_cfg_merge_actions,
             self.btn_save_cfg_merge,
@@ -2914,10 +3553,14 @@ class OfficeGUI(tb.Window):
         # 澧為噺閰嶇疆鍦ㄨ繍琛屽弬鏁拌浆鎹?tab 涓凡灞曠ず锛屼笉鍐嶅崟鐙崰鐢ㄩ〉闈?
 
         # UI / tooltip 閰嶇疆锛堝彸鍒楋級
-        lf_proc_ui = tb.Labelframe(settings_right, text=self.tr("grp_cfg_ui"), padding=6)
+        lf_proc_ui = tb.Labelframe(
+            settings_right, text=self.tr("grp_cfg_ui"), padding=6
+        )
         lf_proc_ui.pack(fill=X, pady=3)
         self._add_section_help(lf_proc_ui, "tip_section_cfg_process")
-        tb.Label(lf_proc_ui, text=self.tr("lbl_tooltip_cfg"), font=("System", 9, "bold")).pack(anchor="w")
+        tb.Label(
+            lf_proc_ui, text=self.tr("lbl_tooltip_cfg"), font=("System", 9, "bold")
+        ).pack(anchor="w")
         # Tooltip 楂樼骇璁剧疆鎶樺彔鍖哄煙
         self.var_show_tooltip_advanced = tk.IntVar(value=0)
         frm_tip_toggle = tb.Frame(lf_proc_ui)
@@ -2935,9 +3578,15 @@ class OfficeGUI(tb.Window):
         frm_tip = tb.Frame(lf_proc_ui)
         self.frm_tooltip_advanced = frm_tip
         self.var_tooltip_auto_theme = tk.IntVar(value=1)
-        self.chk_tooltip_auto_theme = tb.Checkbutton(frm_tip, text=self.tr("chk_tooltip_auto_theme"), variable=self.var_tooltip_auto_theme)
+        self.chk_tooltip_auto_theme = tb.Checkbutton(
+            frm_tip,
+            text=self.tr("chk_tooltip_auto_theme"),
+            variable=self.var_tooltip_auto_theme,
+        )
         self.chk_tooltip_auto_theme.grid(row=0, column=0, sticky="w", padx=(0, 8))
-        self._attach_tooltip(self.chk_tooltip_auto_theme, "tip_toggle_tooltip_auto_theme")
+        self._attach_tooltip(
+            self.chk_tooltip_auto_theme, "tip_toggle_tooltip_auto_theme"
+        )
         self.var_confirm_revert_dirty = tk.IntVar(value=1)
         self.chk_confirm_revert_dirty = tb.Checkbutton(
             frm_tip,
@@ -2949,7 +3598,9 @@ class OfficeGUI(tb.Window):
             self.chk_confirm_revert_dirty, "tip_toggle_confirm_revert_dirty"
         )
         self.var_tooltip_delay_ms = tk.StringVar(value="300")
-        tb.Label(frm_tip, text=self.tr("lbl_tooltip_delay")).grid(row=0, column=1, sticky="e")
+        tb.Label(frm_tip, text=self.tr("lbl_tooltip_delay")).grid(
+            row=0, column=1, sticky="e"
+        )
         # tooltip 鏁板€艰緭鍏ヤ篃閲囩敤 Spinbox
         self.ent_tooltip_delay = spinbox_cls(
             frm_tip,
@@ -2961,7 +3612,9 @@ class OfficeGUI(tb.Window):
         self.ent_tooltip_delay.grid(row=0, column=2, sticky="w", padx=4)
         self._attach_tooltip(self.ent_tooltip_delay, "tip_input_tooltip_delay_ms")
         self.var_tooltip_font_size = tk.StringVar(value="9")
-        tb.Label(frm_tip, text=self.tr("lbl_tooltip_font_size")).grid(row=0, column=3, sticky="e")
+        tb.Label(frm_tip, text=self.tr("lbl_tooltip_font_size")).grid(
+            row=0, column=3, sticky="e"
+        )
         self.ent_tooltip_font_size = spinbox_cls(
             frm_tip,
             textvariable=self.var_tooltip_font_size,
@@ -2970,38 +3623,79 @@ class OfficeGUI(tb.Window):
             to=48,
         )
         self.ent_tooltip_font_size.grid(row=0, column=4, sticky="w", padx=4)
-        self._attach_tooltip(
-            self.ent_tooltip_font_size, "tip_input_tooltip_font_size"
-        )
+        self._attach_tooltip(self.ent_tooltip_font_size, "tip_input_tooltip_font_size")
         self.var_tooltip_bg = tk.StringVar(value="#FFF7D6")
-        tb.Label(frm_tip, text=self.tr("lbl_tooltip_bg")).grid(row=1, column=1, sticky="e")
-        self.ent_tooltip_bg = tb.Entry(frm_tip, textvariable=self.var_tooltip_bg, width=10)
+        tb.Label(frm_tip, text=self.tr("lbl_tooltip_bg")).grid(
+            row=1, column=1, sticky="e"
+        )
+        self.ent_tooltip_bg = tb.Entry(
+            frm_tip, textvariable=self.var_tooltip_bg, width=10
+        )
         self.ent_tooltip_bg.grid(row=1, column=2, sticky="w", padx=4)
         self._attach_tooltip(self.ent_tooltip_bg, "tip_input_tooltip_bg")
-        self.btn_pick_tooltip_bg = tb.Button(frm_tip, text="...", width=3, command=lambda: self.pick_tooltip_color("bg"))
+        self.btn_pick_tooltip_bg = tb.Button(
+            frm_tip, text="...", width=3, command=lambda: self.pick_tooltip_color("bg")
+        )
         self.btn_pick_tooltip_bg.grid(row=1, column=2, sticky="e", padx=(0, 0))
         self._attach_tooltip(self.btn_pick_tooltip_bg, "tip_pick_color")
         self.var_tooltip_fg = tk.StringVar(value="#202124")
-        tb.Label(frm_tip, text=self.tr("lbl_tooltip_fg")).grid(row=1, column=3, sticky="e")
-        self.ent_tooltip_fg = tb.Entry(frm_tip, textvariable=self.var_tooltip_fg, width=10)
+        tb.Label(frm_tip, text=self.tr("lbl_tooltip_fg")).grid(
+            row=1, column=3, sticky="e"
+        )
+        self.ent_tooltip_fg = tb.Entry(
+            frm_tip, textvariable=self.var_tooltip_fg, width=10
+        )
         self.ent_tooltip_fg.grid(row=1, column=4, sticky="w", padx=4)
         self._attach_tooltip(self.ent_tooltip_fg, "tip_input_tooltip_fg")
-        self.btn_pick_tooltip_fg = tb.Button(frm_tip, text="...", width=3, command=lambda: self.pick_tooltip_color("fg"))
+        self.btn_pick_tooltip_fg = tb.Button(
+            frm_tip, text="...", width=3, command=lambda: self.pick_tooltip_color("fg")
+        )
         self.btn_pick_tooltip_fg.grid(row=1, column=4, sticky="e", padx=(0, 0))
         self._attach_tooltip(self.btn_pick_tooltip_fg, "tip_pick_color")
-        self.lbl_tooltip_bg_preview = tb.Label(frm_tip, text=self.tr("lbl_tooltip_preview_bg"), width=12, anchor="center")
-        self.lbl_tooltip_bg_preview.grid(row=2, column=1, columnspan=2, sticky="w", pady=(4, 0))
-        self.lbl_tooltip_fg_preview = tb.Label(frm_tip, text=self.tr("lbl_tooltip_preview_fg"), width=12, anchor="center")
-        self.lbl_tooltip_fg_preview.grid(row=2, column=3, columnspan=2, sticky="w", pady=(4, 0))
-        self.lbl_tooltip_sample_preview = tb.Label(frm_tip, text=self.tr("lbl_tooltip_preview_sample"), anchor="center", padding=(8, 4))
-        self.lbl_tooltip_sample_preview.grid(row=3, column=1, columnspan=4, sticky="ew", pady=(4, 0))
-        self.btn_apply_tooltip = tb.Button(frm_tip, text=self.tr("btn_apply_tooltip"), command=self.apply_tooltip_settings, bootstyle="secondary-outline")
+        self.lbl_tooltip_bg_preview = tb.Label(
+            frm_tip, text=self.tr("lbl_tooltip_preview_bg"), width=12, anchor="center"
+        )
+        self.lbl_tooltip_bg_preview.grid(
+            row=2, column=1, columnspan=2, sticky="w", pady=(4, 0)
+        )
+        self.lbl_tooltip_fg_preview = tb.Label(
+            frm_tip, text=self.tr("lbl_tooltip_preview_fg"), width=12, anchor="center"
+        )
+        self.lbl_tooltip_fg_preview.grid(
+            row=2, column=3, columnspan=2, sticky="w", pady=(4, 0)
+        )
+        self.lbl_tooltip_sample_preview = tb.Label(
+            frm_tip,
+            text=self.tr("lbl_tooltip_preview_sample"),
+            anchor="center",
+            padding=(8, 4),
+        )
+        self.lbl_tooltip_sample_preview.grid(
+            row=3, column=1, columnspan=4, sticky="ew", pady=(4, 0)
+        )
+        self.btn_apply_tooltip = tb.Button(
+            frm_tip,
+            text=self.tr("btn_apply_tooltip"),
+            command=self.apply_tooltip_settings,
+            bootstyle="secondary-outline",
+        )
         self.btn_apply_tooltip.grid(row=1, column=0, sticky="w", pady=(4, 0))
         self._attach_tooltip(self.btn_apply_tooltip, "tip_apply_tooltip")
-        self.btn_reset_tooltip = tb.Button(frm_tip, text=self.tr("btn_reset_tooltip"), command=self.reset_tooltip_settings, bootstyle="secondary")
+        self.btn_reset_tooltip = tb.Button(
+            frm_tip,
+            text=self.tr("btn_reset_tooltip"),
+            command=self.reset_tooltip_settings,
+            bootstyle="secondary",
+        )
         self.btn_reset_tooltip.grid(row=2, column=0, sticky="w", pady=(4, 0))
         self._attach_tooltip(self.btn_reset_tooltip, "tip_reset_tooltip")
-        for v in (self.var_tooltip_delay_ms, self.var_tooltip_font_size, self.var_tooltip_bg, self.var_tooltip_fg, self.var_tooltip_auto_theme):
+        for v in (
+            self.var_tooltip_delay_ms,
+            self.var_tooltip_font_size,
+            self.var_tooltip_bg,
+            self.var_tooltip_fg,
+            self.var_tooltip_auto_theme,
+        ):
             v.trace_add("write", lambda *_: self.validate_tooltip_inputs(silent=True))
         (
             frm_cfg_ui_actions,
@@ -3087,19 +3781,53 @@ class OfficeGUI(tb.Window):
         self._auto_attach_input_tooltips(lf_proc_shared, "tip_section_cfg_process")
         self._auto_attach_input_tooltips(lf_cfg_log, "tip_section_cfg_process")
         self._auto_attach_input_tooltips(lf_proc_convert, "tip_section_cfg_process")
-        self._auto_attach_input_tooltips(lf_proc_merge_output, "tip_section_cfg_process")
+        self._auto_attach_input_tooltips(
+            lf_proc_merge_output, "tip_section_cfg_process"
+        )
         self._auto_attach_input_tooltips(lf_cfg_ai_mshelp, "tip_mode_mshelp")
         self._auto_attach_input_tooltips(lf_proc_ui, "tip_section_cfg_process")
         self._auto_attach_input_tooltips(lf_rules_excluded, "tip_section_cfg_lists")
         self._auto_attach_input_tooltips(lf_rules_keywords, "tip_section_cfg_lists")
         self._attach_tooltip(self.txt_excluded_folders, "tip_input_excluded_folders")
         self._attach_tooltip(self.txt_price_keywords, "tip_input_price_keywords")
-        self._bind_var_validation(self.var_timeout_seconds, lambda: self._normalize_then_validate(self.var_timeout_seconds, self._normalize_numeric_var, "config"))
-        self._bind_var_validation(self.var_pdf_wait_seconds, lambda: self._normalize_then_validate(self.var_pdf_wait_seconds, self._normalize_numeric_var, "config"))
-        self._bind_var_validation(self.var_ppt_timeout_seconds, lambda: self._normalize_then_validate(self.var_ppt_timeout_seconds, self._normalize_numeric_var, "config"))
-        self._bind_var_validation(self.var_ppt_pdf_wait_seconds, lambda: self._normalize_then_validate(self.var_ppt_pdf_wait_seconds, self._normalize_numeric_var, "config"))
-        self._bind_var_validation(self.var_office_restart_every_n_files, lambda: self._normalize_then_validate(self.var_office_restart_every_n_files, self._normalize_numeric_var, "config"))
-        self._bind_var_validation(self.var_max_merge_size_mb, lambda: self._normalize_then_validate(self.var_max_merge_size_mb, self._normalize_numeric_var, "config"))
+        self._bind_var_validation(
+            self.var_timeout_seconds,
+            lambda: self._normalize_then_validate(
+                self.var_timeout_seconds, self._normalize_numeric_var, "config"
+            ),
+        )
+        self._bind_var_validation(
+            self.var_pdf_wait_seconds,
+            lambda: self._normalize_then_validate(
+                self.var_pdf_wait_seconds, self._normalize_numeric_var, "config"
+            ),
+        )
+        self._bind_var_validation(
+            self.var_ppt_timeout_seconds,
+            lambda: self._normalize_then_validate(
+                self.var_ppt_timeout_seconds, self._normalize_numeric_var, "config"
+            ),
+        )
+        self._bind_var_validation(
+            self.var_ppt_pdf_wait_seconds,
+            lambda: self._normalize_then_validate(
+                self.var_ppt_pdf_wait_seconds, self._normalize_numeric_var, "config"
+            ),
+        )
+        self._bind_var_validation(
+            self.var_office_restart_every_n_files,
+            lambda: self._normalize_then_validate(
+                self.var_office_restart_every_n_files,
+                self._normalize_numeric_var,
+                "config",
+            ),
+        )
+        self._bind_var_validation(
+            self.var_max_merge_size_mb,
+            lambda: self._normalize_then_validate(
+                self.var_max_merge_size_mb, self._normalize_numeric_var, "config"
+            ),
+        )
         self._bind_config_dirty_text(self.txt_excluded_folders)
         self._bind_config_dirty_text(self.txt_price_keywords)
         for _dirty_var in (
@@ -3240,7 +3968,10 @@ class OfficeGUI(tb.Window):
         if reason_str is None:
             return
         for child in root.winfo_children():
-            if getattr(child, "_tooltip_key", None) is not None or getattr(child, "_tooltip_text", None) is not None:
+            if (
+                getattr(child, "_tooltip_key", None) is not None
+                or getattr(child, "_tooltip_text", None) is not None
+            ):
                 try:
                     if str(child.cget("state")) == "disabled":
                         setattr(child, "_tooltip_disabled_reason", reason_str)
@@ -3288,12 +4019,19 @@ class OfficeGUI(tb.Window):
                                 idx = self._all_tabs.index(tab)
                                 tab_list = list(self.main_notebook.tabs())
                                 if idx < len(tab_list):
-                                    self.main_notebook.tab(tab_list[idx], state="normal")
+                                    self.main_notebook.tab(
+                                        tab_list[idx], state="normal"
+                                    )
                             else:
                                 for tab_id in self.main_notebook.tabs():
                                     try:
-                                        if self.main_notebook.nametowidget(tab_id) is tab:
-                                            self.main_notebook.tab(tab_id, state="normal")
+                                        if (
+                                            self.main_notebook.nametowidget(tab_id)
+                                            is tab
+                                        ):
+                                            self.main_notebook.tab(
+                                                tab_id, state="normal"
+                                            )
                                             break
                                     except Exception:
                                         continue
@@ -3314,7 +4052,10 @@ class OfficeGUI(tb.Window):
             except Exception:
                 for tab_id in self.main_notebook.tabs():
                     try:
-                        if self.main_notebook.nametowidget(tab_id) is self.tab_run_tasks:
+                        if (
+                            self.main_notebook.nametowidget(tab_id)
+                            is self.tab_run_tasks
+                        ):
                             self.main_notebook.tab(tab_id, text=new_text)
                             break
                     except Exception:
@@ -3330,7 +4071,9 @@ class OfficeGUI(tb.Window):
         tab_text = None
         for i, t in enumerate(self._all_tabs):
             if t is tab:
-                if hasattr(self, "_all_tab_text_keys") and i < len(self._all_tab_text_keys):
+                if hasattr(self, "_all_tab_text_keys") and i < len(
+                    self._all_tab_text_keys
+                ):
                     key = self._all_tab_text_keys[i]
                     if isinstance(key, tuple):
                         tab_text = f"{self.tr(key[0])} / {self.tr(key[1])}"
@@ -3363,14 +4106,18 @@ class OfficeGUI(tb.Window):
 
         # Enable only tabs relevant to the current mode锛堝悎骞?姊崇悊銆丮SHelp/瀹氫綅 涓鸿仛鍚?tab锛?
         self._set_run_tab_state(self.tab_run_shared, "normal")
-        self._set_run_tab_state(self.tab_run_convert, "normal" if is_convert else "disabled")
+        self._set_run_tab_state(
+            self.tab_run_convert, "normal" if is_convert else "disabled"
+        )
         # 銆屽悎骞?/ 姊崇悊銆嶏細浠绘剰鍚堝苟鐩稿叧鎴栨⒊鐞嗘ā寮忔椂鏄剧ず
         self._set_run_tab_state(
             self.tab_run_merge,
             "normal" if (is_merge_related or is_collect) else "disabled",
         )
         # MSHelp锛氫粎鍦?mshelp 妯″紡鏄剧ず
-        self._set_run_tab_state(self.tab_run_mshelp, "normal" if is_mshelp else "disabled")
+        self._set_run_tab_state(
+            self.tab_run_mshelp, "normal" if is_mshelp else "disabled"
+        )
         # 瀹氫綅宸ュ叿锛氬缁堝彲鐢?
         self._set_run_tab_state(self.tab_run_locator, "normal")
         # 鎴愭灉鏂囦欢锛氬缁堝彲鐢?
@@ -3447,8 +4194,10 @@ class OfficeGUI(tb.Window):
 
         if not is_convert:
             for child in self.frm_date.winfo_children():
-                try: child.configure(state="disabled")
-                except: pass
+                try:
+                    child.configure(state="disabled")
+                except:
+                    pass
             try:
                 self.ent_date.configure(state="disabled")
             except Exception:
@@ -3533,11 +4282,24 @@ class OfficeGUI(tb.Window):
                 pass
 
         # Single widgets that are disabled by mode
-        for attr in ("lbl_strategy", "cb_strat", "chk_date_filter", "lbl_merge", "chk_enable_merge",
-                     "chk_markdown_strip_header_footer", "chk_markdown_structured_headings",
-                     "chk_markdown_quality_report", "chk_export_records_json", "chk_chromadb_export",
-                     "chk_incremental_mode", "chk_source_priority_skip_pdf", "chk_global_md5_dedup",
-                     "chk_enable_update_package", "chk_incremental_verify_hash", "chk_incremental_reprocess_renamed"):
+        for attr in (
+            "lbl_strategy",
+            "cb_strat",
+            "chk_date_filter",
+            "lbl_merge",
+            "chk_enable_merge",
+            "chk_markdown_strip_header_footer",
+            "chk_markdown_structured_headings",
+            "chk_markdown_quality_report",
+            "chk_export_records_json",
+            "chk_chromadb_export",
+            "chk_incremental_mode",
+            "chk_source_priority_skip_pdf",
+            "chk_global_md5_dedup",
+            "chk_enable_update_package",
+            "chk_incremental_verify_hash",
+            "chk_incremental_reprocess_renamed",
+        ):
             w = getattr(self, attr, None)
             if w is None:
                 continue
@@ -3550,8 +4312,13 @@ class OfficeGUI(tb.Window):
                 pass
 
         # Sandbox group
-        for attr in ("chk_enable_sandbox", "entry_temp_sandbox_root", "btn_temp_sandbox_root",
-                     "entry_sandbox_min_free_gb", "cb_sandbox_low_space_policy"):
+        for attr in (
+            "chk_enable_sandbox",
+            "entry_temp_sandbox_root",
+            "btn_temp_sandbox_root",
+            "entry_sandbox_min_free_gb",
+            "cb_sandbox_low_space_policy",
+        ):
             w = getattr(self, attr, None)
             if w is None:
                 continue
@@ -3569,10 +4336,17 @@ class OfficeGUI(tb.Window):
             if not is_merge_related:
                 self._set_disabled_reason_in_tree(self.frm_merge_opts, reason_by_mode)
             elif not merged_on:
-                self._set_disabled_reason_in_tree(self.frm_merge_opts, reason_merged_off)
+                self._set_disabled_reason_in_tree(
+                    self.frm_merge_opts, reason_merged_off
+                )
             elif all_in_one and hasattr(self, "ent_max_merge_size_mb"):
-                setattr(self.ent_max_merge_size_mb, "_tooltip_disabled_reason",
-                        reason_all_in_one if _try_state(self.ent_max_merge_size_mb) == "disabled" else None)
+                setattr(
+                    self.ent_max_merge_size_mb,
+                    "_tooltip_disabled_reason",
+                    reason_all_in_one
+                    if _try_state(self.ent_max_merge_size_mb) == "disabled"
+                    else None,
+                )
         except Exception:
             pass
 
@@ -3604,7 +4378,10 @@ class OfficeGUI(tb.Window):
                 part += " " + self.tr("summary_merge_single")
             else:
                 mb = 80
-                if hasattr(self, "var_max_merge_size_mb") and self.var_max_merge_size_mb.get():
+                if (
+                    hasattr(self, "var_max_merge_size_mb")
+                    and self.var_max_merge_size_mb.get()
+                ):
                     mb = self._safe_positive_int(self.var_max_merge_size_mb.get(), 80)
                 part += " " + self.tr("summary_merge_split_mb").format(mb)
         prefix = self.tr("lbl_output_summary")
@@ -3618,7 +4395,10 @@ class OfficeGUI(tb.Window):
                 self.lbl_merge_inline_hint.configure(
                     text=self.tr("hint_merge_inline_merged_off"), bootstyle="secondary"
                 )
-            elif getattr(self, "var_merge_mode", None) and self.var_merge_mode.get() == MERGE_MODE_ALL_IN_ONE:
+            elif (
+                getattr(self, "var_merge_mode", None)
+                and self.var_merge_mode.get() == MERGE_MODE_ALL_IN_ONE
+            ):
                 self.lbl_merge_inline_hint.configure(
                     text=self.tr("hint_merge_inline_all_in_one"), bootstyle="warning"
                 )
@@ -3654,14 +4434,20 @@ class OfficeGUI(tb.Window):
         # DateEntry complicates state, usually just disable the internal entry key binding or similar
         # For tb.DateEntry, we can try disabling the frame or buttons
         for child in self.frm_date.winfo_children():
-            try: child.configure(state=state)
-            except: pass
+            try:
+                child.configure(state=state)
+            except:
+                pass
         self.ent_date.configure(state=state)
 
     def _on_toggle_sandbox(self):
         mode = self.var_run_mode.get()
-        is_disabled_globally = mode in (MODE_COLLECT_ONLY, MODE_MERGE_ONLY, MODE_MSHELP_ONLY)
-        
+        is_disabled_globally = mode in (
+            MODE_COLLECT_ONLY,
+            MODE_MERGE_ONLY,
+            MODE_MSHELP_ONLY,
+        )
+
         # If group is disabled, sandbox should look disabled
         if is_disabled_globally:
             self.chk_enable_sandbox.configure(state="disabled")
@@ -3752,7 +4538,7 @@ class OfficeGUI(tb.Window):
         result = messagebox.askyesno(
             self.tr("tip_add_source_folder"),
             self.tr("msg_multi_select_folders"),
-            icon="question"
+            icon="question",
         )
 
         if result:
@@ -3774,7 +4560,10 @@ class OfficeGUI(tb.Window):
 
     def _open_multi_folder_dialog(self):
         """Open a custom dialog for selecting multiple folders."""
-        if hasattr(self, "_multi_folder_dialog") and self._multi_folder_dialog is not None:
+        if (
+            hasattr(self, "_multi_folder_dialog")
+            and self._multi_folder_dialog is not None
+        ):
             try:
                 if self._multi_folder_dialog.winfo_exists():
                     self._multi_folder_dialog.lift()
@@ -3798,16 +4587,23 @@ class OfficeGUI(tb.Window):
         frame.pack(fill=BOTH, expand=YES)
 
         # Instructions
-        tb.Label(frame, text="方式1：扫描父文件夹（推荐，一次添加多个）", font=("System", 9, "bold"), foreground="#007bff").pack(anchor="w", pady=(0, 5))
-        
+        tb.Label(
+            frame,
+            text="方式1：扫描父文件夹（推荐，一次添加多个）",
+            font=("System", 9, "bold"),
+            foreground="#007bff",
+        ).pack(anchor="w", pady=(0, 5))
+
         # Parent folder selection section
         parent_frame = tb.Frame(frame)
         parent_frame.pack(fill=X, pady=(0, 10))
-        
-        tb.Label(parent_frame, text="选择父文件夹：", font=("System", 9)).pack(side=LEFT, padx=(0, 8))
+
+        tb.Label(parent_frame, text="选择父文件夹：", font=("System", 9)).pack(
+            side=LEFT, padx=(0, 8)
+        )
         ent_parent = tb.Entry(parent_frame, width=50)
         ent_parent.pack(side=LEFT, fill=X, expand=YES)
-        
+
         def pick_parent():
             p = filedialog.askdirectory(title="选择父文件夹")
             if p:
@@ -3815,16 +4611,16 @@ class OfficeGUI(tb.Window):
                     p = p.replace("/", "\\")
                 ent_parent.delete(0, END)
                 ent_parent.insert(0, p)
-        
+
         def scan_subfolders():
             parent = ent_parent.get().strip()
             if not parent or not os.path.isdir(parent):
                 messagebox.showwarning("提示", "请选择有效的父文件夹！", parent=dlg)
                 return
-            
+
             # Clear existing
             folder_tree.delete(*folder_tree.get_children())
-            
+
             # Scan subfolders
             try:
                 subfolders = []
@@ -3832,41 +4628,61 @@ class OfficeGUI(tb.Window):
                     item_path = os.path.join(parent, item)
                     if os.path.isdir(item_path):
                         subfolders.append(item_path)
-                
+
                 # Sort folders
                 subfolders.sort()
-                
+
                 # Add to tree (all checked by default)
                 for subfolder in subfolders:
                     item = folder_tree.insert("", "end", values=(subfolder,))
                     folder_tree.item(item, tags=("checked",))
                     folder_tree.set(item, "selected", "1")  # Custom flag
-                
+
                 # Update count
                 self._update_folder_count(folder_tree)
-                
+
                 # Update display
                 total = len(subfolders)
                 count_label.config(text=f"已扫描 {total} 个子文件夹")
-                
-                messagebox.showinfo("扫描完成", f"已从父文件夹扫描到 {total} 个子文件夹！", parent=dlg)
-                
+
+                messagebox.showinfo(
+                    "扫描完成", f"已从父文件夹扫描到 {total} 个子文件夹！", parent=dlg
+                )
+
             except Exception as e:
                 messagebox.showerror("错误", f"扫描失败：{str(e)}", parent=dlg)
-        
-        tb.Button(parent_frame, text="浏览", command=pick_parent, bootstyle="info", width=8).pack(side=LEFT, padx=(8, 4))
-        tb.Button(parent_frame, text="扫描子文件夹", command=scan_subfolders, bootstyle="success", width=12).pack(side=LEFT, padx=(4, 0))
+
+        tb.Button(
+            parent_frame, text="浏览", command=pick_parent, bootstyle="info", width=8
+        ).pack(side=LEFT, padx=(8, 4))
+        tb.Button(
+            parent_frame,
+            text="扫描子文件夹",
+            command=scan_subfolders,
+            bootstyle="success",
+            width=12,
+        ).pack(side=LEFT, padx=(4, 0))
 
         # Manual add section
-        tb.Label(frame, text="方式2：手动逐个添加", font=("System", 9, "bold"), foreground="#666").pack(anchor="w", pady=(10, 5))
+        tb.Label(
+            frame,
+            text="方式2：手动逐个添加",
+            font=("System", 9, "bold"),
+            foreground="#666",
+        ).pack(anchor="w", pady=(10, 5))
 
         # Treeview for folder selection with checkboxes
         left_frame = tb.Frame(frame)
         left_frame.pack(fill=BOTH, expand=YES)
 
         # Use a custom checkbox listbox approach
-        cols = ("selected", "path",)
-        folder_tree = ttk.Treeview(left_frame, columns=cols, show="headings", selectmode="extended")
+        cols = (
+            "selected",
+            "path",
+        )
+        folder_tree = ttk.Treeview(
+            left_frame, columns=cols, show="headings", selectmode="extended"
+        )
         folder_tree.heading("selected", text="", width=30)
         folder_tree.column("selected", width=30, anchor="center")
         folder_tree.heading("path", text="文件夹路径")
@@ -3874,7 +4690,9 @@ class OfficeGUI(tb.Window):
         folder_tree.pack(side=LEFT, fill=BOTH, expand=YES)
 
         # Scrollbar for treeview
-        tree_scroll = tb.Scrollbar(left_frame, orient=VERTICAL, command=folder_tree.yview)
+        tree_scroll = tb.Scrollbar(
+            left_frame, orient=VERTICAL, command=folder_tree.yview
+        )
         folder_tree.configure(yscrollcommand=tree_scroll.set)
         tree_scroll.pack(side=RIGHT, fill=Y)
 
@@ -3882,15 +4700,33 @@ class OfficeGUI(tb.Window):
         btn_frame = tb.Frame(frame)
         btn_frame.pack(side=RIGHT, fill=Y, padx=(10, 0))
 
-        btn_browse = tb.Button(btn_frame, text="+ 浏览", command=lambda: self._browse_folder_to_dialog(folder_tree), bootstyle="info", width=10)
+        btn_browse = tb.Button(
+            btn_frame,
+            text="+ 浏览",
+            command=lambda: self._browse_folder_to_dialog(folder_tree),
+            bootstyle="info",
+            width=10,
+        )
         btn_browse.pack(pady=2)
 
         tb.Label(btn_frame, text="", height=1).pack()  # Spacer
 
-        btn_remove = tb.Button(btn_frame, text="- 移除", command=lambda: self._remove_folder_from_tree(folder_tree), bootstyle="danger-outline", width=10)
+        btn_remove = tb.Button(
+            btn_frame,
+            text="- 移除",
+            command=lambda: self._remove_folder_from_tree(folder_tree),
+            bootstyle="danger-outline",
+            width=10,
+        )
         btn_remove.pack(pady=2)
 
-        btn_clear = tb.Button(btn_frame, text="C 清空", command=lambda: self._clear_folder_tree(folder_tree), bootstyle="secondary-outline", width=10)
+        btn_clear = tb.Button(
+            btn_frame,
+            text="C 清空",
+            command=lambda: self._clear_folder_tree(folder_tree),
+            bootstyle="secondary-outline",
+            width=10,
+        )
         btn_clear.pack(pady=2)
 
         # Bottom section: Controls
@@ -3899,7 +4735,9 @@ class OfficeGUI(tb.Window):
 
         # Count display
         self._multi_folder_count_var = tk.StringVar()
-        count_label = tb.Label(bottom_frame, textvariable=self._multi_folder_count_var, font=("System", 9))
+        count_label = tb.Label(
+            bottom_frame, textvariable=self._multi_folder_count_var, font=("System", 9)
+        )
         count_label.pack(anchor="w")
 
         # Checkbox controls
@@ -3922,9 +4760,27 @@ class OfficeGUI(tb.Window):
                 else:
                     folder_tree.item(item, tags=("checked",))
 
-        tb.Button(check_frame, text="全选", command=select_all, bootstyle="info-outline", width=8).pack(side=LEFT, padx=(0, 4))
-        tb.Button(check_frame, text="全不选", command=deselect_all, bootstyle="secondary-outline", width=8).pack(side=LEFT, padx=4)
-        tb.Button(check_frame, text="反选", command=invert_selection, bootstyle="secondary-outline", width=8).pack(side=LEFT, padx=4)
+        tb.Button(
+            check_frame,
+            text="全选",
+            command=select_all,
+            bootstyle="info-outline",
+            width=8,
+        ).pack(side=LEFT, padx=(0, 4))
+        tb.Button(
+            check_frame,
+            text="全不选",
+            command=deselect_all,
+            bootstyle="secondary-outline",
+            width=8,
+        ).pack(side=LEFT, padx=4)
+        tb.Button(
+            check_frame,
+            text="反选",
+            command=invert_selection,
+            bootstyle="secondary-outline",
+            width=8,
+        ).pack(side=LEFT, padx=4)
 
         # Initialize
         self._update_folder_count(folder_tree)
@@ -3933,18 +4789,35 @@ class OfficeGUI(tb.Window):
         action_btn_frame = tb.Frame(frame)
         action_btn_frame.pack(fill=X, pady=(10, 0))
 
-        btn_add = tb.Button(action_btn_frame, text="添加到列表", command=lambda: self._confirm_multi_folder_selection(folder_tree), bootstyle="success", width=12)
+        btn_add = tb.Button(
+            action_btn_frame,
+            text="添加到列表",
+            command=lambda: self._confirm_multi_folder_selection(folder_tree),
+            bootstyle="success",
+            width=12,
+        )
         btn_add.pack(side=LEFT)
 
-        btn_cancel = tb.Button(action_btn_frame, text="取消", command=self._close_multi_folder_dialog, bootstyle="secondary-outline", width=10)
+        btn_cancel = tb.Button(
+            action_btn_frame,
+            text="取消",
+            command=self._close_multi_folder_dialog,
+            bootstyle="secondary-outline",
+            width=10,
+        )
         btn_cancel.pack(side=RIGHT)
-
 
     def _close_multi_folder_dialog(self):
         """Close the multi-folder selection dialog."""
-        if hasattr(self, "_multi_folder_dialog") and self._multi_folder_dialog is not None:
+        if (
+            hasattr(self, "_multi_folder_dialog")
+            and self._multi_folder_dialog is not None
+        ):
             try:
-                if self._multi_folder_dialog.grab_current() == self._multi_folder_dialog:
+                if (
+                    self._multi_folder_dialog.grab_current()
+                    == self._multi_folder_dialog
+                ):
                     self._multi_folder_dialog.grab_release()
             except Exception:
                 pass
@@ -3974,7 +4847,9 @@ class OfficeGUI(tb.Window):
         """Browse for multiple folders using multiple askdirectory calls."""
         # Since askdirectory doesn't support multi-select natively,
         # we'll use a simple loop approach with a counter
-        base_dir = filedialog.askdirectory(title=self.tr("tip_add_source_folder") + " (选择第一个文件夹)")
+        base_dir = filedialog.askdirectory(
+            title=self.tr("tip_add_source_folder") + " (选择第一个文件夹)"
+        )
         if not base_dir:
             return
 
@@ -3994,14 +4869,14 @@ class OfficeGUI(tb.Window):
         # Ask if user wants to add more folders
         while True:
             result = messagebox.askyesno(
-                "继续添加",
-                "是否要继续添加更多文件夹？",
-                icon="question"
+                "继续添加", "是否要继续添加更多文件夹？", icon="question"
             )
             if not result:
                 break
 
-            next_dir = filedialog.askdirectory(title=self.tr("tip_add_source_folder") + " (选择下一个文件夹)")
+            next_dir = filedialog.askdirectory(
+                title=self.tr("tip_add_source_folder") + " (选择下一个文件夹)"
+            )
             if not next_dir:
                 break
 
@@ -4062,7 +4937,10 @@ class OfficeGUI(tb.Window):
     def _open_task_multi_folder_dialog(self, parent_win, target_listbox):
         """Open a simplified multi-folder dialog for task wizard."""
         # Check if dialog already exists
-        if hasattr(self, "_task_multi_folder_dialog") and self._task_multi_folder_dialog is not None:
+        if (
+            hasattr(self, "_task_multi_folder_dialog")
+            and self._task_multi_folder_dialog is not None
+        ):
             try:
                 if self._task_multi_folder_dialog.winfo_exists():
                     self._task_multi_folder_dialog.lift()
@@ -4078,7 +4956,9 @@ class OfficeGUI(tb.Window):
         dlg.transient(parent_win)
         dlg.grab_set()
         dlg.lift()
-        dlg.protocol("WM_DELETE_WINDOW", lambda: self._close_task_multi_folder_dialog(dlg))
+        dlg.protocol(
+            "WM_DELETE_WINDOW", lambda: self._close_task_multi_folder_dialog(dlg)
+        )
         self._task_multi_folder_dialog = dlg
 
         # Main frame with simple style
@@ -4086,16 +4966,23 @@ class OfficeGUI(tb.Window):
         frame.pack(fill=BOTH, expand=YES)
 
         # Instructions
-        tk.Label(frame, text="方式1：扫描父文件夹（推荐，一次添加多个）", font=("System", 9, "bold"), fg="blue").pack(anchor="w", pady=(0, 5))
-        
+        tk.Label(
+            frame,
+            text="方式1：扫描父文件夹（推荐，一次添加多个）",
+            font=("System", 9, "bold"),
+            fg="blue",
+        ).pack(anchor="w", pady=(0, 5))
+
         # Parent folder selection section
         parent_frame = tk.Frame(frame)
         parent_frame.pack(fill=X, pady=(0, 8))
-        
-        tk.Label(parent_frame, text="选择父文件夹：", font=("System", 9)).pack(side=LEFT, padx=(0, 8))
+
+        tk.Label(parent_frame, text="选择父文件夹：", font=("System", 9)).pack(
+            side=LEFT, padx=(0, 8)
+        )
         ent_parent = tk.Entry(parent_frame, width=50)
         ent_parent.pack(side=LEFT, fill=X, expand=YES)
-        
+
         def pick_parent():
             p = filedialog.askdirectory(title="选择父文件夹")
             if p:
@@ -4103,16 +4990,16 @@ class OfficeGUI(tb.Window):
                     p = p.replace("/", "\\")
                 ent_parent.delete(0, END)
                 ent_parent.insert(0, p)
-        
+
         def scan_subfolders():
             parent = ent_parent.get().strip()
             if not parent or not os.path.isdir(parent):
                 messagebox.showwarning("提示", "请选择有效的父文件夹！", parent=dlg)
                 return
-            
+
             # Clear existing
             folder_listbox.delete(0, END)
-            
+
             # Scan subfolders
             try:
                 subfolders = []
@@ -4120,27 +5007,42 @@ class OfficeGUI(tb.Window):
                     item_path = os.path.join(parent, item)
                     if os.path.isdir(item_path):
                         subfolders.append(item_path)
-                
+
                 # Sort folders
                 subfolders.sort()
-                
+
                 # Add to listbox (all selected by default)
                 for subfolder in subfolders:
                     folder_listbox.insert(END, subfolder)
-                
+
                 # Update count
                 update_task_count()
-                
-                messagebox.showinfo("扫描完成", f"已从父文件夹扫描到 {len(subfolders)} 个子文件夹！", parent=dlg)
-                
+
+                messagebox.showinfo(
+                    "扫描完成",
+                    f"已从父文件夹扫描到 {len(subfolders)} 个子文件夹！",
+                    parent=dlg,
+                )
+
             except Exception as e:
                 messagebox.showerror("错误", f"扫描失败：{str(e)}", parent=dlg)
-        
-        tk.Button(parent_frame, text="浏览", command=pick_parent, width=8).pack(side=LEFT, padx=(8, 4))
-        tk.Button(parent_frame, text="扫描子文件夹", command=scan_subfolders, bg="green", fg="white", width=12).pack(side=LEFT, padx=(4, 0))
+
+        tk.Button(parent_frame, text="浏览", command=pick_parent, width=8).pack(
+            side=LEFT, padx=(8, 4)
+        )
+        tk.Button(
+            parent_frame,
+            text="扫描子文件夹",
+            command=scan_subfolders,
+            bg="green",
+            fg="white",
+            width=12,
+        ).pack(side=LEFT, padx=(4, 0))
 
         # Manual add section
-        tk.Label(frame, text="方式2：手动逐个添加", font=("System", 9, "bold"), fg="gray").pack(anchor="w", pady=(8, 5))
+        tk.Label(
+            frame, text="方式2：手动逐个添加", font=("System", 9, "bold"), fg="gray"
+        ).pack(anchor="w", pady=(8, 5))
 
         # Top section with split layout
         top_frame = tk.Frame(frame)
@@ -4150,11 +5052,15 @@ class OfficeGUI(tb.Window):
         left_frame = tk.Frame(top_frame)
         left_frame.pack(side=LEFT, fill=BOTH, expand=YES)
 
-        folder_listbox = tk.Listbox(left_frame, selectmode=EXTENDED, font=("Consolas", 9))
+        folder_listbox = tk.Listbox(
+            left_frame, selectmode=EXTENDED, font=("Consolas", 9)
+        )
         folder_listbox.pack(side=LEFT, fill=BOTH, expand=YES)
 
         # Scrollbar for listbox
-        list_scroll = tk.Scrollbar(left_frame, orient=VERTICAL, command=folder_listbox.yview)
+        list_scroll = tk.Scrollbar(
+            left_frame, orient=VERTICAL, command=folder_listbox.yview
+        )
         folder_listbox.configure(yscrollcommand=list_scroll.set)
         list_scroll.pack(side=RIGHT, fill=Y)
 
@@ -4162,19 +5068,36 @@ class OfficeGUI(tb.Window):
         btn_frame = tk.Frame(top_frame)
         btn_frame.pack(side=RIGHT, fill=Y, padx=(10, 0))
 
-        tk.Button(btn_frame, text="+ 浏览", width=8, command=lambda: self._task_browse_folder_to_dialog(folder_listbox)).pack(pady=2)
-        
+        tk.Button(
+            btn_frame,
+            text="+ 浏览",
+            width=8,
+            command=lambda: self._task_browse_folder_to_dialog(folder_listbox),
+        ).pack(pady=2)
+
         tk.Label(btn_frame, text="", height=1).pack()  # Spacer
-        
-        tk.Button(btn_frame, text="- 移除", width=8, command=lambda: self._task_remove_from_listbox(folder_listbox)).pack(pady=2)
-        tk.Button(btn_frame, text="C 清空", width=8, command=lambda: self._task_clear_listbox(folder_listbox)).pack(pady=2)
+
+        tk.Button(
+            btn_frame,
+            text="- 移除",
+            width=8,
+            command=lambda: self._task_remove_from_listbox(folder_listbox),
+        ).pack(pady=2)
+        tk.Button(
+            btn_frame,
+            text="C 清空",
+            width=8,
+            command=lambda: self._task_clear_listbox(folder_listbox),
+        ).pack(pady=2)
 
         # Bottom section: Current selected folders info
         bottom_frame = tk.Frame(frame)
         bottom_frame.pack(fill=X, pady=(8, 0))
 
         task_count_var = tk.StringVar()
-        task_count_label = tk.Label(bottom_frame, textvariable=task_count_var, font=("System", 9))
+        task_count_label = tk.Label(
+            bottom_frame, textvariable=task_count_var, font=("System", 9)
+        )
         task_count_label.pack(anchor="w")
 
         # Selection controls
@@ -4183,11 +5106,16 @@ class OfficeGUI(tb.Window):
 
         def select_all():
             folder_listbox.selection_set(0, END)
+
         def deselect_all():
             folder_listbox.selection_clear(0, END)
 
-        tk.Button(check_frame, text="全选", command=select_all, width=8).pack(side=LEFT, padx=(0, 4))
-        tk.Button(check_frame, text="全不选", command=deselect_all, width=8).pack(side=LEFT, padx=4)
+        tk.Button(check_frame, text="全选", command=select_all, width=8).pack(
+            side=LEFT, padx=(0, 4)
+        )
+        tk.Button(check_frame, text="全不选", command=deselect_all, width=8).pack(
+            side=LEFT, padx=4
+        )
 
         # Update initial count
         def update_task_count():
@@ -4198,14 +5126,27 @@ class OfficeGUI(tb.Window):
                 task_count_var.set("已选择 1 个文件夹")
             else:
                 task_count_var.set(f"已选择 {count} 个文件夹")
+
         update_task_count()
 
         # Action buttons
         action_btn_frame = tk.Frame(frame)
         action_btn_frame.pack(fill=X, pady=(10, 0))
 
-        tk.Button(action_btn_frame, text="添加", width=10, command=lambda: self._task_confirm_selection(folder_listbox, target_listbox)).pack(side=LEFT)
-        tk.Button(action_btn_frame, text="取消", width=10, command=lambda: self._close_task_multi_folder_dialog(dlg)).pack(side=RIGHT)
+        tk.Button(
+            action_btn_frame,
+            text="添加",
+            width=10,
+            command=lambda: self._task_confirm_selection(
+                folder_listbox, target_listbox
+            ),
+        ).pack(side=LEFT)
+        tk.Button(
+            action_btn_frame,
+            text="取消",
+            width=10,
+            command=lambda: self._close_task_multi_folder_dialog(dlg),
+        ).pack(side=RIGHT)
 
     def _close_task_multi_folder_dialog(self, dlg):
         """Close the task multi-folder selection dialog."""
@@ -4237,7 +5178,9 @@ class OfficeGUI(tb.Window):
 
     def _task_browse_multiple_to_dialog(self, listbox):
         """Browse for multiple folders using multiple askdirectory calls."""
-        base_dir = filedialog.askdirectory(title=self.tr("msg_task_pick_source") + " (选择第一个文件夹)")
+        base_dir = filedialog.askdirectory(
+            title=self.tr("msg_task_pick_source") + " (选择第一个文件夹)"
+        )
         if not base_dir:
             return
 
@@ -4256,14 +5199,14 @@ class OfficeGUI(tb.Window):
         # Ask if user wants to add more folders
         while True:
             result = messagebox.askyesno(
-                "继续添加",
-                "是否要继续添加更多文件夹？",
-                icon="question"
+                "继续添加", "是否要继续添加更多文件夹？", icon="question"
             )
             if not result:
                 break
 
-            next_dir = filedialog.askdirectory(title=self.tr("msg_task_pick_source") + " (选择下一个文件夹)")
+            next_dir = filedialog.askdirectory(
+                title=self.tr("msg_task_pick_source") + " (选择下一个文件夹)"
+            )
             if not next_dir:
                 break
 
@@ -4301,8 +5244,6 @@ class OfficeGUI(tb.Window):
         if added_count > 0:
             self._close_task_multi_folder_dialog(self._task_multi_folder_dialog)
 
-
-
     def remove_source_folder(self):
         selection = self.lst_source_folders.curselection()
         if not selection:
@@ -4318,12 +5259,10 @@ class OfficeGUI(tb.Window):
         else:
             self.var_source_folder.set("")
 
-
     def clear_source_folders(self):
         self.source_folders_list = []
         self.lst_source_folders.delete(0, END)
         self.var_source_folder.set("")
-
 
     def browse_target(self):
         path = filedialog.askdirectory(title="閫夋嫨鐩爣鐩綍")
@@ -4361,7 +5300,10 @@ class OfficeGUI(tb.Window):
             self.frm_tooltip_advanced.pack_forget()
         except Exception:
             pass
-        if getattr(self, "var_show_tooltip_advanced", None) and self.var_show_tooltip_advanced.get():
+        if (
+            getattr(self, "var_show_tooltip_advanced", None)
+            and self.var_show_tooltip_advanced.get()
+        ):
             self.frm_tooltip_advanced.pack(fill=X, pady=(4, 0))
 
     def _open_path(self, path):
@@ -4377,7 +5319,6 @@ class OfficeGUI(tb.Window):
             except Exception:
                 pass
 
-
     def browse_temp_sandbox_root(self):
         path = filedialog.askdirectory(title="Select temp sandbox root")
         if path:
@@ -4385,6 +5326,329 @@ class OfficeGUI(tb.Window):
 
     def _on_reset_llm_delivery_root(self):
         self.var_llm_delivery_root.set("")
+
+    def _on_open_gdrive_console(self):
+        """在浏览器中打开 Google Cloud 凭据页面，方便用户获取 client_secrets.json。"""
+        webbrowser.open("https://console.cloud.google.com/apis/credentials")
+
+    def _on_open_gdrive_enable_api(self):
+        """在浏览器中打开 Drive API 启用页面，解决 403 accessNotConfigured。"""
+        try:
+            import gdrive_upload as gd
+
+            url = getattr(
+                gd,
+                "DRIVE_API_ENABLE_URL",
+                "https://console.developers.google.com/apis/api/drive.googleapis.com/overview",
+            )
+        except Exception:
+            url = "https://console.developers.google.com/apis/api/drive.googleapis.com/overview"
+        webbrowser.open(url)
+
+    def _on_browse_gdrive_secrets(self):
+        path = filedialog.askopenfilename(
+            title=self.tr("lbl_gdrive_client_secrets_path"),
+            filetypes=[("JSON", "*.json"), ("All", "*.*")],
+        )
+        if path:
+            self.var_gdrive_client_secrets_path.set(path)
+
+    def _on_install_gdrive_deps(self):
+        """后台执行 pip install google-auth-oauthlib google-api-python-client，完成后在主线程弹窗。"""
+        pkgs = ["google-auth-oauthlib", "google-api-python-client"]
+        running_msg = self.tr("msg_gdrive_install_running")
+
+        def run_pip():
+            try:
+                r = subprocess.run(
+                    [sys.executable, "-m", "pip", "install", "-q"] + pkgs,
+                    capture_output=True,
+                    text=True,
+                    timeout=120,
+                )
+                err = (r.stderr or "").strip() if r.stderr else ""
+                out = (r.stdout or "").strip() if r.stdout else ""
+                if r.returncode != 0:
+                    detail = err or out or str(r.returncode)
+                    self.after(
+                        0,
+                        lambda: messagebox.showerror(
+                            self.tr("msg_gdrive_install_failed"),
+                            self.tr("msg_gdrive_install_failed_detail").format(
+                                detail=detail
+                            ),
+                            parent=self,
+                        ),
+                    )
+                else:
+
+                    def on_ok():
+                        messagebox.showinfo(
+                            self.tr("msg_gdrive_install_ok"),
+                            self.tr("msg_gdrive_install_ok_detail"),
+                            parent=self,
+                        )
+                        # 安装成功后尝试重新启用 GDrive 控件（无需重启）
+                        try:
+                            import importlib
+                            import gdrive_upload as _gd
+
+                            importlib.reload(_gd)
+                            if getattr(_gd, "HAS_GDEPEND", False):
+                                for w in (
+                                    self.chk_enable_gdrive_upload,
+                                    self.entry_gdrive_client_secrets_path,
+                                    self.btn_gdrive_open_console,
+                                    self.btn_gdrive_enable_api,
+                                    self.btn_browse_gdrive_secrets,
+                                    self.entry_gdrive_folder_id,
+                                    self.btn_upload_to_gdrive,
+                                    self.btn_fetch_gdrive_structure,
+                                ):
+                                    try:
+                                        w.configure(state="normal")
+                                    except Exception:
+                                        pass
+                        except Exception:
+                            pass
+
+                    self.after(0, on_ok)
+            except subprocess.TimeoutExpired:
+                self.after(
+                    0,
+                    lambda: messagebox.showerror(
+                        self.tr("msg_gdrive_install_failed"),
+                        self.tr("msg_gdrive_install_timeout"),
+                        parent=self,
+                    ),
+                )
+            except Exception as e:
+                self.after(
+                    0,
+                    lambda: messagebox.showerror(
+                        self.tr("msg_gdrive_install_failed"),
+                        str(e),
+                        parent=self,
+                    ),
+                )
+
+        messagebox.showinfo(
+            self.tr("lbl_gdrive_install_title"),
+            running_msg,
+            parent=self,
+        )
+        t = threading.Thread(target=run_pip, daemon=True)
+        t.start()
+
+    def _on_fetch_gdrive_structure(self):
+        """后台上拉远程目录结构，在独立窗口显示，便于测试。"""
+        try:
+            import gdrive_upload as gd
+        except ImportError:
+            messagebox.showerror(
+                self.tr("msg_gdrive_upload_failed"),
+                self.tr("msg_gdrive_no_deps"),
+                parent=self,
+            )
+            return
+        if not getattr(gd, "HAS_GDEPEND", True):
+            messagebox.showerror(
+                self.tr("msg_gdrive_upload_failed"),
+                self.tr("msg_gdrive_no_deps"),
+                parent=self,
+            )
+            return
+        client_secrets = (self.var_gdrive_client_secrets_path.get() or "").strip()
+        if not client_secrets:
+            messagebox.showwarning(
+                self.tr("msg_gdrive_upload_failed"),
+                self.tr("msg_gdrive_no_secrets"),
+                parent=self,
+            )
+            return
+        folder_id = (self.var_gdrive_folder_id.get() or "").strip() or None
+
+        def do_fetch():
+            creds, err = gd.ensure_credentials(client_secrets, token_path=None)
+            if err:
+                self.after(0, lambda: self._gdrive_structure_done(None, err))
+                return
+            text, err = gd.list_remote_folder_structure(creds, folder_id)
+            self.after(0, lambda: self._gdrive_structure_done(text, err))
+
+        self.btn_fetch_gdrive_structure.configure(state="disabled")
+        threading.Thread(target=do_fetch, daemon=True).start()
+
+    def _gdrive_structure_done(self, text, err):
+        """显示远程目录结构结果：错误弹窗或独立窗口；支持设为目标文件夹、在浏览器中打开。"""
+        try:
+            self.btn_fetch_gdrive_structure.configure(state="normal")
+        except Exception:
+            pass
+        if err:
+            messagebox.showerror(
+                self.tr("title_gdrive_structure"),
+                err,
+                parent=self,
+            )
+            return
+        if not text:
+            return
+        try:
+            win = tk.Toplevel(self)
+            win.title(self.tr("title_gdrive_structure"))
+            win.geometry("720x560")
+            try:
+                from ttkbootstrap.widgets.scrolled import ScrolledText as ST
+            except Exception:
+                from tkinter.scrolledtext import ScrolledText as ST
+            txt = ST(win, height=26, wrap=tk.WORD, font=("Consolas", 9))
+            txt.pack(fill=tk.BOTH, expand=True, padx=8, pady=(8, 4))
+            txt.insert(tk.END, text)
+            # 保持可选以便「设为目标文件夹」/「在浏览器中打开」从选中行取 ID
+            frm_actions = tb.Frame(win)
+            frm_actions.pack(fill=tk.X, padx=8, pady=(0, 8))
+
+            def _get_id_from_selection():
+                try:
+                    sel = txt.get(tk.SEL_FIRST, tk.SEL_LAST)
+                except tk.TclError:
+                    return None
+                if not sel or not sel.strip():
+                    return None
+                # 从选中文本中取最后一个 [id]（Drive ID 为字母数字与 -_）
+                matches = re.findall(r"\[([a-zA-Z0-9_-]+)\]", sel)
+                return matches[-1] if matches else None
+
+            def _on_set_as_target():
+                fid = _get_id_from_selection()
+                if not fid:
+                    messagebox.showwarning(
+                        self.tr("title_gdrive_structure"),
+                        self.tr("msg_gdrive_select_line"),
+                        parent=win,
+                    )
+                    return
+                self.var_gdrive_folder_id.set(fid)
+                messagebox.showinfo(
+                    self.tr("title_gdrive_structure"),
+                    self.tr("msg_gdrive_target_set").format(folder_id=fid),
+                    parent=win,
+                )
+
+            def _on_open_in_browser():
+                fid = _get_id_from_selection()
+                if not fid:
+                    messagebox.showwarning(
+                        self.tr("title_gdrive_structure"),
+                        self.tr("msg_gdrive_select_line"),
+                        parent=win,
+                    )
+                    return
+                webbrowser.open("https://drive.google.com/drive/folders/" + fid)
+
+            tb.Button(
+                frm_actions,
+                text=self.tr("btn_gdrive_set_target"),
+                bootstyle="primary-outline",
+                command=_on_set_as_target,
+            ).pack(side=tk.LEFT, padx=(0, 8))
+            tb.Button(
+                frm_actions,
+                text=self.tr("btn_gdrive_open_in_browser"),
+                bootstyle="secondary-outline",
+                command=_on_open_in_browser,
+            ).pack(side=tk.LEFT)
+        except Exception as e:
+            messagebox.showerror(
+                self.tr("title_gdrive_structure"),
+                "显示结果失败: " + str(e),
+                parent=self,
+            )
+
+    def _on_upload_llm_to_gdrive(self):
+        """将 _LLM_UPLOAD 目录上传到 Google Drive（后台上传，避免界面卡顿）。"""
+        try:
+            import gdrive_upload as gd
+        except ImportError:
+            messagebox.showerror(
+                self.tr("msg_gdrive_upload_failed"),
+                self.tr("msg_gdrive_no_deps"),
+                parent=self,
+            )
+            return
+        if not getattr(gd, "HAS_GDEPEND", True):
+            messagebox.showerror(
+                self.tr("msg_gdrive_upload_failed"),
+                self.tr("msg_gdrive_no_deps"),
+                parent=self,
+            )
+            return
+        llm_root = (self.var_llm_delivery_root.get() or "").strip()
+        if not llm_root:
+            tgt = (self.var_target_folder.get() or "").strip()
+            llm_root = os.path.join(tgt, "_LLM_UPLOAD") if tgt else ""
+        if not llm_root or not os.path.isdir(llm_root):
+            messagebox.showwarning(
+                self.tr("msg_gdrive_upload_failed"),
+                self.tr("msg_gdrive_no_llm_folder"),
+                parent=self,
+            )
+            return
+        client_secrets = (self.var_gdrive_client_secrets_path.get() or "").strip()
+        if not client_secrets:
+            messagebox.showwarning(
+                self.tr("msg_gdrive_upload_failed"),
+                self.tr("msg_gdrive_no_secrets"),
+                parent=self,
+            )
+            return
+        folder_id = (self.var_gdrive_folder_id.get() or "").strip() or None
+
+        # 后台上传，避免 OAuth 与上传时界面卡死
+        def do_upload():
+            creds, err = gd.ensure_credentials(client_secrets, token_path=None)
+            if err:
+                self.after(0, lambda: self._gdrive_upload_done(None, err))
+                return
+            result, err = gd.upload_llm_folder_to_drive(llm_root, creds, folder_id)
+            if result:
+                manifest_path = os.path.join(llm_root, "llm_upload_manifest.json")
+                gd.update_manifest_gdrive_section(manifest_path, result)
+            self.after(0, lambda: self._gdrive_upload_done(result, err))
+
+        self.btn_upload_to_gdrive.configure(state="disabled")
+        # 不阻塞：后台上传，OAuth 会自行打开浏览器；完成后 _gdrive_upload_done 弹窗并恢复按钮
+        threading.Thread(target=do_upload, daemon=True).start()
+
+    def _gdrive_upload_done(self, result, err):
+        """上传完成回调：恢复按钮并弹窗结果。"""
+        try:
+            self.btn_upload_to_gdrive.configure(state="normal")
+        except Exception:
+            pass
+        if err and not result:
+            messagebox.showerror(self.tr("msg_gdrive_upload_failed"), err, parent=self)
+            return
+        if result:
+            fid = result.get("folder_id", "")
+            detail = self.tr("msg_gdrive_upload_success_detail").format(
+                file_count=result.get("file_count", 0),
+                folder_id=fid,
+            )
+            if fid:
+                detail += "\n\n" + self.tr("msg_gdrive_folder_link").format(
+                    folder_id=fid
+                )
+            messagebox.showinfo(
+                self.tr("msg_gdrive_upload_success"),
+                detail,
+                parent=self,
+            )
+        if err:
+            messagebox.showwarning(
+                self.tr("msg_gdrive_upload_failed"), err, parent=self
+            )
 
     def browse_log_folder(self):
         path = filedialog.askdirectory(title="閫夋嫨鏃ュ織鐩綍")
@@ -4459,10 +5723,9 @@ class OfficeGUI(tb.Window):
                 continue
             name = str(rec.get("name", "")).strip() or os.path.splitext(file_name)[0]
             note = str(rec.get("note", "")).strip()
-            updated_at = (
-                str(rec.get("updated_at", "")).strip()
-                or self._profile_file_mtime(abs_path)
-            )
+            updated_at = str(
+                rec.get("updated_at", "")
+            ).strip() or self._profile_file_mtime(abs_path)
             records.append(
                 {
                     "id": str(rec.get("id", "")).strip()
@@ -4517,7 +5780,9 @@ class OfficeGUI(tb.Window):
                 }
             )
         with open(index_path, "w", encoding="utf-8") as f:
-            json.dump({"version": 1, "profiles": out_records}, f, indent=4, ensure_ascii=False)
+            json.dump(
+                {"version": 1, "profiles": out_records}, f, indent=4, ensure_ascii=False
+            )
 
     def _get_selected_profile_record(self):
         if self.profile_tree is None or not self.profile_tree.winfo_exists():
@@ -4528,12 +5793,21 @@ class OfficeGUI(tb.Window):
         return self._profile_tree_rows.get(selection[0])
 
     def _update_profile_manager_controls(self):
-        if self.profile_manager_win is None or not self.profile_manager_win.winfo_exists():
+        if (
+            self.profile_manager_win is None
+            or not self.profile_manager_win.winfo_exists()
+        ):
             return
         has_selected = self._get_selected_profile_record() is not None
         base_state = "disabled" if self._ui_running else "normal"
-        selected_state = "disabled" if (self._ui_running or not has_selected) else "normal"
-        for btn_name in ("btn_profile_new", "btn_profile_refresh", "btn_profile_open_dir"):
+        selected_state = (
+            "disabled" if (self._ui_running or not has_selected) else "normal"
+        )
+        for btn_name in (
+            "btn_profile_new",
+            "btn_profile_refresh",
+            "btn_profile_open_dir",
+        ):
             btn = getattr(self, btn_name, None)
             if btn is not None and btn.winfo_exists():
                 btn.configure(state=base_state)
@@ -4587,7 +5861,10 @@ class OfficeGUI(tb.Window):
         self._update_profile_manager_controls()
 
     def _close_profile_manager_window(self):
-        if self.profile_manager_win is not None and self.profile_manager_win.winfo_exists():
+        if (
+            self.profile_manager_win is not None
+            and self.profile_manager_win.winfo_exists()
+        ):
             try:
                 self.profile_manager_win.destroy()
             except Exception:
@@ -4597,7 +5874,10 @@ class OfficeGUI(tb.Window):
         self._profile_tree_rows = {}
 
     def open_profile_manager_window(self):
-        if self.profile_manager_win is not None and self.profile_manager_win.winfo_exists():
+        if (
+            self.profile_manager_win is not None
+            and self.profile_manager_win.winfo_exists()
+        ):
             self.profile_manager_win.lift()
             self.profile_manager_win.focus_force()
             self._refresh_profile_tree()
@@ -4647,9 +5927,7 @@ class OfficeGUI(tb.Window):
         scr_x = tb.Scrollbar(
             tree_frame, orient=HORIZONTAL, command=self.profile_tree.xview
         )
-        self.profile_tree.configure(
-            yscrollcommand=scr_y.set, xscrollcommand=scr_x.set
-        )
+        self.profile_tree.configure(yscrollcommand=scr_y.set, xscrollcommand=scr_x.set)
         self.profile_tree.pack(side=LEFT, fill=BOTH, expand=YES)
         scr_y.pack(side=RIGHT, fill=Y)
         scr_x.pack(side=BOTTOM, fill=X)
@@ -4739,7 +6017,9 @@ class OfficeGUI(tb.Window):
         profile_note = str(note or "").strip()
         records = self._load_profile_records()
         file_name = self._next_profile_filename(profile_name, records)
-        payload = self._compose_config_from_ui(self._load_config_for_write(), scope="all")
+        payload = self._compose_config_from_ui(
+            self._load_config_for_write(), scope="all"
+        )
         profile_path = self._profile_abs_path(file_name)
         try:
             with open(profile_path, "w", encoding="utf-8") as f:
@@ -4755,9 +6035,15 @@ class OfficeGUI(tb.Window):
                 },
             )
             self._save_profile_records(records)
-            if self.profile_manager_win is not None and self.profile_manager_win.winfo_exists():
+            if (
+                self.profile_manager_win is not None
+                and self.profile_manager_win.winfo_exists()
+            ):
                 self._refresh_profile_tree(select_file=file_name)
-            if self.load_profile_dialog is not None and self.load_profile_dialog.winfo_exists():
+            if (
+                self.load_profile_dialog is not None
+                and self.load_profile_dialog.winfo_exists()
+            ):
                 self._refresh_load_profile_tree(select_file=file_name)
             msg = self.tr("msg_profile_create_ok").format(profile_name)
             if show_msg:
@@ -4769,7 +6055,9 @@ class OfficeGUI(tb.Window):
             return True
         except Exception as e:
             if show_msg:
-                messagebox.showerror(self.tr("btn_save_cfg"), self.tr("msg_save_fail").format(e))
+                messagebox.showerror(
+                    self.tr("btn_save_cfg"), self.tr("msg_save_fail").format(e)
+                )
             return False
 
     def _load_profile_record(self, rec, confirm_dirty=True, show_msg=False):
@@ -4799,9 +6087,15 @@ class OfficeGUI(tb.Window):
                 self.var_config_path.set(self.config_path)
             self.var_profile_active_path.set(self.config_path)
             self._load_config_to_ui()
-            if self.profile_manager_win is not None and self.profile_manager_win.winfo_exists():
+            if (
+                self.profile_manager_win is not None
+                and self.profile_manager_win.winfo_exists()
+            ):
                 self._refresh_profile_tree(select_file=rec.get("file", ""))
-            if self.load_profile_dialog is not None and self.load_profile_dialog.winfo_exists():
+            if (
+                self.load_profile_dialog is not None
+                and self.load_profile_dialog.winfo_exists()
+            ):
                 self._refresh_load_profile_tree(select_file=rec.get("file", ""))
             msg = self.tr("msg_profile_load_ok").format(rec.get("name", ""))
             if show_msg:
@@ -4820,7 +6114,8 @@ class OfficeGUI(tb.Window):
     def _create_profile_from_current(self):
         parent = (
             self.profile_manager_win
-            if self.profile_manager_win is not None and self.profile_manager_win.winfo_exists()
+            if self.profile_manager_win is not None
+            and self.profile_manager_win.winfo_exists()
             else self
         )
         default_name = self._build_default_profile_name()
@@ -4866,7 +6161,9 @@ class OfficeGUI(tb.Window):
         profile_path = rec.get("abs_path", "")
         if not profile_path:
             return
-        payload = self._compose_config_from_ui(self._load_config_for_write(), scope="all")
+        payload = self._compose_config_from_ui(
+            self._load_config_for_write(), scope="all"
+        )
         records = self._load_profile_records()
         try:
             with open(profile_path, "w", encoding="utf-8") as f:
@@ -4896,7 +6193,8 @@ class OfficeGUI(tb.Window):
             return
         parent = (
             self.profile_manager_win
-            if self.profile_manager_win is not None and self.profile_manager_win.winfo_exists()
+            if self.profile_manager_win is not None
+            and self.profile_manager_win.winfo_exists()
             else self
         )
         new_name = simpledialog.askstring(
@@ -4953,7 +6251,8 @@ class OfficeGUI(tb.Window):
             return
         parent = (
             self.profile_manager_win
-            if self.profile_manager_win is not None and self.profile_manager_win.winfo_exists()
+            if self.profile_manager_win is not None
+            and self.profile_manager_win.winfo_exists()
             else self
         )
         note = simpledialog.askstring(
@@ -5008,9 +6307,7 @@ class OfficeGUI(tb.Window):
             if os.path.exists(profile_path):
                 os.remove(profile_path)
             records = [
-                item
-                for item in records
-                if item.get("file", "") != rec.get("file", "")
+                item for item in records if item.get("file", "") != rec.get("file", "")
             ]
             self._save_profile_records(records)
             self._refresh_profile_tree()
@@ -5029,7 +6326,10 @@ class OfficeGUI(tb.Window):
         self._open_path(self._profiles_dir())
 
     def _close_save_profile_dialog(self):
-        if self.save_profile_dialog is not None and self.save_profile_dialog.winfo_exists():
+        if (
+            self.save_profile_dialog is not None
+            and self.save_profile_dialog.winfo_exists()
+        ):
             try:
                 if self.save_profile_dialog.grab_current() == self.save_profile_dialog:
                     self.save_profile_dialog.grab_release()
@@ -5057,7 +6357,10 @@ class OfficeGUI(tb.Window):
     def open_save_profile_dialog(self):
         if self._ui_running:
             return
-        if self.save_profile_dialog is not None and self.save_profile_dialog.winfo_exists():
+        if (
+            self.save_profile_dialog is not None
+            and self.save_profile_dialog.winfo_exists()
+        ):
             self._place_dialog_in_main(self.save_profile_dialog, 520, 220)
             self.save_profile_dialog.lift()
             self.save_profile_dialog.focus_force()
@@ -5074,14 +6377,20 @@ class OfficeGUI(tb.Window):
 
         frame = tb.Frame(dlg, padding=12)
         frame.pack(fill=BOTH, expand=YES)
-        tb.Label(frame, text=self.tr("lbl_profile_name"), font=("System", 9, "bold")).pack(anchor="w")
-        self.var_save_profile_name = tk.StringVar(value=self._build_default_profile_name())
+        tb.Label(
+            frame, text=self.tr("lbl_profile_name"), font=("System", 9, "bold")
+        ).pack(anchor="w")
+        self.var_save_profile_name = tk.StringVar(
+            value=self._build_default_profile_name()
+        )
         ent_name = tb.Entry(frame, textvariable=self.var_save_profile_name)
         ent_name.pack(fill=X, pady=(2, 10))
         ent_name.focus_set()
         ent_name.selection_range(0, END)
 
-        tb.Label(frame, text=self.tr("lbl_profile_note"), font=("System", 9, "bold")).pack(anchor="w")
+        tb.Label(
+            frame, text=self.tr("lbl_profile_note"), font=("System", 9, "bold")
+        ).pack(anchor="w")
         self.var_save_profile_note = tk.StringVar(value="")
         ent_note = tb.Entry(frame, textvariable=self.var_save_profile_note)
         ent_note.pack(fill=X, pady=(2, 12))
@@ -5107,16 +6416,29 @@ class OfficeGUI(tb.Window):
         self._update_profile_dialog_controls()
 
     def _confirm_save_profile_dialog(self):
-        name = self.var_save_profile_name.get().strip() if hasattr(self, "var_save_profile_name") else ""
-        note = self.var_save_profile_note.get().strip() if hasattr(self, "var_save_profile_note") else ""
+        name = (
+            self.var_save_profile_name.get().strip()
+            if hasattr(self, "var_save_profile_name")
+            else ""
+        )
+        note = (
+            self.var_save_profile_note.get().strip()
+            if hasattr(self, "var_save_profile_note")
+            else ""
+        )
         if not name:
-            messagebox.showwarning(self.tr("btn_save_cfg"), self.tr("msg_profile_name_required"))
+            messagebox.showwarning(
+                self.tr("btn_save_cfg"), self.tr("msg_profile_name_required")
+            )
             return
         if self._save_profile_with_meta(name, note, show_msg=True):
             self._close_save_profile_dialog()
 
     def _close_load_profile_dialog(self):
-        if self.load_profile_dialog is not None and self.load_profile_dialog.winfo_exists():
+        if (
+            self.load_profile_dialog is not None
+            and self.load_profile_dialog.winfo_exists()
+        ):
             try:
                 if self.load_profile_dialog.grab_current() == self.load_profile_dialog:
                     self.load_profile_dialog.grab_release()
@@ -5175,7 +6497,10 @@ class OfficeGUI(tb.Window):
     def open_load_profile_dialog(self):
         if self._ui_running:
             return
-        if self.load_profile_dialog is not None and self.load_profile_dialog.winfo_exists():
+        if (
+            self.load_profile_dialog is not None
+            and self.load_profile_dialog.winfo_exists()
+        ):
             self._place_dialog_in_main(self.load_profile_dialog, 860, 460)
             self.load_profile_dialog.lift()
             self.load_profile_dialog.focus_force()
@@ -5193,7 +6518,9 @@ class OfficeGUI(tb.Window):
 
         root = tb.Frame(dlg, padding=10)
         root.pack(fill=BOTH, expand=YES)
-        tb.Label(root, text=self.tr("lbl_profile_select"), font=("System", 9, "bold")).pack(anchor="w", pady=(0, 6))
+        tb.Label(
+            root, text=self.tr("lbl_profile_select"), font=("System", 9, "bold")
+        ).pack(anchor="w", pady=(0, 6))
 
         tree_frame = tb.Frame(root)
         tree_frame.pack(fill=BOTH, expand=YES)
@@ -5209,13 +6536,21 @@ class OfficeGUI(tb.Window):
         self.load_profile_tree.column("file", width=220, anchor="w")
         self.load_profile_tree.column("note", width=300, anchor="w")
         self.load_profile_tree.column("updated", width=140, anchor="center")
-        scr_y = tb.Scrollbar(tree_frame, orient=VERTICAL, command=self.load_profile_tree.yview)
-        scr_x = tb.Scrollbar(tree_frame, orient=HORIZONTAL, command=self.load_profile_tree.xview)
-        self.load_profile_tree.configure(yscrollcommand=scr_y.set, xscrollcommand=scr_x.set)
+        scr_y = tb.Scrollbar(
+            tree_frame, orient=VERTICAL, command=self.load_profile_tree.yview
+        )
+        scr_x = tb.Scrollbar(
+            tree_frame, orient=HORIZONTAL, command=self.load_profile_tree.xview
+        )
+        self.load_profile_tree.configure(
+            yscrollcommand=scr_y.set, xscrollcommand=scr_x.set
+        )
         self.load_profile_tree.pack(side=LEFT, fill=BOTH, expand=YES)
         scr_y.pack(side=RIGHT, fill=Y)
         scr_x.pack(side=BOTTOM, fill=X)
-        self.load_profile_tree.bind("<<TreeviewSelect>>", lambda _e: self._update_profile_dialog_controls())
+        self.load_profile_tree.bind(
+            "<<TreeviewSelect>>", lambda _e: self._update_profile_dialog_controls()
+        )
 
         btn_row = tb.Frame(root)
         btn_row.pack(fill=X, pady=(8, 0))
@@ -5260,14 +6595,22 @@ class OfficeGUI(tb.Window):
 
     def _update_profile_dialog_controls(self):
         state_base = "disabled" if self._ui_running else "normal"
-        if self.save_profile_dialog is not None and self.save_profile_dialog.winfo_exists():
+        if (
+            self.save_profile_dialog is not None
+            and self.save_profile_dialog.winfo_exists()
+        ):
             for btn_name in ("btn_save_profile_confirm", "btn_save_profile_cancel"):
                 btn = getattr(self, btn_name, None)
                 if btn is not None and btn.winfo_exists():
                     btn.configure(state=state_base)
-        if self.load_profile_dialog is not None and self.load_profile_dialog.winfo_exists():
+        if (
+            self.load_profile_dialog is not None
+            and self.load_profile_dialog.winfo_exists()
+        ):
             selected = self._get_selected_load_profile_record() is not None
-            confirm_state = "disabled" if (self._ui_running or not selected) else "normal"
+            confirm_state = (
+                "disabled" if (self._ui_running or not selected) else "normal"
+            )
             btn = getattr(self, "btn_load_profile_confirm", None)
             if btn is not None and btn.winfo_exists():
                 btn.configure(state=confirm_state)
@@ -5327,7 +6670,9 @@ class OfficeGUI(tb.Window):
                 self.var_locator_merged.set(merged_names[0])
         else:
             self.var_locator_merged.set("")
-        self.var_locator_result.set(self.tr("msg_locator_loaded_maps").format(len(merged_names)))
+        self.var_locator_result.set(
+            self.tr("msg_locator_loaded_maps").format(len(merged_names))
+        )
 
     def run_locator_query(self):
         if not self.validate_runtime_inputs(silent=False, scope="locator"):
@@ -5391,7 +6736,8 @@ class OfficeGUI(tb.Window):
         if result.record:
             self.last_locate_record = result.record
             self.var_locator_result.set(
-                priority_note + self.tr("msg_locator_hit").format(
+                priority_note
+                + self.tr("msg_locator_hit").format(
                     result.record.source_filename,
                     result.record.start_page_1based,
                     result.record.end_page_1based,
@@ -5407,11 +6753,18 @@ class OfficeGUI(tb.Window):
         self._set_locator_action_state(False)
         if result.alternatives:
             alt = ", ".join(
-                [f"{x.source_filename}({x.start_page_1based}-{x.end_page_1based})" for x in result.alternatives[:2]]
+                [
+                    f"{x.source_filename}({x.start_page_1based}-{x.end_page_1based})"
+                    for x in result.alternatives[:2]
+                ]
             )
-            self.var_locator_result.set(priority_note + self.tr("msg_locator_miss_alt").format(alt))
+            self.var_locator_result.set(
+                priority_note + self.tr("msg_locator_miss_alt").format(alt)
+            )
         else:
-            self.var_locator_result.set(priority_note + self.tr("msg_locator_status").format(result.status))
+            self.var_locator_result.set(
+                priority_note + self.tr("msg_locator_status").format(result.status)
+            )
 
     def open_locator_file(self):
         if not self.last_locate_record:
@@ -5419,7 +6772,9 @@ class OfficeGUI(tb.Window):
             return
         path = self.last_locate_record.source_abspath
         if not os.path.exists(path):
-            self.var_locator_result.set(self.tr("msg_locator_file_missing").format(path))
+            self.var_locator_result.set(
+                self.tr("msg_locator_file_missing").format(path)
+            )
             return
         self._open_path(path)
 
@@ -5430,7 +6785,9 @@ class OfficeGUI(tb.Window):
         path = self.last_locate_record.source_abspath
         folder = os.path.dirname(path)
         if not os.path.isdir(folder):
-            self.var_locator_result.set(self.tr("msg_locator_dir_missing").format(folder))
+            self.var_locator_result.set(
+                self.tr("msg_locator_dir_missing").format(folder)
+            )
             return
         if sys.platform == "win32":
             subprocess.run(["explorer", "/select,", path], check=False)
@@ -5448,18 +6805,26 @@ class OfficeGUI(tb.Window):
 
         es_path = self._read_config_value(["everything", "es_path"], "")
         timeout_ms = self._read_config_value(["everything", "timeout_ms"], 1500)
-        prefer_path_exact = self._read_config_value(["everything", "prefer_path_exact"], True)
+        prefer_path_exact = self._read_config_value(
+            ["everything", "prefer_path_exact"], True
+        )
         adapter = EverythingAdapter(es_path=es_path, timeout_ms=int(timeout_ms))
         if not adapter.is_available():
             self.var_locator_result.set(self.tr("msg_locator_everything_notfound"))
             return
 
-        directory = os.path.dirname(self.last_locate_record.source_abspath) if prefer_path_exact else ""
+        directory = (
+            os.path.dirname(self.last_locate_record.source_abspath)
+            if prefer_path_exact
+            else ""
+        )
         ret = adapter.run_query(self.last_locate_record.source_filename, directory)
         if ret.ok:
             self.var_locator_result.set(self.tr("msg_locator_everything_ok"))
         else:
-            self.var_locator_result.set(self.tr("msg_locator_everything_fail").format(ret.stderr))
+            self.var_locator_result.set(
+                self.tr("msg_locator_everything_fail").format(ret.stderr)
+            )
 
     def copy_listary_query(self, silent=False):
         if not self.last_locate_record:
@@ -5579,6 +6944,9 @@ class OfficeGUI(tb.Window):
                 "llm_delivery_root",
                 "llm_delivery_flatten",
                 "llm_delivery_include_pdf",
+                "enable_gdrive_upload",
+                "gdrive_client_secrets_path",
+                "gdrive_folder_id",
                 "mshelpviewer_folder_name",
                 "enable_mshelp_merge_output",
                 "enable_mshelp_output_docx",
@@ -5692,9 +7060,7 @@ class OfficeGUI(tb.Window):
             self.var_enable_sandbox.set(
                 1 if snapshot.get("enable_sandbox", True) else 0
             )
-            self.var_temp_sandbox_root.set(
-                snapshot.get("temp_sandbox_root", "") or ""
-            )
+            self.var_temp_sandbox_root.set(snapshot.get("temp_sandbox_root", "") or "")
             self.var_sandbox_min_free_gb.set(
                 str(snapshot.get("sandbox_min_free_gb", 10))
             )
@@ -5706,7 +7072,9 @@ class OfficeGUI(tb.Window):
             self.var_enable_corpus_manifest.set(
                 1 if snapshot.get("enable_corpus_manifest", True) else 0
             )
-            self.var_enable_markdown.set(1 if snapshot.get("enable_markdown", True) else 0)
+            self.var_enable_markdown.set(
+                1 if snapshot.get("enable_markdown", True) else 0
+            )
             self.var_markdown_strip_header_footer.set(
                 1 if snapshot.get("markdown_strip_header_footer", True) else 0
             )
@@ -5725,9 +7093,7 @@ class OfficeGUI(tb.Window):
             self.var_enable_llm_delivery_hub.set(
                 1 if snapshot.get("enable_llm_delivery_hub", True) else 0
             )
-            self.var_llm_delivery_root.set(
-                snapshot.get("llm_delivery_root", "") or ""
-            )
+            self.var_llm_delivery_root.set(snapshot.get("llm_delivery_root", "") or "")
             self.var_llm_delivery_flatten.set(
                 1 if snapshot.get("llm_delivery_flatten", False) else 0
             )
@@ -5743,8 +7109,18 @@ class OfficeGUI(tb.Window):
             self.var_upload_dedup_merged.set(
                 1 if snapshot.get("upload_dedup_merged", True) else 0
             )
+            self.var_enable_gdrive_upload.set(
+                1 if snapshot.get("enable_gdrive_upload", False) else 0
+            )
+            self.var_gdrive_client_secrets_path.set(
+                snapshot.get("gdrive_client_secrets_path", "") or ""
+            )
+            self.var_gdrive_folder_id.set(snapshot.get("gdrive_folder_id", "") or "")
             self.var_mshelpviewer_folder_name.set(
-                str(snapshot.get("mshelpviewer_folder_name", "MSHelpViewer") or "MSHelpViewer")
+                str(
+                    snapshot.get("mshelpviewer_folder_name", "MSHelpViewer")
+                    or "MSHelpViewer"
+                )
             )
             self.var_enable_mshelp_merge_output.set(
                 1 if snapshot.get("enable_mshelp_merge_output", True) else 0
@@ -5804,7 +7180,8 @@ class OfficeGUI(tb.Window):
             )
             self.var_max_merge_size_mb.set(str(snapshot.get("max_merge_size_mb", 80)))
             self.var_merge_filename_pattern.set(
-                snapshot.get("merge_filename_pattern") or "Merged_{category}_{timestamp}_{idx}"
+                snapshot.get("merge_filename_pattern")
+                or "Merged_{category}_{timestamp}_{idx}"
             )
         if "rules" in sections:
             self._set_text_widget_lines(
@@ -5814,12 +7191,22 @@ class OfficeGUI(tb.Window):
                 self.txt_price_keywords, snapshot.get("price_keywords", [])
             )
         if "ui" in sections:
-            ui_snapshot = snapshot.get("ui", {}) if isinstance(snapshot.get("ui"), dict) else {}
+            ui_snapshot = (
+                snapshot.get("ui", {}) if isinstance(snapshot.get("ui"), dict) else {}
+            )
             self.var_tooltip_delay_ms.set(
-                str(ui_snapshot.get("tooltip_delay_ms", self.TOOLTIP_DEFAULTS["tooltip_delay_ms"]))
+                str(
+                    ui_snapshot.get(
+                        "tooltip_delay_ms", self.TOOLTIP_DEFAULTS["tooltip_delay_ms"]
+                    )
+                )
             )
             self.var_tooltip_font_size.set(
-                str(ui_snapshot.get("tooltip_font_size", self.TOOLTIP_DEFAULTS["tooltip_font_size"]))
+                str(
+                    ui_snapshot.get(
+                        "tooltip_font_size", self.TOOLTIP_DEFAULTS["tooltip_font_size"]
+                    )
+                )
             )
             self.var_tooltip_bg.set(
                 ui_snapshot.get("tooltip_bg", self.TOOLTIP_DEFAULTS["tooltip_bg"])
@@ -5858,9 +7245,8 @@ class OfficeGUI(tb.Window):
             return
         section_titles = self._get_cfg_section_titles(dirty_sections)
         section_text = ", ".join(section_titles)
-        need_confirm = (
-            hasattr(self, "var_confirm_revert_dirty")
-            and bool(self.var_confirm_revert_dirty.get())
+        need_confirm = hasattr(self, "var_confirm_revert_dirty") and bool(
+            self.var_confirm_revert_dirty.get()
         )
         if show_msg and need_confirm:
             confirm = messagebox.askyesno(
@@ -5978,14 +7364,13 @@ class OfficeGUI(tb.Window):
             "sandbox_min_free_gb": self._safe_positive_int(
                 self.var_sandbox_min_free_gb.get(), 10
             ),
-            "sandbox_low_space_policy": self.var_sandbox_low_space_policy.get() or "block",
+            "sandbox_low_space_policy": self.var_sandbox_low_space_policy.get()
+            or "block",
             "enable_merge": bool(self.var_enable_merge.get()),
             "output_enable_pdf": bool(self.var_output_enable_pdf.get()),
             "output_enable_md": bool(self.var_output_enable_md.get()),
             "output_enable_merged": bool(self.var_output_enable_merged.get()),
-            "output_enable_independent": bool(
-                self.var_output_enable_independent.get()
-            ),
+            "output_enable_independent": bool(self.var_output_enable_independent.get()),
             "merge_convert_submode": self.var_merge_convert_submode.get(),
             "merge_mode": self.var_merge_mode.get(),
             "merge_source": self.var_merge_source.get(),
@@ -6013,6 +7398,9 @@ class OfficeGUI(tb.Window):
             "llm_delivery_root": self.var_llm_delivery_root.get().strip(),
             "llm_delivery_flatten": bool(self.var_llm_delivery_flatten.get()),
             "llm_delivery_include_pdf": bool(self.var_llm_delivery_include_pdf.get()),
+            "enable_gdrive_upload": bool(self.var_enable_gdrive_upload.get()),
+            "gdrive_client_secrets_path": self.var_gdrive_client_secrets_path.get().strip(),
+            "gdrive_folder_id": self.var_gdrive_folder_id.get().strip(),
             "mshelpviewer_folder_name": str(
                 self.var_mshelpviewer_folder_name.get()
             ).strip()
@@ -6020,12 +7408,8 @@ class OfficeGUI(tb.Window):
             "enable_mshelp_merge_output": bool(
                 self.var_enable_mshelp_merge_output.get()
             ),
-            "enable_mshelp_output_docx": bool(
-                self.var_enable_mshelp_output_docx.get()
-            ),
-            "enable_mshelp_output_pdf": bool(
-                self.var_enable_mshelp_output_pdf.get()
-            ),
+            "enable_mshelp_output_docx": bool(self.var_enable_mshelp_output_docx.get()),
+            "enable_mshelp_output_pdf": bool(self.var_enable_mshelp_output_pdf.get()),
             "enable_incremental_mode": bool(self.var_enable_incremental_mode.get()),
             "incremental_verify_hash": bool(self.var_incremental_verify_hash.get()),
             "incremental_reprocess_renamed": bool(
@@ -6061,7 +7445,9 @@ class OfficeGUI(tb.Window):
         return {
             "kill_process_mode": cfg.get("kill_process_mode", KILL_MODE_AUTO),
             "log_folder": str(cfg.get("log_folder", "./logs")).strip() or "./logs",
-            "timeout_seconds": self._safe_positive_int(cfg.get("timeout_seconds", 60), 60),
+            "timeout_seconds": self._safe_positive_int(
+                cfg.get("timeout_seconds", 60), 60
+            ),
             "pdf_wait_seconds": self._safe_positive_int(
                 cfg.get("pdf_wait_seconds", 15), 15
             ),
@@ -6080,7 +7466,10 @@ class OfficeGUI(tb.Window):
             "sandbox_min_free_gb": self._safe_positive_int(
                 cfg.get("sandbox_min_free_gb", 10), 10
             ),
-            "sandbox_low_space_policy": str(cfg.get("sandbox_low_space_policy", "block")).strip() or "block",
+            "sandbox_low_space_policy": str(
+                cfg.get("sandbox_low_space_policy", "block")
+            ).strip()
+            or "block",
             "enable_merge": bool(cfg.get("enable_merge", True)),
             "output_enable_pdf": bool(cfg.get("output_enable_pdf", True)),
             "output_enable_md": bool(cfg.get("output_enable_md", True)),
@@ -6104,7 +7493,9 @@ class OfficeGUI(tb.Window):
             "merge_filename_pattern": cfg.get("merge_filename_pattern")
             or "Merged_{category}_{timestamp}_{idx}",
             "enable_corpus_manifest": bool(cfg.get("enable_corpus_manifest", True)),
-            "enable_markdown": bool(cfg.get("output_enable_md", cfg.get("enable_markdown", True))),
+            "enable_markdown": bool(
+                cfg.get("output_enable_md", cfg.get("enable_markdown", True))
+            ),
             "markdown_strip_header_footer": bool(
                 cfg.get("markdown_strip_header_footer", True)
             ),
@@ -6119,7 +7510,13 @@ class OfficeGUI(tb.Window):
             "enable_llm_delivery_hub": bool(cfg.get("enable_llm_delivery_hub", True)),
             "llm_delivery_root": cfg.get("llm_delivery_root", "") or "",
             "llm_delivery_flatten": bool(cfg.get("llm_delivery_flatten", False)),
-            "llm_delivery_include_pdf": bool(cfg.get("llm_delivery_include_pdf", False)),
+            "llm_delivery_include_pdf": bool(
+                cfg.get("llm_delivery_include_pdf", False)
+            ),
+            "enable_gdrive_upload": bool(cfg.get("enable_gdrive_upload", False)),
+            "gdrive_client_secrets_path": cfg.get("gdrive_client_secrets_path", "")
+            or "",
+            "gdrive_folder_id": cfg.get("gdrive_folder_id", "") or "",
             "mshelpviewer_folder_name": str(
                 cfg.get("mshelpviewer_folder_name", "MSHelpViewer")
             ).strip()
@@ -6147,21 +7544,32 @@ class OfficeGUI(tb.Window):
             "price_keywords": self._normalize_lines(cfg.get("price_keywords", [])),
             "ui": {
                 "tooltip_delay_ms": self._safe_positive_int(
-                    ui_cfg.get("tooltip_delay_ms", self.TOOLTIP_DEFAULTS["tooltip_delay_ms"]),
+                    ui_cfg.get(
+                        "tooltip_delay_ms", self.TOOLTIP_DEFAULTS["tooltip_delay_ms"]
+                    ),
                     self.TOOLTIP_DEFAULTS["tooltip_delay_ms"],
                 ),
                 "tooltip_bg": str(
                     ui_cfg.get("tooltip_bg", self.TOOLTIP_DEFAULTS["tooltip_bg"])
-                ).strip().upper(),
+                )
+                .strip()
+                .upper(),
                 "tooltip_fg": str(
                     ui_cfg.get("tooltip_fg", self.TOOLTIP_DEFAULTS["tooltip_fg"])
-                ).strip().upper(),
+                )
+                .strip()
+                .upper(),
                 "tooltip_font_size": self._safe_positive_int(
-                    ui_cfg.get("tooltip_font_size", self.TOOLTIP_DEFAULTS["tooltip_font_size"]),
+                    ui_cfg.get(
+                        "tooltip_font_size", self.TOOLTIP_DEFAULTS["tooltip_font_size"]
+                    ),
                     self.TOOLTIP_DEFAULTS["tooltip_font_size"],
                 ),
                 "tooltip_auto_theme": bool(
-                    ui_cfg.get("tooltip_auto_theme", self.TOOLTIP_DEFAULTS["tooltip_auto_theme"])
+                    ui_cfg.get(
+                        "tooltip_auto_theme",
+                        self.TOOLTIP_DEFAULTS["tooltip_auto_theme"],
+                    )
                 ),
                 "confirm_revert_dirty": bool(ui_cfg.get("confirm_revert_dirty", True)),
             },
@@ -6248,15 +7656,33 @@ class OfficeGUI(tb.Window):
 
         # Locator quick check
         if scope in ("all", "locator"):
-            page_raw = self.var_locator_page.get().strip() if hasattr(self, "var_locator_page") else ""
+            page_raw = (
+                self.var_locator_page.get().strip()
+                if hasattr(self, "var_locator_page")
+                else ""
+            )
             page_ok = True
             if page_raw:
                 page_ok = page_raw.isdigit() and int(page_raw) > 0
-            _mark(getattr(self, "ent_locator_page", None), page_ok, "msg_validation_invalid_number", "lbl_locator_page")
+            _mark(
+                getattr(self, "ent_locator_page", None),
+                page_ok,
+                "msg_validation_invalid_number",
+                "lbl_locator_page",
+            )
 
-            short_id = self.var_locator_short_id.get().strip() if hasattr(self, "var_locator_short_id") else ""
+            short_id = (
+                self.var_locator_short_id.get().strip()
+                if hasattr(self, "var_locator_short_id")
+                else ""
+            )
             sid_ok = True if not short_id else self._is_valid_short_id(short_id)
-            _mark(getattr(self, "ent_locator_short_id", None), sid_ok, "msg_validation_invalid_short_id", "lbl_locator_id")
+            _mark(
+                getattr(self, "ent_locator_short_id", None),
+                sid_ok,
+                "msg_validation_invalid_short_id",
+                "lbl_locator_id",
+            )
 
         # Runtime date filter check
         if scope in ("all", "run"):
@@ -6264,21 +7690,41 @@ class OfficeGUI(tb.Window):
             if hasattr(self, "ent_date"):
                 date_entry_widget = getattr(self.ent_date, "entry", self.ent_date)
             date_ok = True
-            if hasattr(self, "var_enable_date_filter") and self.var_enable_date_filter.get():
-                date_str = self.var_date_str.get().strip() if hasattr(self, "var_date_str") else ""
+            if (
+                hasattr(self, "var_enable_date_filter")
+                and self.var_enable_date_filter.get()
+            ):
+                date_str = (
+                    self.var_date_str.get().strip()
+                    if hasattr(self, "var_date_str")
+                    else ""
+                )
                 try:
                     datetime.strptime(date_str, "%Y-%m-%d")
                 except Exception:
                     date_ok = False
-            _mark(date_entry_widget, date_ok, "msg_validation_invalid_date", "lbl_filter_date")
+            _mark(
+                date_entry_widget,
+                date_ok,
+                "msg_validation_invalid_date",
+                "lbl_filter_date",
+            )
 
         # Config numeric defaults
         if scope in ("all", "config"):
             numeric_fields = [
                 ("var_timeout_seconds", "ent_timeout_seconds", "lbl_gen_timeout"),
                 ("var_pdf_wait_seconds", "ent_pdf_wait_seconds", "lbl_pdf_wait"),
-                ("var_ppt_timeout_seconds", "ent_ppt_timeout_seconds", "lbl_ppt_timeout"),
-                ("var_ppt_pdf_wait_seconds", "ent_ppt_pdf_wait_seconds", "lbl_ppt_wait"),
+                (
+                    "var_ppt_timeout_seconds",
+                    "ent_ppt_timeout_seconds",
+                    "lbl_ppt_timeout",
+                ),
+                (
+                    "var_ppt_pdf_wait_seconds",
+                    "ent_ppt_pdf_wait_seconds",
+                    "lbl_ppt_wait",
+                ),
                 (
                     "var_office_restart_every_n_files",
                     "ent_office_restart_every_n_files",
@@ -6287,9 +7733,18 @@ class OfficeGUI(tb.Window):
                 ("var_max_merge_size_mb", "ent_max_merge_size_mb", "lbl_max_mb"),
             ]
             for var_name, ent_name, label_key in numeric_fields:
-                raw = getattr(self, var_name).get().strip() if hasattr(self, var_name) else ""
+                raw = (
+                    getattr(self, var_name).get().strip()
+                    if hasattr(self, var_name)
+                    else ""
+                )
                 ok = raw.isdigit() and int(raw) > 0
-                _mark(getattr(self, ent_name, None), ok, "msg_validation_invalid_number", label_key)
+                _mark(
+                    getattr(self, ent_name, None),
+                    ok,
+                    "msg_validation_invalid_number",
+                    label_key,
+                )
 
         if first_error and not silent:
             self._set_status_validation_error(first_error)
@@ -6299,8 +7754,12 @@ class OfficeGUI(tb.Window):
         return first_error is None
 
     def _update_tooltip_color_preview(self):
-        bg = self.var_tooltip_bg.get().strip() if hasattr(self, "var_tooltip_bg") else ""
-        fg = self.var_tooltip_fg.get().strip() if hasattr(self, "var_tooltip_fg") else ""
+        bg = (
+            self.var_tooltip_bg.get().strip() if hasattr(self, "var_tooltip_bg") else ""
+        )
+        fg = (
+            self.var_tooltip_fg.get().strip() if hasattr(self, "var_tooltip_fg") else ""
+        )
         bg_valid = self._is_valid_hex_color(bg)
         fg_valid = self._is_valid_hex_color(fg)
         if hasattr(self, "lbl_tooltip_bg_preview"):
@@ -6334,8 +7793,14 @@ class OfficeGUI(tb.Window):
     def pick_tooltip_color(self, target):
         if target not in ("bg", "fg"):
             return
-        initial = self.var_tooltip_bg.get().strip() if target == "bg" else self.var_tooltip_fg.get().strip()
-        _, hex_color = colorchooser.askcolor(color=initial, title=self.tr("tip_pick_color"))
+        initial = (
+            self.var_tooltip_bg.get().strip()
+            if target == "bg"
+            else self.var_tooltip_fg.get().strip()
+        )
+        _, hex_color = colorchooser.askcolor(
+            color=initial, title=self.tr("tip_pick_color")
+        )
         if not hex_color:
             return
         hex_color = hex_color.upper()
@@ -6354,7 +7819,9 @@ class OfficeGUI(tb.Window):
                 invalid_label = self.tr("lbl_tooltip_delay")
         if hasattr(self, "var_tooltip_font_size"):
             ok = str(self.var_tooltip_font_size.get()).strip().isdigit()
-            self._set_entry_valid_state(getattr(self, "ent_tooltip_font_size", None), ok)
+            self._set_entry_valid_state(
+                getattr(self, "ent_tooltip_font_size", None), ok
+            )
             if not ok and invalid_label is None:
                 invalid_label = self.tr("lbl_tooltip_font_size")
         if hasattr(self, "var_tooltip_bg"):
@@ -6371,9 +7838,13 @@ class OfficeGUI(tb.Window):
         self._update_tooltip_color_preview()
         if invalid_label and not silent:
             if invalid_label in (self.tr("lbl_tooltip_bg"), self.tr("lbl_tooltip_fg")):
-                self.var_locator_result.set(self.tr("msg_tooltip_invalid_color").format(invalid_label))
+                self.var_locator_result.set(
+                    self.tr("msg_tooltip_invalid_color").format(invalid_label)
+                )
             else:
-                self.var_locator_result.set(self.tr("msg_tooltip_invalid_number").format(invalid_label))
+                self.var_locator_result.set(
+                    self.tr("msg_tooltip_invalid_number").format(invalid_label)
+                )
         return invalid_label is None
 
     def _set_text_widget_lines(self, widget, lines):
@@ -6419,6 +7890,9 @@ class OfficeGUI(tb.Window):
             self.var_enable_upload_readme.set(1)
             self.var_enable_upload_json_manifest.set(1)
             self.var_upload_dedup_merged.set(1)
+            self.var_enable_gdrive_upload.set(0)
+            self.var_gdrive_client_secrets_path.set("")
+            self.var_gdrive_folder_id.set("")
             self.var_mshelpviewer_folder_name.set("MSHelpViewer")
             self.var_enable_mshelp_merge_output.set(1)
             self.var_enable_mshelp_output_docx.set(0)
@@ -6477,7 +7951,9 @@ class OfficeGUI(tb.Window):
         self.var_tooltip_font_size.set(str(self.TOOLTIP_DEFAULTS["tooltip_font_size"]))
         self.var_tooltip_bg.set(self.TOOLTIP_DEFAULTS["tooltip_bg"])
         self.var_tooltip_fg.set(self.TOOLTIP_DEFAULTS["tooltip_fg"])
-        self.var_tooltip_auto_theme.set(1 if self.TOOLTIP_DEFAULTS["tooltip_auto_theme"] else 0)
+        self.var_tooltip_auto_theme.set(
+            1 if self.TOOLTIP_DEFAULTS["tooltip_auto_theme"] else 0
+        )
         if hasattr(self, "var_confirm_revert_dirty"):
             self.var_confirm_revert_dirty.set(1)
         self.apply_tooltip_settings(silent=True)
@@ -6494,15 +7970,22 @@ class OfficeGUI(tb.Window):
                 return out
             except Exception:
                 return default
+
         if not self.validate_tooltip_inputs(silent=silent):
             return
 
         self.tooltip_delay_ms = _to_int(
-            self.var_tooltip_delay_ms.get(), self.tooltip_delay_ms, min_value=50, max_value=5000
+            self.var_tooltip_delay_ms.get(),
+            self.tooltip_delay_ms,
+            min_value=50,
+            max_value=5000,
         )
         self.var_tooltip_delay_ms.set(str(self.tooltip_delay_ms))
         self.tooltip_font_size = _to_int(
-            self.var_tooltip_font_size.get(), self.tooltip_font_size, min_value=8, max_value=20
+            self.var_tooltip_font_size.get(),
+            self.tooltip_font_size,
+            min_value=8,
+            max_value=20,
         )
         self.var_tooltip_font_size.set(str(self.tooltip_font_size))
         self.tooltip_auto_theme = bool(self.var_tooltip_auto_theme.get())
@@ -6577,10 +8060,10 @@ class OfficeGUI(tb.Window):
             self.var_app_mode.set(cfg.get("app_mode", "classic"))
 
         # Runtime parameters
-        
-        is_win = (sys.platform == "win32")
-        is_mac = (sys.platform == "darwin")
-        
+
+        is_win = sys.platform == "win32"
+        is_mac = sys.platform == "darwin"
+
         def _get_os_path(key_base):
             if is_win:
                 val = cfg.get(f"{key_base}_win")
@@ -6589,40 +8072,42 @@ class OfficeGUI(tb.Window):
             else:
                 val = None
             if not val:
-                 val = cfg.get(key_base)
+                val = cfg.get(key_base)
             return val
-            
+
         src_val = _get_os_path("source_folder")
-        src_list_raw = _get_os_path("source_folders") # Assume list if present
-        
+        src_list_raw = _get_os_path("source_folders")  # Assume list if present
+
         src_list = []
         if src_list_raw and isinstance(src_list_raw, list):
-             src_list = src_list_raw
+            src_list = src_list_raw
         elif src_val:
-             src_list = [src_val]
+            src_list = [src_val]
         else:
-             # Fallback to generic if OS specific failed
-             src_list = cfg.get("source_folders", [])
-             if not src_list:
-                  single = cfg.get("source_folder", "")
-                  if single:
-                      src_list = [single]
-        
+            # Fallback to generic if OS specific failed
+            src_list = cfg.get("source_folders", [])
+            if not src_list:
+                single = cfg.get("source_folder", "")
+                if single:
+                    src_list = [single]
+
         self.source_folders_list = src_list
         self.lst_source_folders.delete(0, END)
         for p in self.source_folders_list:
             self.lst_source_folders.insert(END, p)
-        
+
         if self.source_folders_list:
             self.var_source_folder.set(self.source_folders_list[0])
         else:
             self.var_source_folder.set("")
-            
+
         self.var_target_folder.set(_get_os_path("target_folder") or "")
         self.var_enable_sandbox.set(1 if cfg.get("enable_sandbox", True) else 0)
         self.var_temp_sandbox_root.set(_get_os_path("temp_sandbox_root") or "")
         self.var_sandbox_min_free_gb.set(str(cfg.get("sandbox_min_free_gb", 10)))
-        self.var_sandbox_low_space_policy.set(cfg.get("sandbox_low_space_policy", "block"))
+        self.var_sandbox_low_space_policy.set(
+            cfg.get("sandbox_low_space_policy", "block")
+        )
         self.var_enable_llm_delivery_hub.set(
             1 if cfg.get("enable_llm_delivery_hub", True) else 0
         )
@@ -6633,6 +8118,13 @@ class OfficeGUI(tb.Window):
         self.var_llm_delivery_include_pdf.set(
             1 if cfg.get("llm_delivery_include_pdf", False) else 0
         )
+        self.var_enable_gdrive_upload.set(
+            1 if cfg.get("enable_gdrive_upload", False) else 0
+        )
+        self.var_gdrive_client_secrets_path.set(
+            cfg.get("gdrive_client_secrets_path", "") or ""
+        )
+        self.var_gdrive_folder_id.set(cfg.get("gdrive_folder_id", "") or "")
         self.var_enable_upload_readme.set(
             1 if cfg.get("enable_upload_readme", True) else 0
         )
@@ -6657,9 +8149,7 @@ class OfficeGUI(tb.Window):
         self.var_enable_markdown_quality_report.set(
             1 if cfg.get("enable_markdown_quality_report", True) else 0
         )
-        self.var_enable_excel_json.set(
-            1 if cfg.get("enable_excel_json", False) else 0
-        )
+        self.var_enable_excel_json.set(1 if cfg.get("enable_excel_json", False) else 0)
         self.var_enable_chromadb_export.set(
             1 if cfg.get("enable_chromadb_export", False) else 0
         )
@@ -6688,9 +8178,7 @@ class OfficeGUI(tb.Window):
         self.var_source_priority_skip_same_name_pdf.set(
             1 if cfg.get("source_priority_skip_same_name_pdf", False) else 0
         )
-        self.var_global_md5_dedup.set(
-            1 if cfg.get("global_md5_dedup", False) else 0
-        )
+        self.var_global_md5_dedup.set(1 if cfg.get("global_md5_dedup", False) else 0)
         self.var_enable_update_package.set(
             1 if cfg.get("enable_update_package", True) else 0
         )
@@ -6705,14 +8193,16 @@ class OfficeGUI(tb.Window):
             1 if cfg.get("output_enable_independent", False) else 0
         )
         self.var_merge_convert_submode.set(
-            cfg.get(
-                "merge_convert_submode", MERGE_CONVERT_SUBMODE_MERGE_ONLY
-            )
+            cfg.get("merge_convert_submode", MERGE_CONVERT_SUBMODE_MERGE_ONLY)
         )
         self.var_merge_mode.set(cfg.get("merge_mode", MERGE_MODE_CATEGORY))
         self.var_merge_source.set(cfg.get("merge_source", "source"))
-        self.var_enable_merge_index.set(1 if cfg.get("enable_merge_index", False) else 0)
-        self.var_enable_merge_excel.set(1 if cfg.get("enable_merge_excel", False) else 0)
+        self.var_enable_merge_index.set(
+            1 if cfg.get("enable_merge_index", False) else 0
+        )
+        self.var_enable_merge_excel.set(
+            1 if cfg.get("enable_merge_excel", False) else 0
+        )
 
         # 杩愯妯″紡 / 瀛愭ā寮?/ 绛栫暐锛堜綔涓洪粯璁わ級
         self.var_run_mode.set(cfg.get("run_mode", MODE_CONVERT_THEN_MERGE))
@@ -6772,9 +8262,15 @@ class OfficeGUI(tb.Window):
         self.validate_runtime_inputs(silent=True, scope="all")
         self._suspend_cfg_dirty = False
         self._refresh_config_dirty_from_file()
-        if self.profile_manager_win is not None and self.profile_manager_win.winfo_exists():
+        if (
+            self.profile_manager_win is not None
+            and self.profile_manager_win.winfo_exists()
+        ):
             self._refresh_profile_tree()
-        if self.load_profile_dialog is not None and self.load_profile_dialog.winfo_exists():
+        if (
+            self.load_profile_dialog is not None
+            and self.load_profile_dialog.winfo_exists()
+        ):
             self._refresh_load_profile_tree()
         if hasattr(self, "_update_task_tab_for_app_mode"):
             self._update_task_tab_for_app_mode()
@@ -6817,7 +8313,9 @@ class OfficeGUI(tb.Window):
             cfg["sandbox_min_free_gb"] = self._safe_positive_int(
                 self.var_sandbox_min_free_gb.get(), 10
             )
-            cfg["sandbox_low_space_policy"] = self.var_sandbox_low_space_policy.get() or "block"
+            cfg["sandbox_low_space_policy"] = (
+                self.var_sandbox_low_space_policy.get() or "block"
+            )
 
         if "ai" in sections:
             cfg["enable_corpus_manifest"] = bool(self.var_enable_corpus_manifest.get())
@@ -6847,8 +8345,12 @@ class OfficeGUI(tb.Window):
             )
 
         if "incremental" in sections:
-            cfg["enable_incremental_mode"] = bool(self.var_enable_incremental_mode.get())
-            cfg["incremental_verify_hash"] = bool(self.var_incremental_verify_hash.get())
+            cfg["enable_incremental_mode"] = bool(
+                self.var_enable_incremental_mode.get()
+            )
+            cfg["incremental_verify_hash"] = bool(
+                self.var_incremental_verify_hash.get()
+            )
             cfg["incremental_reprocess_renamed"] = bool(
                 self.var_incremental_reprocess_renamed.get()
             )
@@ -6862,9 +8364,7 @@ class OfficeGUI(tb.Window):
             cfg["enable_merge"] = bool(self.var_enable_merge.get())
             cfg["output_enable_pdf"] = bool(self.var_output_enable_pdf.get())
             cfg["output_enable_md"] = bool(self.var_output_enable_md.get())
-            cfg["output_enable_merged"] = bool(
-                self.var_output_enable_merged.get()
-            )
+            cfg["output_enable_merged"] = bool(self.var_output_enable_merged.get())
             cfg["output_enable_independent"] = bool(
                 self.var_output_enable_independent.get()
             )
@@ -6978,7 +8478,9 @@ class OfficeGUI(tb.Window):
                 json.dump(cfg, f, indent=4, ensure_ascii=False)
             self._baseline_config_snapshot = self._build_config_snapshot_from_cfg(cfg)
             self._refresh_config_dirty_state()
-            saved_sections_text = ", ".join(self._get_cfg_section_titles(dirty_sections))
+            saved_sections_text = ", ".join(
+                self._get_cfg_section_titles(dirty_sections)
+            )
             msg = self.tr("msg_save_dirty_sections").format(saved_sections_text)
             if show_msg:
                 messagebox.showinfo(self.tr("btn_save_cfg_dirty"), msg)
@@ -6997,8 +8499,14 @@ class OfficeGUI(tb.Window):
         cfg = cfg if isinstance(cfg, dict) else {}
         scope = "mode" if str(scope).lower() == "mode" else "all"
         mode = self.var_run_mode.get()
-        write_convert = scope == "all" or mode in (MODE_CONVERT_ONLY, MODE_CONVERT_THEN_MERGE)
-        write_merge = scope == "all" or mode in (MODE_CONVERT_THEN_MERGE, MODE_MERGE_ONLY)
+        write_convert = scope == "all" or mode in (
+            MODE_CONVERT_ONLY,
+            MODE_CONVERT_THEN_MERGE,
+        )
+        write_merge = scope == "all" or mode in (
+            MODE_CONVERT_THEN_MERGE,
+            MODE_MERGE_ONLY,
+        )
         write_collect = scope == "all" or mode == MODE_COLLECT_ONLY
         write_mshelp = scope == "all" or mode == MODE_MSHELP_ONLY
         write_rules = scope == "all" or mode in (
@@ -7007,30 +8515,36 @@ class OfficeGUI(tb.Window):
             MODE_COLLECT_ONLY,
         )
 
-        is_win = (sys.platform == "win32")
-        is_mac = (sys.platform == "darwin")
+        is_win = sys.platform == "win32"
+        is_mac = sys.platform == "darwin"
 
         if is_win:
-             cfg["source_folders_win"] = self.source_folders_list
-             cfg["source_folder_win"] = self.source_folders_list[0] if self.source_folders_list else ""
-             cfg["target_folder_win"] = self.var_target_folder.get().strip()
-             if write_convert:
-                 cfg["temp_sandbox_root_win"] = self.var_temp_sandbox_root.get().strip()
-                 cfg["llm_delivery_root_win"] = self.var_llm_delivery_root.get().strip()
+            cfg["source_folders_win"] = self.source_folders_list
+            cfg["source_folder_win"] = (
+                self.source_folders_list[0] if self.source_folders_list else ""
+            )
+            cfg["target_folder_win"] = self.var_target_folder.get().strip()
+            if write_convert:
+                cfg["temp_sandbox_root_win"] = self.var_temp_sandbox_root.get().strip()
+                cfg["llm_delivery_root_win"] = self.var_llm_delivery_root.get().strip()
         elif is_mac:
-             cfg["source_folders_mac"] = self.source_folders_list
-             cfg["source_folder_mac"] = self.source_folders_list[0] if self.source_folders_list else ""
-             cfg["target_folder_mac"] = self.var_target_folder.get().strip()
-             if write_convert:
-                 cfg["temp_sandbox_root_mac"] = self.var_temp_sandbox_root.get().strip()
-                 cfg["llm_delivery_root_mac"] = self.var_llm_delivery_root.get().strip()
+            cfg["source_folders_mac"] = self.source_folders_list
+            cfg["source_folder_mac"] = (
+                self.source_folders_list[0] if self.source_folders_list else ""
+            )
+            cfg["target_folder_mac"] = self.var_target_folder.get().strip()
+            if write_convert:
+                cfg["temp_sandbox_root_mac"] = self.var_temp_sandbox_root.get().strip()
+                cfg["llm_delivery_root_mac"] = self.var_llm_delivery_root.get().strip()
 
         if hasattr(self, "var_app_mode"):
             cfg["app_mode"] = self.var_app_mode.get()
         else:
             cfg["app_mode"] = "classic"
         cfg["source_folders"] = self.source_folders_list
-        cfg["source_folder"] = self.source_folders_list[0] if self.source_folders_list else ""
+        cfg["source_folder"] = (
+            self.source_folders_list[0] if self.source_folders_list else ""
+        )
         cfg["target_folder"] = self.var_target_folder.get().strip()
         cfg["output_enable_pdf"] = bool(self.var_output_enable_pdf.get())
         cfg["output_enable_md"] = bool(self.var_output_enable_md.get())
@@ -7071,14 +8585,27 @@ class OfficeGUI(tb.Window):
             cfg["sandbox_min_free_gb"] = self._safe_positive_int(
                 self.var_sandbox_min_free_gb.get(), 10
             )
-            cfg["sandbox_low_space_policy"] = self.var_sandbox_low_space_policy.get() or "block"
-            cfg["enable_llm_delivery_hub"] = bool(self.var_enable_llm_delivery_hub.get())
+            cfg["sandbox_low_space_policy"] = (
+                self.var_sandbox_low_space_policy.get() or "block"
+            )
+            cfg["enable_llm_delivery_hub"] = bool(
+                self.var_enable_llm_delivery_hub.get()
+            )
             cfg["llm_delivery_root"] = self.var_llm_delivery_root.get().strip()
             cfg["llm_delivery_flatten"] = bool(self.var_llm_delivery_flatten.get())
-            cfg["llm_delivery_include_pdf"] = bool(self.var_llm_delivery_include_pdf.get())
+            cfg["llm_delivery_include_pdf"] = bool(
+                self.var_llm_delivery_include_pdf.get()
+            )
             cfg["enable_upload_readme"] = bool(self.var_enable_upload_readme.get())
-            cfg["enable_upload_json_manifest"] = bool(self.var_enable_upload_json_manifest.get())
+            cfg["enable_upload_json_manifest"] = bool(
+                self.var_enable_upload_json_manifest.get()
+            )
             cfg["upload_dedup_merged"] = bool(self.var_upload_dedup_merged.get())
+            cfg["enable_gdrive_upload"] = bool(self.var_enable_gdrive_upload.get())
+            cfg["gdrive_client_secrets_path"] = (
+                self.var_gdrive_client_secrets_path.get().strip()
+            )
+            cfg["gdrive_folder_id"] = self.var_gdrive_folder_id.get().strip()
             cfg["enable_incremental_mode"] = bool(
                 self.var_enable_incremental_mode.get()
             )
@@ -7098,9 +8625,7 @@ class OfficeGUI(tb.Window):
             cfg["enable_merge"] = bool(self.var_enable_merge.get())
             cfg["output_enable_pdf"] = bool(self.var_output_enable_pdf.get())
             cfg["output_enable_md"] = bool(self.var_output_enable_md.get())
-            cfg["output_enable_merged"] = bool(
-                self.var_output_enable_merged.get()
-            )
+            cfg["output_enable_merged"] = bool(self.var_output_enable_merged.get())
             cfg["output_enable_independent"] = bool(
                 self.var_output_enable_independent.get()
             )
@@ -7255,13 +8780,20 @@ class OfficeGUI(tb.Window):
     def _set_running_ui_state(self, running: bool):
         self._ui_running = bool(running)
         if running:
-            if hasattr(self, "btn_start"): self.btn_start.configure(state="disabled")
-            if hasattr(self, "btn_stop"): self.btn_stop.configure(state="normal")
-            if hasattr(self, "btn_task_stop"): self.btn_task_stop.configure(state="normal")
-            if hasattr(self, "btn_save_cfg"): self.btn_save_cfg.configure(state="disabled")
-            if hasattr(self, "btn_load_cfg"): self.btn_load_cfg.configure(state="disabled")
-            if hasattr(self, "btn_manage_profiles"): self.btn_manage_profiles.configure(state="disabled")
-            if hasattr(self, "btn_manage_profiles"): self.btn_manage_profiles.configure(state="disabled")
+            if hasattr(self, "btn_start"):
+                self.btn_start.configure(state="disabled")
+            if hasattr(self, "btn_stop"):
+                self.btn_stop.configure(state="normal")
+            if hasattr(self, "btn_task_stop"):
+                self.btn_task_stop.configure(state="normal")
+            if hasattr(self, "btn_save_cfg"):
+                self.btn_save_cfg.configure(state="disabled")
+            if hasattr(self, "btn_load_cfg"):
+                self.btn_load_cfg.configure(state="disabled")
+            if hasattr(self, "btn_manage_profiles"):
+                self.btn_manage_profiles.configure(state="disabled")
+            if hasattr(self, "btn_manage_profiles"):
+                self.btn_manage_profiles.configure(state="disabled")
             for btn_name in (
                 "btn_task_create",
                 "btn_task_edit",
@@ -7294,14 +8826,22 @@ class OfficeGUI(tb.Window):
                     getattr(self, btn_name).configure(state="disabled")
             self.progress["mode"] = "determinate"
             self.progress["value"] = 0
-            self.var_status.set(self.tr("status_init") if hasattr(self, "tr") else "Initializing...")
+            self.var_status.set(
+                self.tr("status_init") if hasattr(self, "tr") else "Initializing..."
+            )
         else:
-            if hasattr(self, "btn_start"): self.btn_start.configure(state="normal")
-            if hasattr(self, "btn_stop"): self.btn_stop.configure(state="disabled")
-            if hasattr(self, "btn_task_stop"): self.btn_task_stop.configure(state="disabled")
-            if hasattr(self, "btn_save_cfg"): self.btn_save_cfg.configure(state="normal")
-            if hasattr(self, "btn_load_cfg"): self.btn_load_cfg.configure(state="normal")
-            if hasattr(self, "btn_manage_profiles"): self.btn_manage_profiles.configure(state="normal")
+            if hasattr(self, "btn_start"):
+                self.btn_start.configure(state="normal")
+            if hasattr(self, "btn_stop"):
+                self.btn_stop.configure(state="disabled")
+            if hasattr(self, "btn_task_stop"):
+                self.btn_task_stop.configure(state="disabled")
+            if hasattr(self, "btn_save_cfg"):
+                self.btn_save_cfg.configure(state="normal")
+            if hasattr(self, "btn_load_cfg"):
+                self.btn_load_cfg.configure(state="normal")
+            if hasattr(self, "btn_manage_profiles"):
+                self.btn_manage_profiles.configure(state="normal")
             for btn_name in (
                 "btn_task_create",
                 "btn_task_edit",
@@ -7337,7 +8877,9 @@ class OfficeGUI(tb.Window):
                 self._update_task_tab_for_app_mode()
             self.progress.stop()
             self.progress["value"] = 100
-            self.var_status.set(self.tr("status_ready") if hasattr(self, "tr") else "Ready")
+            self.var_status.set(
+                self.tr("status_ready") if hasattr(self, "tr") else "Ready"
+            )
         self._update_profile_manager_controls()
         self._update_profile_dialog_controls()
 
@@ -7371,9 +8913,7 @@ class OfficeGUI(tb.Window):
             getattr(converter, "generated_merge_markdown_outputs", []) or []
         )
         map_count = len(getattr(converter, "generated_map_outputs", []) or [])
-        markdown_count = len(
-            getattr(converter, "generated_markdown_outputs", []) or []
-        )
+        markdown_count = len(getattr(converter, "generated_markdown_outputs", []) or [])
         markdown_quality_count = len(
             getattr(converter, "generated_markdown_quality_outputs", []) or []
         )
@@ -7383,9 +8923,7 @@ class OfficeGUI(tb.Window):
         records_json_count = len(
             getattr(converter, "generated_records_json_outputs", []) or []
         )
-        chromadb_count = len(
-            getattr(converter, "generated_chromadb_outputs", []) or []
-        )
+        chromadb_count = len(getattr(converter, "generated_chromadb_outputs", []) or [])
         mshelp_count = len(getattr(converter, "generated_mshelp_outputs", []) or [])
 
         lines = [
@@ -7428,13 +8966,17 @@ class OfficeGUI(tb.Window):
             getattr(converter, "generated_excel_json_outputs", []) or []
         )[:2]:
             lines.append(self.tr("log_artifacts_excel_json").format(excel_json_path))
-        for js_path in (
-            getattr(converter, "generated_records_json_outputs", []) or []
-        )[:2]:
+        for js_path in (getattr(converter, "generated_records_json_outputs", []) or [])[
+            :2
+        ]:
             lines.append(self.tr("log_artifacts_records_json").format(js_path))
-        for vec_path in (getattr(converter, "generated_chromadb_outputs", []) or [])[:2]:
+        for vec_path in (getattr(converter, "generated_chromadb_outputs", []) or [])[
+            :2
+        ]:
             lines.append(self.tr("log_artifacts_chromadb").format(vec_path))
-        for mshelp_path in (getattr(converter, "generated_mshelp_outputs", []) or [])[:2]:
+        for mshelp_path in (getattr(converter, "generated_mshelp_outputs", []) or [])[
+            :2
+        ]:
             lines.append(self.tr("log_artifacts_markdown").format(mshelp_path))
         for merged_md_path in (
             getattr(converter, "generated_merge_markdown_outputs", []) or []
@@ -7442,7 +8984,9 @@ class OfficeGUI(tb.Window):
             lines.append(self.tr("log_artifacts_markdown").format(merged_md_path))
         update_manifest = getattr(converter, "update_package_manifest_path", "")
         if update_manifest:
-            lines.append(self.tr("log_artifacts_update_package").format(update_manifest))
+            lines.append(
+                self.tr("log_artifacts_update_package").format(update_manifest)
+            )
         llm_hub_root = getattr(converter, "llm_hub_root", "")
         if llm_hub_root:
             lines.append(self.tr("log_artifacts_llm_hub").format(llm_hub_root))
@@ -7455,6 +8999,42 @@ class OfficeGUI(tb.Window):
                     inc_ctx.get("renamed_count", 0),
                     inc_ctx.get("unchanged_count", 0),
                     inc_ctx.get("deleted_count", 0),
+                )
+            )
+
+        # 添加失败文件摘要
+        detailed_errors = getattr(converter, "detailed_error_records", []) or []
+        if detailed_errors:
+            lines.append(self.tr("log_artifacts_failed_title"))
+
+            # 按错误类型分组统计
+            error_type_counts = {}
+            for err in detailed_errors:
+                et = err.get("error_type", "unknown")
+                error_type_counts[et] = error_type_counts.get(et, 0) + 1
+
+            for et, count in sorted(error_type_counts.items(), key=lambda x: -x[1]):
+                suggestion_key = f"log_error_suggestion_{et}"
+                suggestion = self.tr(suggestion_key) if hasattr(self, "tr") else ""
+                if suggestion == suggestion_key:  # 没有找到翻译
+                    suggestion = ""
+                lines.append(self.tr("log_artifacts_failed_type").format(et, count))
+
+            # 报告路径
+            failed_report_path = getattr(converter, "failed_report_path", "")
+            if failed_report_path:
+                lines.append(
+                    self.tr("log_artifacts_failed_report").format(failed_report_path)
+                )
+
+            # 提示用户处理建议
+            retryable_count = sum(1 for e in detailed_errors if e.get("is_retryable"))
+            manual_count = sum(
+                1 for e in detailed_errors if e.get("requires_manual_action")
+            )
+            lines.append(
+                self.tr("log_artifacts_failed_summary").format(
+                    len(detailed_errors), retryable_count, manual_count
                 )
             )
 
@@ -7480,7 +9060,11 @@ class OfficeGUI(tb.Window):
             return True
         if not bool(self.var_output_enable_md.get()):
             return True
-        roots = [target] if self.var_merge_source.get() == "target" else list(clean_sources or [])
+        roots = (
+            [target]
+            if self.var_merge_source.get() == "target"
+            else list(clean_sources or [])
+        )
         if self._scan_first_file_with_ext(roots, ".md"):
             return True
         msg = (
@@ -7526,17 +9110,23 @@ class OfficeGUI(tb.Window):
     # ===================== 浠诲姟鎺у埗 =====================
     def _on_click_start(self):
         if self.worker_thread and self.worker_thread.is_alive():
-            messagebox.showinfo(self.tr("btn_start"), self.tr("msg_task_already_running"))
+            messagebox.showinfo(
+                self.tr("btn_start"), self.tr("msg_task_already_running")
+            )
             return
         if getattr(self, "var_app_mode", None) and self.var_app_mode.get() == "task":
             task_id = self._get_selected_task_id()
             if not task_id:
-                messagebox.showinfo(self.tr("btn_start"), self.tr("msg_task_select_required"))
+                messagebox.showinfo(
+                    self.tr("btn_start"), self.tr("msg_task_select_required")
+                )
                 return
             self._on_click_task_run(resume=False)
             return
         if not self.validate_runtime_inputs(silent=False, scope="all"):
-            messagebox.showerror(self.tr("btn_start"), self.tr("msg_validation_fix_before_run"))
+            messagebox.showerror(
+                self.tr("btn_start"), self.tr("msg_validation_fix_before_run")
+            )
             return
 
         clean_sources = []
@@ -7554,10 +9144,14 @@ class OfficeGUI(tb.Window):
         self.var_target_folder.set(target)
 
         if not clean_sources:
-            messagebox.showerror(self.tr("btn_start"), self.tr("msg_source_folder_required"))
+            messagebox.showerror(
+                self.tr("btn_start"), self.tr("msg_source_folder_required")
+            )
             return
         if not target:
-            messagebox.showerror(self.tr("btn_start"), self.tr("msg_target_folder_required"))
+            messagebox.showerror(
+                self.tr("btn_start"), self.tr("msg_target_folder_required")
+            )
             return
         if not self._should_continue_when_md_merge_missing(clean_sources, target):
             return
@@ -7646,7 +9240,9 @@ class OfficeGUI(tb.Window):
 
                     step_desc = step["desc"]
                     print(f"\n[GUI] >>> step {idx}/{total_steps}: {step_desc}")
-                    self.txt_log.insert("end", f"\n>>> step {idx}/{total_steps}: {step_desc}\n")
+                    self.txt_log.insert(
+                        "end", f"\n>>> step {idx}/{total_steps}: {step_desc}\n"
+                    )
                     self.txt_log.see("end")
 
                     print(f"[GUI] using config file: {self.config_path}")
@@ -7663,18 +9259,41 @@ class OfficeGUI(tb.Window):
                     cfg["sandbox_min_free_gb"] = self._safe_positive_int(
                         self.var_sandbox_min_free_gb.get(), 10
                     )
-                    cfg["sandbox_low_space_policy"] = self.var_sandbox_low_space_policy.get() or "block"
-                    cfg["enable_llm_delivery_hub"] = bool(self.var_enable_llm_delivery_hub.get())
+                    cfg["sandbox_low_space_policy"] = (
+                        self.var_sandbox_low_space_policy.get() or "block"
+                    )
+                    cfg["enable_llm_delivery_hub"] = bool(
+                        self.var_enable_llm_delivery_hub.get()
+                    )
                     cfg["llm_delivery_root"] = self.var_llm_delivery_root.get().strip()
-                    cfg["llm_delivery_flatten"] = bool(self.var_llm_delivery_flatten.get())
-                    cfg["llm_delivery_include_pdf"] = bool(self.var_llm_delivery_include_pdf.get())
-                    cfg["enable_upload_readme"] = bool(self.var_enable_upload_readme.get())
-                    cfg["enable_upload_json_manifest"] = bool(self.var_enable_upload_json_manifest.get())
-                    cfg["upload_dedup_merged"] = bool(self.var_upload_dedup_merged.get())
+                    cfg["llm_delivery_flatten"] = bool(
+                        self.var_llm_delivery_flatten.get()
+                    )
+                    cfg["llm_delivery_include_pdf"] = bool(
+                        self.var_llm_delivery_include_pdf.get()
+                    )
+                    cfg["enable_upload_readme"] = bool(
+                        self.var_enable_upload_readme.get()
+                    )
+                    cfg["enable_upload_json_manifest"] = bool(
+                        self.var_enable_upload_json_manifest.get()
+                    )
+                    cfg["upload_dedup_merged"] = bool(
+                        self.var_upload_dedup_merged.get()
+                    )
+                    cfg["enable_gdrive_upload"] = bool(
+                        self.var_enable_gdrive_upload.get()
+                    )
+                    cfg["gdrive_client_secrets_path"] = (
+                        self.var_gdrive_client_secrets_path.get().strip()
+                    )
+                    cfg["gdrive_folder_id"] = self.var_gdrive_folder_id.get().strip()
                     cfg["enable_merge"] = bool(self.var_enable_merge.get())
                     cfg["output_enable_pdf"] = bool(self.var_output_enable_pdf.get())
                     cfg["output_enable_md"] = bool(self.var_output_enable_md.get())
-                    cfg["output_enable_merged"] = bool(self.var_output_enable_merged.get())
+                    cfg["output_enable_merged"] = bool(
+                        self.var_output_enable_merged.get()
+                    )
                     cfg["output_enable_independent"] = bool(
                         self.var_output_enable_independent.get()
                     )
@@ -7694,15 +9313,26 @@ class OfficeGUI(tb.Window):
                         self.var_merge_filename_pattern.get().strip()
                         or "Merged_{category}_{timestamp}_{idx}"
                     )
-                    cfg["enable_corpus_manifest"] = bool(self.var_enable_corpus_manifest.get())
+                    cfg["enable_corpus_manifest"] = bool(
+                        self.var_enable_corpus_manifest.get()
+                    )
                     cfg.pop("enable_markdown", None)
-                    cfg["markdown_strip_header_footer"] = bool(self.var_markdown_strip_header_footer.get())
-                    cfg["markdown_structured_headings"] = bool(self.var_markdown_structured_headings.get())
-                    cfg["enable_markdown_quality_report"] = bool(self.var_enable_markdown_quality_report.get())
+                    cfg["markdown_strip_header_footer"] = bool(
+                        self.var_markdown_strip_header_footer.get()
+                    )
+                    cfg["markdown_structured_headings"] = bool(
+                        self.var_markdown_structured_headings.get()
+                    )
+                    cfg["enable_markdown_quality_report"] = bool(
+                        self.var_enable_markdown_quality_report.get()
+                    )
                     cfg["enable_excel_json"] = bool(self.var_enable_excel_json.get())
-                    cfg["enable_chromadb_export"] = bool(self.var_enable_chromadb_export.get())
+                    cfg["enable_chromadb_export"] = bool(
+                        self.var_enable_chromadb_export.get()
+                    )
                     cfg["mshelpviewer_folder_name"] = (
-                        self.var_mshelpviewer_folder_name.get().strip() or "MSHelpViewer"
+                        self.var_mshelpviewer_folder_name.get().strip()
+                        or "MSHelpViewer"
                     )
                     cfg["enable_mshelp_merge_output"] = bool(
                         self.var_enable_mshelp_merge_output.get()
@@ -7713,34 +9343,57 @@ class OfficeGUI(tb.Window):
                     cfg["enable_mshelp_output_pdf"] = bool(
                         self.var_enable_mshelp_output_pdf.get()
                     )
-                    cfg["enable_incremental_mode"] = bool(self.var_enable_incremental_mode.get())
-                    cfg["incremental_verify_hash"] = bool(self.var_incremental_verify_hash.get())
-                    cfg["incremental_reprocess_renamed"] = bool(self.var_incremental_reprocess_renamed.get())
-                    cfg["source_priority_skip_same_name_pdf"] = bool(self.var_source_priority_skip_same_name_pdf.get())
+                    cfg["enable_incremental_mode"] = bool(
+                        self.var_enable_incremental_mode.get()
+                    )
+                    cfg["incremental_verify_hash"] = bool(
+                        self.var_incremental_verify_hash.get()
+                    )
+                    cfg["incremental_reprocess_renamed"] = bool(
+                        self.var_incremental_reprocess_renamed.get()
+                    )
+                    cfg["source_priority_skip_same_name_pdf"] = bool(
+                        self.var_source_priority_skip_same_name_pdf.get()
+                    )
                     cfg["global_md5_dedup"] = bool(self.var_global_md5_dedup.get())
-                    cfg["enable_update_package"] = bool(self.var_enable_update_package.get())
+                    cfg["enable_update_package"] = bool(
+                        self.var_enable_update_package.get()
+                    )
                     cfg["kill_process_mode"] = self.var_kill_mode.get()
                     cfg["default_engine"] = self.var_engine.get()
                     cfg["office_reuse_app"] = bool(self.var_office_reuse_app.get())
                     cfg["office_restart_every_n_files"] = self._safe_positive_int(
                         self.var_office_restart_every_n_files.get(), 25
                     )
-                    coercion_msgs = self._sanitize_runtime_config_for_mode(cfg, base_mode)
+                    coercion_msgs = self._sanitize_runtime_config_for_mode(
+                        cfg, base_mode
+                    )
                     if idx == 1 and coercion_msgs:
-                        self.after(0, lambda m=coercion_msgs: self._log_coercion_summary(m, show_dialog=True))
+                        self.after(
+                            0,
+                            lambda m=coercion_msgs: self._log_coercion_summary(
+                                m, show_dialog=True
+                            ),
+                        )
 
                     converter.run_mode = step["mode"]
                     converter.collect_mode = self.var_collect_mode.get()
                     converter.content_strategy = self.var_strategy.get()
                     converter.merge_mode = self.var_merge_mode.get()
                     converter.engine_type = self.var_engine.get()
-                    converter.enable_merge_index = bool(self.var_enable_merge_index.get())
-                    converter.enable_merge_excel = bool(self.var_enable_merge_excel.get())
+                    converter.enable_merge_index = bool(
+                        self.var_enable_merge_index.get()
+                    )
+                    converter.enable_merge_excel = bool(
+                        self.var_enable_merge_excel.get()
+                    )
 
                     if self.var_enable_date_filter.get():
                         date_str = self.var_date_str.get().strip()
                         try:
-                            converter.filter_date = datetime.strptime(date_str, "%Y-%m-%d")
+                            converter.filter_date = datetime.strptime(
+                                date_str, "%Y-%m-%d"
+                            )
                             converter.filter_mode = self.var_filter_mode.get()
                         except ValueError:
                             pass
@@ -7748,26 +9401,38 @@ class OfficeGUI(tb.Window):
                     temp_root = cfg.get("temp_sandbox_root", "").strip()
                     if temp_root:
                         if not os.path.isabs(temp_root):
-                            temp_root = os.path.abspath(os.path.join(get_app_path(), temp_root))
+                            temp_root = os.path.abspath(
+                                os.path.join(get_app_path(), temp_root)
+                            )
                     else:
                         temp_root = tempfile.gettempdir()
                     converter.temp_sandbox_root = temp_root
-                    converter.temp_sandbox = os.path.join(temp_root, "OfficeToPDF_Sandbox")
+                    converter.temp_sandbox = os.path.join(
+                        temp_root, "OfficeToPDF_Sandbox"
+                    )
                     os.makedirs(converter.temp_sandbox, exist_ok=True)
 
-                    converter.failed_dir = os.path.join(cfg["target_folder"], "_FAILED_FILES")
+                    converter.failed_dir = os.path.join(
+                        cfg["target_folder"], "_FAILED_FILES"
+                    )
                     os.makedirs(converter.failed_dir, exist_ok=True)
-                    converter.merge_output_dir = os.path.join(cfg["target_folder"], "_MERGED")
+                    converter.merge_output_dir = os.path.join(
+                        cfg["target_folder"], "_MERGED"
+                    )
                     os.makedirs(converter.merge_output_dir, exist_ok=True)
 
                     converter.run()
-                    artifact_summary = self._build_artifact_summary_text(converter, idx, total_steps)
+                    artifact_summary = self._build_artifact_summary_text(
+                        converter, idx, total_steps
+                    )
                     if artifact_summary:
                         self.txt_log.insert("end", f"{artifact_summary}\n")
                         self.txt_log.see("end")
 
                 print("[GUI] all tasks completed.")
-                self.txt_log.insert("end", f"\n========== {self.tr('log_stop')} ==========\n")
+                self.txt_log.insert(
+                    "end", f"\n========== {self.tr('log_stop')} ==========\n"
+                )
                 self.txt_log.see("end")
 
             except Exception as e:
@@ -7802,6 +9467,19 @@ class OfficeGUI(tb.Window):
 if __name__ == "__main__":
     try:
         app = OfficeGUI()
+        app.update_idletasks()
+        app.lift()
+        app.attributes("-topmost", True)
+        app.after(150, lambda: app.attributes("-topmost", False))
         app.mainloop()
-    except Exception:
+    except Exception as e:
         traceback.print_exc()
+        try:
+            messagebox.showerror(
+                "启动失败",
+                "程序启动异常，请关闭其他知喂/OfficeGUI 进程后重试。\n\n错误信息：\n"
+                + str(e),
+            )
+        except Exception:
+            pass
+        raise

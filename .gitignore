@@ -20,6 +20,12 @@ env/
 .env
 .env.*
 
+# Google Drive 上传：敏感凭证与 token，禁止入库
+**/client_secrets*.json
+**/.gdrive_token*.json
+**/gdrive_token*.json
+**/credentials.json
+
 # Logs and runtime files
 logs/
 log/

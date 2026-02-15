@@ -74,6 +74,7 @@ python office_converter.py --help   # 查看参数
 2. **Google Drive 上传（桌面 OAuth）**  
    - 配置项：`enable_gdrive_upload`、`gdrive_folder_id`、`gdrive_client_secrets_path`。  
    - GUI：「上传 _LLM_UPLOAD 到 Google Drive」按钮；首次浏览器 OAuth，本地缓存 token。  
+   - **详细实现规划**：[docs/plans/Google_Drive_上传_实现规划.md](plans/Google_Drive_上传_实现规划.md)。  
    - 详见 `docs/AI_HANDOVER_20260211.md` 第 11 节。
 
 ### 4.2 中低优先级

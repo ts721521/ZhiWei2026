@@ -8,3 +8,7 @@ ttkbootstrap>=1.10.0
 # python-docx  # 若 converter 中有 docx 相关逻辑
 # beautifulsoup4  # HTML/MSHelp 解析
 # chromadb  # 若启用 ChromaDB 导出
+
+# Google Drive 上传（可选）
+google-auth-oauthlib>=1.0.0
+google-api-python-client>=2.0.0
