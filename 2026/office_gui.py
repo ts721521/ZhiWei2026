@@ -1,15 +1,15 @@
 # -*- coding: utf-8 -*-
 """
-office_gui.py - Office 鏂囨。鎵归噺杞崲 & 姊崇悊宸ュ叿 GUI 鐗?
+office_gui.py - Office 文档批量转换 & 整理工具 GUI 版
 
-璇存槑锛?
-- 渚濊禆 office_converter.py 涓殑 OfficeConverter锛堝凡鏇存柊鍒?v5.17.0锛?
-- GUI 涓惈锛?
-    * "杩愯鍙傛暟"椤碉細閫夋嫨婧?鐩爣鐩綍銆佽繍琛屾ā寮忋€佸唴瀹圭瓥鐣ャ€佸悎骞舵ā寮忋€佹矙绠辩瓑
-    * "閰嶇疆绠＄悊"椤碉細鐩存帴缂栬緫 config.json 鐨勯儴鍒嗛厤缃紙鏃ュ織鐩綍銆佹帓闄ょ洰褰曘€佸叧閿瓧銆佽秴鏃跺弬鏁扮瓑锛?
-- "淇濆瓨閰嶇疆"鎸夐挳锛氬啓鍏?config.json
-- "寮€濮嬭繍琛?鎸夐挳锛氱敤褰撳墠鐣岄潰鍙傛暟鍚姩杞崲/姊崇悊锛堜笉浼氳嚜鍔ㄦ敼 config.json锛?
-- "鍋滄"鎸夐挳锛氳缃?converter.is_running=False锛屼紭闆呭仠姝?
+说明：
+- 依赖 office_converter.py 中的 OfficeConverter（已更新到 v5.17.0）
+- GUI 中含：
+    * "运行参数"页：选择源/目标目录、运行模式、内容策略、合并模式、沙箱等
+    * "配置管理"页：直接编辑 config.json 的部分配置（日志目录、排除目录、关键字、超时参数等）
+- "保存配置"按钮：写入 config.json
+- "开始运行"按钮：用当前界面参数启动转换/整理（不会自动改 config.json）
+- "停止"按钮：设置 converter.is_running=False，优雅停止
 """
 
 import os
@@ -1606,7 +1606,7 @@ class OfficeGUI(tb.Window):
             pass
         self._update_output_summary_label()
 
-        # Section 4: conversion strategy + date filter锛堝乏鍒楋級
+        # Section 4: conversion strategy + date filter（左列）
         lf_convert_content = tb.Labelframe(
             col_left, text=self.tr("sec_filters"), padding=6
         )
@@ -1623,7 +1623,7 @@ class OfficeGUI(tb.Window):
         )
         self.cb_strat.pack(fill=X, pady=(0, 5))
 
-        # Section 5: AI export (convert-specific锛屽彸鍒?
+        # Section 5: AI export (convert-specific，右列）
         lf_ai_export = tb.Labelframe(
             col_right, text=self.tr("grp_ai_runtime"), padding=(8, 6)
         )
@@ -1638,7 +1638,7 @@ class OfficeGUI(tb.Window):
             command=self._on_toggle_markdown_master,
         )
         self.chk_export_markdown.pack(anchor="w")
-        # Markdown 瀛愰€夐」缂╄繘鏄剧ず锛屽彈涓诲紑鍏宠仈鍔ㄧ伆鍖?
+        # Markdown 子选项缩进显示，受主开关联动灰化
         self._frm_markdown_sub = tb.Frame(frm_ai_export)
         self._frm_markdown_sub.pack(fill=X, padx=(16, 0))
         self.var_markdown_strip_header_footer = tk.IntVar(value=1)
@@ -1701,7 +1701,7 @@ class OfficeGUI(tb.Window):
             pass
         self._sync_markdown_master_with_global_output()
 
-        # Section: LLM delivery hub 鈫?moved to Output Files tab
+        # Section: LLM delivery hub -> moved to Output Files tab
         lf_llm_hub = tb.Labelframe(
             self._scroll_output, text=self.tr("grp_llm_hub_runtime"), padding=(8, 6)
         )
@@ -1714,7 +1714,7 @@ class OfficeGUI(tb.Window):
             command=self._on_toggle_llm_hub_master,
         )
         self.chk_enable_llm_delivery_hub.pack(anchor="w")
-        # LLM hub 瀛愰€夐」缂╄繘锛屽彈涓诲紑鍏宠仈鍔?
+        # LLM hub 子选项缩进，受主开关联动
         self._frm_llm_hub_sub = tb.Frame(lf_llm_hub)
         self._frm_llm_hub_sub.pack(fill=X, padx=(16, 0))
         self.var_llm_delivery_root = tk.StringVar()
@@ -1933,7 +1933,7 @@ class OfficeGUI(tb.Window):
                 w.configure(state="disabled")
             self._attach_tooltip(lf_gdrive, "msg_gdrive_no_deps")
 
-        # Section 7: incremental / dedup (convert-specific锛屽彸鍒?
+        # Section 7: incremental / dedup (convert-specific，右列）
         lf_incremental = tb.Labelframe(
             col_right, text=self.tr("grp_incremental_runtime"), padding=(8, 6)
         )
@@ -1946,7 +1946,7 @@ class OfficeGUI(tb.Window):
             command=self._on_toggle_incremental_mode,
         )
         self.chk_incremental_mode.pack(anchor="w")
-        # 澧為噺瀛愰€夐」缂╄繘锛屽彈涓诲紑鍏宠仈鍔?
+        # 增量子选项缩进，受主开关联动
         self._frm_incremental_sub = tb.Frame(lf_incremental)
         self._frm_incremental_sub.pack(fill=X, padx=(16, 0))
         self.var_incremental_verify_hash = tk.IntVar(value=0)
@@ -2098,7 +2098,7 @@ class OfficeGUI(tb.Window):
         )
         self.rb_filter_before.pack(side=LEFT, padx=10)
 
-        # Section 5: NotebookLM locator (runtime) 鈥斺€?涓?MSHelp 鍚堝苟鍒板悓涓€ tab
+        # Section 5: NotebookLM locator (runtime) —— 与 MSHelp 合并到同一 tab
         lf_locator = tb.Labelframe(
             self._scroll_locator, text=self.tr("sec_locator"), padding=10
         )
@@ -4145,25 +4145,23 @@ class OfficeGUI(tb.Window):
             pass
 
     def _set_task_tab_highlight(self, on):
-        """任务模式下把「任务管理」标签页设为绿色（前面加 🟢），传统模式下恢复默认。"""
+        """任务模式下把「任务管理」标签页设为绿色（使用 success 样式），传统模式下恢复默认。"""
         if not hasattr(self, "main_notebook") or not hasattr(self, "tab_run_tasks"):
             return
         try:
+            # 1. 确保文本没有符号 (Remove previous symbol logic)
             base_text = self.tr("grp_task_runtime")
-            new_text = f"🟢 {base_text}" if on else base_text
             try:
-                self.main_notebook.tab(self.tab_run_tasks, text=new_text)
+                self.main_notebook.tab(self.tab_run_tasks, text=base_text)
             except Exception:
-                for tab_id in self.main_notebook.tabs():
-                    try:
-                        if (
-                            self.main_notebook.nametowidget(tab_id)
-                            is self.tab_run_tasks
-                        ):
-                            self.main_notebook.tab(tab_id, text=new_text)
-                            break
-                    except Exception:
-                        continue
+                pass  # Ignore if tab is hidden/invalid, handled by state update
+
+            # 2. 切换 Notebook 整体样式 (Task Mode -> Success Green)
+            # 注意：ttkbootstrap Notebook bootstyle 影响选中 Tab 的颜色 (underline/text)
+            if on:
+                self.main_notebook.configure(bootstyle="success")
+            else:
+                self.main_notebook.configure(bootstyle="primary")
         except Exception:
             pass
 
@@ -9269,7 +9267,7 @@ class OfficeGUI(tb.Window):
             body = self.tr("msg_coercion_body").format(block)
             messagebox.showinfo(self.tr("msg_coercion_title"), body)
 
-    # ===================== 浠诲姟鎺у埗 =====================
+    # ===================== 任务控制 =====================
     def _on_click_start(self):
         if self.worker_thread and self.worker_thread.is_alive():
             messagebox.showinfo(
@@ -9633,7 +9631,7 @@ class OfficeGUI(tb.Window):
             print("[GUI] stop requested; waiting for current step to finish...")
             self.var_status.set(self.tr("status_stop_wait"))
 
-    # ===================== 绋嬪簭鍏ュ彛 =====================
+    # ===================== 程序入口 =====================
 
 
 if __name__ == "__main__":
