@@ -1,0 +1,14 @@
+---
+description: 2026 项目目录、命名与文件规范，避免无关文件提交到 Git
+alwaysApply: true
+---
+
+# 项目结构规范
+
+- **命名**：产品名 知喂 (ZhiWei)；exe 为 `ZhiWei_v<版本>.exe`。Python 模块与脚本一律 **snake_case**（如 `office_converter.py`、`cab_to_pdf.py`）；新增模块禁止全大写或驼峰。测试文件为 `test_<模块或功能>.py`，放在 `tests/`。详见 **AGENTS.md** 第一节。
+- **程序与配置**：主程序与 `config.example.json`、`requirements.txt` 在根目录；工具脚本放 `scripts/`，测试放 `tests/`。
+- **文档**：与程序无关或新增文档一律放在 `docs/` 下（如 `docs/plans/`、`docs/test-reports/`、`docs/notes/`），禁止在根目录新建无关的 .md/.txt/.docx。
+- **不提交**：不添加 `logs/`、`output/`、`build/`、`dist/`、`config.json`、`config_profiles/`、`tasks/`、`.venv/`、`skills/` 及各类缓存、临时文件；完整列表见项目根目录 `.gitignore` 与 `AGENTS.md`。
+- 新增文档时优先放入 `docs/` 对应子目录；提交前确认未包含上述忽略路径。
+
+详细约定（含完整命名规范）见本目录上级的 **AGENTS.md**。

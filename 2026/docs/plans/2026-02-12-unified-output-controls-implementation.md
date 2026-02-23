@@ -75,7 +75,7 @@
 ### Task 5: Update docs with flowcharts and per-scenario guidance
 
 **Files:**
-- Modify: `使用说明书.md`
+- Modify: `docs/notes/使用说明书.md`
 
 1. Update mode names and output control section.
 2. Add flowchart for each usage scenario:

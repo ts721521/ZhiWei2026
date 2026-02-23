@@ -97,7 +97,7 @@ python office_converter.py --help   # 查看参数
 | `docs/AI_HANDOVER_20260211.md` | 英文交接：设计要点、LLM hub、沙盒、验收标准、实现顺序 |
 | `docs/TASK_LIST.md` | 任务清单与 Phase 划分，未勾选为待办 |
 | `docs/PRODUCT_REQUIREMENTS.md` | 产品需求与 P0/P1/P2 能力说明 |
-| `使用说明书.md` | 用户向：界面、流程、配置、常见问题 |
+| `docs/notes/使用说明书.md` | 用户向：界面、流程、配置、常见问题 |
 | `CHANGELOG.md` | 版本更新记录 |
 | `README.md` | 仓库/项目说明、安装、运行、打包 |
 
@@ -108,7 +108,7 @@ python office_converter.py --help   # 查看参数
 1. 在 `office_converter.py` 中增加或扩展能力（新配置键、默认值、主流程调用点）。
 2. 在 `office_gui.py` 中增加对应控件与运行时参数传递。
 3. 在 `ui_translations.py` 中增加文案键。
-4. 更新 `使用说明书.md`、`CHANGELOG.md`，必要时更新 `docs/TASK_LIST.md` 与 `docs/PRODUCT_REQUIREMENTS.md`。
+4. 更新 `docs/notes/使用说明书.md`、`CHANGELOG.md`，必要时更新 `docs/TASK_LIST.md` 与 `docs/PRODUCT_REQUIREMENTS.md`。
 5. 运行一次完整转换+合并+归集流程做回归；若有新依赖，在 `requirements.txt` 与 `build_exe.py` 中补齐。
 
 ---

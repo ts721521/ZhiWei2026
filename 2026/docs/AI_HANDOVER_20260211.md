@@ -135,7 +135,7 @@ Add keys for:
 - `ui_translations.py`
 - `docs/PRODUCT_REQUIREMENTS.md`
 - `docs/TASK_LIST.md`
-- `使用说明书.md`
+- `docs/notes/使用说明书.md`
 - `CHANGELOG.md`
 
 ## 10. Handover Notes

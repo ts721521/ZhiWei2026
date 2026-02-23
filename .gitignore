@@ -49,10 +49,11 @@ log/
 # *.xlsx
 # *.pptx
 
-# Project-local noisy outputs
+# --- 2026 project: do not commit ---
 2026/logs/
 2026/log/
 2026/.tmp_test_work/
+2026/.venv/
 2026/__pycache__/
 2026/.pytest_cache/
 2026/.mypy_cache/
@@ -60,13 +61,26 @@ log/
 2026/.coverage
 2026/.coverage.*
 2026/config.json
+2026/config_profiles/
 2026/config_profiles/*.json
+2026/tasks/
 2026/tasks/*.json
 2026/tasks/tasks_index.json
+2026/output/
+2026/skills/
+2026/out.txt
+2026/2026.code-workspace
+2026/.cursor/mcp.json
+2026/.cursor/settings.json
 # PyInstaller
 2026/build/
 2026/dist/
 2026/*.spec
+# Root-level docs should live under docs/
+2026/*.md
+!2026/README.md
+!2026/CHANGELOG.md
+!2026/AGENTS.md
 # Repo-root temp scripts (e.g. _patch_*.py, _fix_*.py)
 _*.py
 _*.txt

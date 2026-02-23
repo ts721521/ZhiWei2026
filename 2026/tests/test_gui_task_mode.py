@@ -38,6 +38,15 @@ def _task_tab_visible(app):
         return False
 
 
+def _drain_events(app, rounds=5):
+    for _ in range(rounds):
+        try:
+            app.update_idletasks()
+            app.update()
+        except Exception:
+            break
+
+
 class TestAppModeConfig(unittest.TestCase):
     """app_mode 配置读写（不启动 GUI）."""
 
@@ -95,7 +104,7 @@ class TestGuiTaskTabVisibility(unittest.TestCase):
     def test_classic_mode_hides_task_tab(self, mock_showinfo):
         import office_gui
         self.app = office_gui.OfficeGUI(config_path=self.config_path)
-        self.app.update_idletasks()
+        _drain_events(self.app)
         self.assertEqual(self.app.var_app_mode.get(), "classic")
         self.assertFalse(
             _task_tab_visible(self.app),
@@ -109,10 +118,10 @@ class TestGuiTaskTabVisibility(unittest.TestCase):
     def test_switch_to_task_mode_shows_task_tab(self, mock_showinfo):
         import office_gui
         self.app = office_gui.OfficeGUI(config_path=self.config_path)
-        self.app.update_idletasks()
+        _drain_events(self.app)
         self.app.var_app_mode.set("task")
         self.app._update_task_tab_for_app_mode()
-        self.app.update_idletasks()
+        _drain_events(self.app)
         self.assertTrue(
             _task_tab_visible(self.app),
             "切换到任务模式后任务 Tab 应显示",
@@ -130,7 +139,7 @@ class TestGuiTaskTabVisibility(unittest.TestCase):
             json.dump(cfg, f, indent=4, ensure_ascii=False)
         import office_gui
         self.app = office_gui.OfficeGUI(config_path=self.config_path)
-        self.app.update_idletasks()
+        _drain_events(self.app)
         self.assertEqual(self.app.var_app_mode.get(), "task")
         self.assertTrue(
             _task_tab_visible(self.app),
@@ -159,22 +168,31 @@ class TestWizardExists(unittest.TestCase):
 
     def test_wizard_step_keys_defined(self):
         """向导 4 步的 tr key 存在（文档 5.3）。"""
-        gui_path = os.path.join(_ROOT, "office_gui.py")
-        with open(gui_path, encoding="utf-8") as f:
-            source = f.read()
+        source = ""
+        for p in (
+            os.path.join(_ROOT, "office_gui.py"),
+            os.path.join(_ROOT, "gui_task_workflow_mixin.py"),
+            os.path.join(_ROOT, "ui_translations.py"),
+        ):
+            with open(p, encoding="utf-8") as f:
+                source += "\n" + f.read()
         for i in range(1, 5):
             key = f"wizard_step{i}"
             self.assertIn(
                 key,
                 source,
-                f"向导第 {i} 步 key {key!r} 应在 office_gui.py 中存在",
+                f"向导第 {i} 步 key {key!r} 应在 GUI 功能文件中存在",
             )
 
     def test_start_button_branches_on_app_mode(self):
         """开始按钮按 app_mode 分支（文档 6.3 / 7.1）。"""
-        gui_path = os.path.join(_ROOT, "office_gui.py")
-        with open(gui_path, encoding="utf-8") as f:
-            source = f.read()
+        source = ""
+        for p in (
+            os.path.join(_ROOT, "office_gui.py"),
+            os.path.join(_ROOT, "gui_execution_mixin.py"),
+        ):
+            with open(p, encoding="utf-8") as f:
+                source += "\n" + f.read()
         self.assertIn("_on_click_start", source)
         self.assertIn("var_app_mode", source)
         self.assertIn('"task"', source, "应有 task 模式分支")

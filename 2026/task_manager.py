@@ -8,6 +8,20 @@ import json
 import os
 from datetime import datetime
 
+TASK_BINDING_ACTIVE = "active"
+TASK_BINDING_PROFILE = "profile"
+TASK_BINDING_SNAPSHOT = "snapshot"
+VALID_TASK_BINDING_MODES = {
+    TASK_BINDING_ACTIVE,
+    TASK_BINDING_PROFILE,
+    TASK_BINDING_SNAPSHOT,
+}
+
+
+def normalize_task_binding_mode(mode):
+    value = str(mode or "").strip().lower()
+    return value if value in VALID_TASK_BINDING_MODES else TASK_BINDING_ACTIVE
+
 
 def _now_iso():
     return datetime.now().isoformat(timespec="seconds")
@@ -95,9 +109,48 @@ def remove_task_registry_if_exists(task_id, target_folder):
     return False
 
 
-def build_task_runtime_config(project_config, task, force_full_rebuild=False):
+def build_task_runtime_config(
+    project_config,
+    task,
+    force_full_rebuild=False,
+    prefer_runtime_snapshot=True,
+):
     task = task if isinstance(task, dict) else {}
-    merged = copy.deepcopy(project_config if isinstance(project_config, dict) else {})
+    binding_mode = normalize_task_binding_mode(task.get("config_binding_mode"))
+    base_cfg = project_config if isinstance(project_config, dict) else {}
+    cfg_source = "project_config(active)"
+    runtime_snapshot = task.get("runtime_config_snapshot")
+    snapshot = task.get("project_config_snapshot")
+
+    if binding_mode == TASK_BINDING_PROFILE:
+        profile_path = str(task.get("config_snapshot_path", "")).strip()
+        profile_cfg = _read_json(profile_path, {}) if profile_path else {}
+        if isinstance(profile_cfg, dict) and profile_cfg:
+            base_cfg = profile_cfg
+            cfg_source = "task.profile_config"
+        elif isinstance(snapshot, dict) and snapshot:
+            base_cfg = snapshot
+            cfg_source = "task.project_config_snapshot(fallback)"
+        elif prefer_runtime_snapshot and isinstance(runtime_snapshot, dict) and runtime_snapshot:
+            base_cfg = runtime_snapshot
+            cfg_source = "task.runtime_config_snapshot(fallback)"
+    elif binding_mode == TASK_BINDING_SNAPSHOT:
+        if isinstance(snapshot, dict) and snapshot:
+            base_cfg = snapshot
+            cfg_source = "task.project_config_snapshot"
+        elif prefer_runtime_snapshot and isinstance(runtime_snapshot, dict) and runtime_snapshot:
+            base_cfg = runtime_snapshot
+            cfg_source = "task.runtime_config_snapshot"
+    elif (
+        prefer_runtime_snapshot
+        and isinstance(runtime_snapshot, dict)
+        and runtime_snapshot
+        and not isinstance(project_config, dict)
+    ):
+        base_cfg = runtime_snapshot
+        cfg_source = "task.runtime_config_snapshot(fallback)"
+
+    merged = copy.deepcopy(base_cfg)
     overrides = task.get("config_overrides", {})
     if not isinstance(overrides, dict):
         overrides = {}
@@ -129,6 +182,11 @@ def build_task_runtime_config(project_config, task, force_full_rebuild=False):
 
     if merged.get("run_mode") == "convert_then_merge":
         merged["merge_source"] = "target"
+
+    # Diagnostic metadata for UI and logs.
+    merged["_task_config_source"] = cfg_source
+    merged["_task_config_binding_mode"] = binding_mode
+    merged["_task_id"] = task_id
 
     return merged
 
@@ -165,21 +223,74 @@ class TaskStore:
     def list_tasks(self):
         index = self.load_index()
         out = []
+        rebuilt_rows = []
+        seen_ids = set()
         for item in index.get("tasks", []):
             if not isinstance(item, dict):
                 continue
-            row = copy.deepcopy(item)
-            row["has_checkpoint"] = os.path.isfile(self.checkpoint_path(row.get("id", "")))
+            task_id = str(item.get("id", "")).strip()
+            if not task_id:
+                continue
+            seen_ids.add(task_id)
+            task = self.get_task(task_id)
+            row = self._build_summary(task) if task else copy.deepcopy(item)
+            row["has_checkpoint"] = os.path.isfile(self.checkpoint_path(task_id))
             out.append(row)
+            rebuilt_rows.append(self._build_summary(task) if task else copy.deepcopy(item))
+
+        for task_id in self._iter_task_ids_from_disk():
+            if task_id in seen_ids:
+                continue
+            task = self.get_task(task_id)
+            if not task:
+                continue
+            row = self._build_summary(task)
+            row["has_checkpoint"] = os.path.isfile(self.checkpoint_path(task_id))
+            out.append(row)
+            rebuilt_rows.append(self._build_summary(task))
+
+        if rebuilt_rows != index.get("tasks", []):
+            self.save_index({"version": index.get("version", 1), "tasks": rebuilt_rows})
         return out
 
     def get_task(self, task_id):
         path = self.task_path(task_id)
         task = _read_json(path, {})
-        return task if task else None
+        if not task:
+            return None
+        mode = normalize_task_binding_mode(task.get("config_binding_mode"))
+        if task.get("config_binding_mode") != mode:
+            task["config_binding_mode"] = mode
+            _write_json(path, task)
+        return task
+
+    def _iter_task_ids_from_disk(self):
+        try:
+            names = os.listdir(self.tasks_dir)
+        except Exception:
+            return []
+        out = []
+        for name in names:
+            lower = name.lower()
+            if not lower.endswith(".json"):
+                continue
+            if lower == "tasks_index.json" or lower.endswith("_checkpoint.json"):
+                continue
+            out.append(name[:-5])
+        return out
 
     def _build_summary(self, task):
         src = task.get("source_folder") or (task.get("source_folders") or [""])[0]
+        config_snapshot_path = str(task.get("config_snapshot_path", "")).strip()
+        config_snapshot_profile_name = str(
+            task.get("config_snapshot_profile_name", "")
+        ).strip()
+        config_snapshot_profile_file = str(
+            task.get("config_snapshot_profile_file", "")
+        ).strip()
+        config_binding_mode = normalize_task_binding_mode(
+            task.get("config_binding_mode")
+        )
         return {
             "id": task["id"],
             "name": task["name"],
@@ -190,6 +301,10 @@ class TaskStore:
             "last_run_at": task.get("last_run_at", ""),
             "updated_at": task.get("updated_at", ""),
             "created_at": task.get("created_at", ""),
+            "config_snapshot_path": config_snapshot_path,
+            "config_snapshot_profile_name": config_snapshot_profile_name,
+            "config_snapshot_profile_file": config_snapshot_profile_file,
+            "config_binding_mode": config_binding_mode,
         }
 
     def save_task(self, task):
@@ -219,6 +334,9 @@ class TaskStore:
         payload["source_folder"] = source_folder
         payload["target_folder"] = target_folder
         payload["run_incremental"] = bool(payload.get("run_incremental", True))
+        payload["config_binding_mode"] = normalize_task_binding_mode(
+            payload.get("config_binding_mode")
+        )
         overrides = payload.get("config_overrides", {})
         payload["config_overrides"] = overrides if isinstance(overrides, dict) else {}
         payload["created_at"] = payload.get("created_at") or now
@@ -241,6 +359,21 @@ class TaskStore:
         index["tasks"] = summaries
         self.save_index(index)
         return payload
+
+    def migrate_legacy_tasks(self):
+        migrated = 0
+        for task_id in self._iter_task_ids_from_disk():
+            path = self.task_path(task_id)
+            payload = _read_json(path, {})
+            if not payload:
+                continue
+            mode = normalize_task_binding_mode(payload.get("config_binding_mode"))
+            if payload.get("config_binding_mode") != mode:
+                payload["config_binding_mode"] = mode
+                _write_json(path, payload)
+                migrated += 1
+        self.list_tasks()
+        return migrated
 
     def delete_task(self, task_id):
         task_id = str(task_id or "").strip()

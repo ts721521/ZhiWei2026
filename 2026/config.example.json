@@ -8,6 +8,7 @@
   "enable_sandbox": true,
   "default_engine": "wps",
   "kill_process_mode": "auto",
+  "enable_failed_file_trace_log": true,
   "run_mode": "convert_then_merge",
   "enable_merge": true,
   "output_enable_pdf": true,

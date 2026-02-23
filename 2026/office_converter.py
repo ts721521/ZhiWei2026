@@ -911,6 +911,7 @@ class OfficeConverter:
         cfg.setdefault("default_engine", ENGINE_ASK)
         cfg.setdefault("kill_process_mode", KILL_MODE_ASK)
         cfg.setdefault("auto_retry_failed", False)
+        cfg.setdefault("enable_failed_file_trace_log", True)
         cfg.setdefault("office_reuse_app", True)
         cfg.setdefault("office_restart_every_n_files", 25)
         cfg.setdefault("pdf_wait_seconds", 15)
@@ -1753,7 +1754,7 @@ class OfficeConverter:
 
     def quarantine_failed_file(self, source_path, should_copy=True):
         if not should_copy:
-            return
+            return None
         try:
             fname = os.path.basename(source_path)
             target = os.path.join(self.failed_dir, fname)
@@ -1763,8 +1764,135 @@ class OfficeConverter:
                     self.failed_dir, f"{name}_{datetime.now().strftime('%H%M%S')}{ext}"
                 )
             shutil.copy2(source_path, target)
+            return target
         except Exception:
-            pass
+            return None
+
+    @staticmethod
+    def _sanitize_failure_log_stem(value):
+        stem = re.sub(r"[^\w\-.]+", "_", str(value or "").strip())
+        stem = stem.strip("._")
+        return stem or "failed_file"
+
+    def _get_failure_output_expectation(self):
+        try:
+            plan = self.compute_convert_output_plan(self.run_mode, self.config)
+        except Exception:
+            return {"need_final_pdf": None, "need_markdown": None}
+        return {
+            "need_final_pdf": bool(plan.get("need_final_pdf")),
+            "need_markdown": bool(plan.get("need_markdown")),
+        }
+
+    def _infer_failure_stage(self, source_path, raw_error="", context=None):
+        ctx = context or {}
+        phase = str(ctx.get("phase", "")).strip().lower()
+        if phase == "scan":
+            scope = str(ctx.get("scan_scope", "")).strip().lower()
+            return f"scan_{scope}" if scope else "scan_access"
+
+        err = str(raw_error or "").lower()
+        if "markdown export failed" in err or (
+            "markdown" in err and ("failed" in err or "error" in err)
+        ):
+            return "markdown_export"
+
+        ext = os.path.splitext(str(source_path or ""))[1].lower()
+        cab_exts = {
+            str(e).lower()
+            for e in self.config.get("allowed_extensions", {}).get("cab", [])
+        }
+        if ext in cab_exts:
+            return "cab_to_markdown"
+        if ext == ".pdf":
+            expected = self._get_failure_output_expectation()
+            if expected.get("need_markdown") and not expected.get("need_final_pdf"):
+                return "pdf_to_markdown"
+            return "pdf_pipeline"
+        return "office_to_pdf"
+
+    def _build_failed_file_trace_payload(
+        self,
+        *,
+        source_path,
+        error_detail,
+        status,
+        elapsed,
+        is_retry,
+        failed_copy_path=None,
+        extra_context=None,
+    ):
+        expected_outputs = self._get_failure_output_expectation()
+        source_abs = os.path.abspath(str(source_path or ""))
+        raw_error = str(error_detail.get("raw_error", "") or "")
+        ctx = dict(error_detail.get("context") or {})
+        if extra_context:
+            ctx.update(dict(extra_context))
+
+        return {
+            "version": 1,
+            "generated_at": datetime.now().isoformat(timespec="seconds"),
+            "status": status,
+            "is_retry": bool(is_retry),
+            "source_path": source_abs,
+            "source_file_name": os.path.basename(source_abs),
+            "source_ext": os.path.splitext(source_abs)[1].lower(),
+            "failed_copy_path": os.path.abspath(failed_copy_path)
+            if failed_copy_path
+            else "",
+            "run_mode": self.get_readable_run_mode(),
+            "engine": self.get_readable_engine_type(),
+            "elapsed_seconds": float(elapsed or 0.0),
+            "failure_stage": self._infer_failure_stage(
+                source_abs, raw_error=raw_error, context=ctx
+            ),
+            "expected_outputs": expected_outputs,
+            "error_type": error_detail.get("error_type", ""),
+            "error_category": error_detail.get("error_category", ""),
+            "is_retryable": bool(error_detail.get("is_retryable", False)),
+            "requires_manual_action": bool(
+                error_detail.get("requires_manual_action", False)
+            ),
+            "message": error_detail.get("message", ""),
+            "suggestion": error_detail.get("suggestion", ""),
+            "raw_error": raw_error,
+            "context": ctx,
+        }
+
+    def _write_failed_file_trace_log(self, payload, failed_copy_path=None):
+        if not self.config.get("enable_failed_file_trace_log", True):
+            return None
+
+        base_dir = ""
+        if failed_copy_path:
+            try:
+                base_dir = os.path.dirname(os.path.abspath(failed_copy_path))
+            except Exception:
+                base_dir = ""
+        if not base_dir:
+            base_dir = self.failed_dir or self.config.get("target_folder", "")
+        if not base_dir:
+            return None
+
+        try:
+            os.makedirs(base_dir, exist_ok=True)
+        except Exception:
+            return None
+
+        source_name = os.path.basename(str(payload.get("source_path", "") or ""))
+        if failed_copy_path:
+            source_name = os.path.basename(str(failed_copy_path))
+        stem = self._sanitize_failure_log_stem(os.path.splitext(source_name)[0])
+        ts = datetime.now().strftime("%Y%m%d_%H%M%S_%f")
+        log_path = os.path.join(base_dir, f"{stem}.{ts}.failure.json")
+
+        try:
+            with open(log_path, "w", encoding="utf-8") as f:
+                json.dump(payload, f, ensure_ascii=False, indent=2)
+            return log_path
+        except Exception as e:
+            logging.error(f"failed to write failed-file trace log: {e}")
+            return None
 
     def record_detailed_error(self, source_path, exception, context=None):
         """
@@ -1793,6 +1921,10 @@ class OfficeConverter:
             "timestamp": datetime.now().isoformat(),
             "context": context or {},
         }
+        record["failure_stage"] = self._infer_failure_stage(
+            record["source_path"], raw_error=record["raw_error"], context=record["context"]
+        )
+        record["expected_outputs"] = self._get_failure_output_expectation()
 
         self.detailed_error_records.append(record)
 
@@ -3040,6 +3172,7 @@ class OfficeConverter:
                         "error_type": error_detail["error_type"],
                         "error_category": error_detail["error_category"],
                         "suggestion": error_detail["suggestion"],
+                        "failure_stage": error_detail.get("failure_stage", ""),
                     }
                     results.append(record)
                     self._emit_file_done(record)
@@ -3069,6 +3202,7 @@ class OfficeConverter:
                         "requires_manual_action": error_detail[
                             "requires_manual_action"
                         ],
+                        "failure_stage": error_detail.get("failure_stage", ""),
                     }
                     results.append(record)
                     self._emit_file_done(record)
@@ -3077,9 +3211,25 @@ class OfficeConverter:
                     f"failed: {logical_source} | reason: {e} | type: {error_detail['error_type']}"
                 )
 
+                failed_copy_path = None
                 if not is_retry:
-                    self.quarantine_failed_file(fpath)
+                    failed_copy_path = self.quarantine_failed_file(fpath)
                     self.error_records.append(logical_source)
+
+                trace_payload = self._build_failed_file_trace_payload(
+                    source_path=logical_source,
+                    error_detail=error_detail,
+                    status=record["status"],
+                    elapsed=elapsed,
+                    is_retry=is_retry,
+                    failed_copy_path=failed_copy_path,
+                    extra_context={"parallel": False},
+                )
+                trace_path = self._write_failed_file_trace_log(
+                    trace_payload, failed_copy_path=failed_copy_path
+                )
+                if trace_path:
+                    record["failure_trace_path"] = trace_path
 
                 # 失败时也更新断点（记录该文件已处理）
                 completed_count += 1
@@ -3380,6 +3530,7 @@ class OfficeConverter:
                         "requires_manual_action": error_detail[
                             "requires_manual_action"
                         ],
+                        "failure_stage": error_detail.get("failure_stage", ""),
                     }
                     results.append(record)
                     self._emit_file_done(record)
@@ -3388,15 +3539,80 @@ class OfficeConverter:
                         f"failed: {logical_source} | reason: {e} | type: {error_detail['error_type']}"
                     )
 
+                    failed_copy_path = None
                     if not is_retry:
-                        self.quarantine_failed_file(fpath)
+                        failed_copy_path = self.quarantine_failed_file(fpath)
                         self.error_records.append(logical_source)
+
+                    trace_payload = self._build_failed_file_trace_payload(
+                        source_path=logical_source,
+                        error_detail=error_detail,
+                        status=record["status"],
+                        elapsed=elapsed,
+                        is_retry=is_retry,
+                        failed_copy_path=failed_copy_path,
+                        extra_context={"parallel": True},
+                    )
+                    trace_path = self._write_failed_file_trace_log(
+                        trace_payload, failed_copy_path=failed_copy_path
+                    )
+                    if trace_path:
+                        record["failure_trace_path"] = trace_path
 
         # 完成后清理断点
         if checkpoint and checkpoint.get("status") == "completed":
             self._clear_checkpoint()
 
         return results
+
+    def _collect_retry_candidates(self):
+        retry_files = []
+        retry_alias_map = {}
+
+        if not os.path.exists(self.failed_dir):
+            return retry_files, retry_alias_map
+
+        valid_exts = {
+            str(e).lower()
+            for sub in self.config.get("allowed_extensions", {}).values()
+            for e in (sub or [])
+            if isinstance(e, str) and e
+        }
+        if not valid_exts:
+            return retry_files, retry_alias_map
+
+        retryable_sources = None
+        if self.detailed_error_records:
+            retryable_sources = {
+                os.path.abspath(str(rec.get("source_path", "")))
+                for rec in self.detailed_error_records
+                if rec.get("is_retryable")
+            }
+
+        name_map = {}
+        for src in self.error_records:
+            abs_src = os.path.abspath(src)
+            if retryable_sources is not None and abs_src not in retryable_sources:
+                continue
+            name_map.setdefault(os.path.basename(src), []).append(src)
+
+        for f in os.listdir(self.failed_dir):
+            if f.startswith("~$"):
+                continue
+            ext = os.path.splitext(f)[1].lower()
+            if ext not in valid_exts:
+                continue
+
+            retry_path = os.path.join(self.failed_dir, f)
+            name = os.path.basename(retry_path)
+            mapped_list = name_map.get(name) or []
+            if not mapped_list:
+                continue
+
+            retry_files.append(retry_path)
+            retry_alias_map[retry_path] = mapped_list.pop(0)
+
+        return retry_files, retry_alias_map
 
     def ask_retry_failed_files(self, failed_count, timeout=20):
         print("\n" + "=" * 60)
@@ -6220,7 +6436,17 @@ class OfficeConverter:
             logging.error("openpyxl missing; collect_only mode cannot continue.")
             return
 
-        source_roots = self._get_source_roots()
+        configured_roots = self._get_configured_source_roots()
+        scan_skip_seen = set()
+        source_roots = []
+        for source_root in configured_roots:
+            if self._probe_source_root_access(
+                source_root,
+                context={"scan_scope": "collect_only"},
+                seen_keys=scan_skip_seen,
+            ):
+                source_roots.append(os.path.abspath(source_root))
+
         if not source_roots:
             print("[WARN] No source folder(s) to scan. collect_only skipped.")
             return
@@ -6257,7 +6483,15 @@ class OfficeConverter:
         for source_root in source_roots:
             if not os.path.isdir(source_root):
                 continue
-            for root, dirs, files in os.walk(source_root):
+            for root, dirs, files in os.walk(
+                source_root,
+                onerror=lambda e, sf=source_root: self._record_scan_access_skip(
+                    getattr(e, "filename", sf),
+                    e,
+                    context={"scan_scope": "collect_only", "source_root": sf},
+                    seen_keys=scan_skip_seen,
+                ),
+            ):
                 dirs[:] = [
                     d
                     for d in dirs
@@ -6534,18 +6768,75 @@ class OfficeConverter:
 
     # =============== Main flow ===============
 
-    def _get_source_roots(self):
-        """Return list of source folder paths to scan (multi-folder or single)."""
+    def _get_configured_source_roots(self):
         roots = self.config.get("source_folders")
         if isinstance(roots, list) and roots:
-            roots = [os.path.abspath(str(p).strip()) for p in roots if str(p).strip()]
-            roots = [r for r in roots if os.path.isdir(r)]
-            if roots:
-                return roots
-        single = self.config.get("source_folder", "")
-        if single and os.path.isdir(single):
+            resolved = [os.path.abspath(str(p).strip()) for p in roots if str(p).strip()]
+            if resolved:
+                return resolved
+        single = str(self.config.get("source_folder", "")).strip()
+        if single:
             return [os.path.abspath(single)]
         return []
+
+    def _get_source_roots(self):
+        """Return list of accessible source folder paths to scan."""
+        return [r for r in self._get_configured_source_roots() if os.path.isdir(r)]
+
+    def _record_scan_access_skip(
+        self, path, exception, context=None, seen_keys=None, silent=False
+    ):
+        abs_path = os.path.abspath(path) if path else ""
+        key = abs_path.lower() if is_win() else abs_path
+        if seen_keys is not None:
+            if key in seen_keys:
+                return None
+            seen_keys.add(key)
+
+        detail = self.record_detailed_error(
+            abs_path or "<unknown>",
+            exception,
+            context=dict(context or {}, phase="scan", skip_only=True),
+        )
+        self.stats["skipped"] += 1
+
+        msg = (
+            f"[scan_skip] inaccessible path skipped: {abs_path or '<unknown>'} | "
+            f"type={detail.get('error_type')} | err={exception}"
+        )
+        trace_payload = self._build_failed_file_trace_payload(
+            source_path=abs_path or "<unknown>",
+            error_detail=detail,
+            status="skipped_scan",
+            elapsed=(detail.get("context") or {}).get("elapsed", 0.0),
+            is_retry=False,
+            failed_copy_path=None,
+            extra_context={"scan_only": True},
+        )
+        self._write_failed_file_trace_log(trace_payload, failed_copy_path=None)
+        if not silent:
+            print(f"[WARN] {msg}")
+        logging.warning(msg)
+        return detail
+
+    def _probe_source_root_access(self, source_root, context=None, seen_keys=None):
+        abs_root = os.path.abspath(str(source_root))
+        if not os.path.isdir(abs_root):
+            self._record_scan_access_skip(
+                abs_root,
+                FileNotFoundError(f"source folder not found or inaccessible: {abs_root}"),
+                context=context,
+                seen_keys=seen_keys,
+            )
+            return False
+        try:
+            os.listdir(abs_root)
+            return True
+        except Exception as e:
+            self._record_scan_access_skip(
+                abs_root, e, context=context, seen_keys=seen_keys
+            )
+            return False
 
     def _get_source_root_for_path(self, abs_path):
         """Return the source root that contains abs_path (for relpath). Prefer longest match."""
@@ -6567,7 +6858,15 @@ class OfficeConverter:
 
     def _scan_convert_candidates(self):
         files = []
-        source_roots = self._get_source_roots()
+        configured_roots = self._get_configured_source_roots()
+        scan_skip_seen = set()
+        source_roots = []
+        for source_root in configured_roots:
+            if self._probe_source_root_access(
+                source_root, context={"scan_scope": "convert"}, seen_keys=scan_skip_seen
+            ):
+                source_roots.append(os.path.abspath(source_root))
+
         if not source_roots:
             single = self.config.get("source_folder", "")
             print(f"\n[WARN] Source directory does not exist or empty: {single}")
@@ -6596,7 +6895,15 @@ class OfficeConverter:
         for source_folder in source_roots:
             if not os.path.isdir(source_folder):
                 continue
-            for root, dirs, filenames in os.walk(source_folder):
+            for root, dirs, filenames in os.walk(
+                source_folder,
+                onerror=lambda e, sf=source_folder: self._record_scan_access_skip(
+                    getattr(e, "filename", sf),
+                    e,
+                    context={"scan_scope": "convert", "source_root": sf},
+                    seen_keys=scan_skip_seen,
+                ),
+            ):
                 dirs[:] = [
                     d
                     for d in dirs
@@ -7553,36 +7860,13 @@ class OfficeConverter:
                     if not self.reuse_process:
                         self.cleanup_all_processes()
 
-                    retry_files = []
-                    retry_alias_map = {}
                     if os.path.exists(self.failed_dir):
                         if self.config.get(
                             "enable_sandbox", True
                         ) and not os.path.exists(self.temp_sandbox):
                             os.makedirs(self.temp_sandbox)
 
-                        valid_exts = [
-                            e
-                            for sub in self.config.get(
-                                "allowed_extensions", {}
-                            ).values()
-                            for e in sub
-                        ]
-                        for f in os.listdir(self.failed_dir):
-                            if f.startswith("~$"):
-                                continue
-                            ext = os.path.splitext(f)[1].lower()
-                            if ext in valid_exts:
-                                retry_path = os.path.join(self.failed_dir, f)
-                                retry_files.append(retry_path)
-
-                        name_map = {}
-                        for src in self.error_records:
-                            name_map.setdefault(os.path.basename(src), []).append(src)
-                        for retry_path in retry_files:
-                            name = os.path.basename(retry_path)
-                            if name in name_map and name_map[name]:
-                                retry_alias_map[retry_path] = name_map[name].pop(0)
+                    retry_files, retry_alias_map = self._collect_retry_candidates()
 
                     if retry_files:
                         retry_start = time.perf_counter()
@@ -7748,6 +8032,7 @@ def create_default_config(config_path):
             "default_engine": "ask",
             "kill_process_mode": "ask",
             "auto_retry_failed": False,
+            "enable_failed_file_trace_log": True,
             "office_reuse_app": True,
             "office_restart_every_n_files": 25,
             "timeout_seconds": 60,

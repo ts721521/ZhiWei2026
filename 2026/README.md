@@ -89,7 +89,7 @@ python build_exe.py
 - 产出物位于 `dist/`，文件名为 `ZhiWei_v<版本号>.exe`（版本号来自 `office_converter.py` 中的 `__version__`）。
 - 请仅从 `dist` 目录运行生成的 exe，不要直接运行 `build` 目录下的文件。
 
-详细步骤与常见问题见 [打包说明.md](打包说明.md)。
+详细步骤与常见问题见 [docs/notes/打包说明.md](docs/notes/打包说明.md)。
 
 ---
 
@@ -97,8 +97,8 @@ python build_exe.py
 
 | 文档 | 内容 |
 |------|------|
-| [使用说明书.md](使用说明书.md) | 界面说明、数据流程、增量与溯源、配置说明、常见问题 |
-| [打包说明.md](打包说明.md) | PyInstaller / cx_Freeze 打包与分发说明 |
+| [docs/notes/使用说明书.md](docs/notes/使用说明书.md) | 界面说明、数据流程、增量与溯源、配置说明、常见问题 |
+| [docs/notes/打包说明.md](docs/notes/打包说明.md) | PyInstaller / cx_Freeze 打包与分发说明 |
 | [CHANGELOG.md](CHANGELOG.md) | 版本更新记录 |
 | [docs/AI_交接文档_下一阶段开发.md](docs/AI_交接文档_下一阶段开发.md) | 给下一位开发者/AI 的交接：入口、约束、下一阶段功能与文档索引 |
 
@@ -109,7 +109,7 @@ python build_exe.py
 - 额外开发文档（仓库根目录与 `docs/` 下的 `.md`）可执行：
 
 ```bash
-python sync_docs_to_obsidian.py --config config.json
+python scripts/sync_docs_to_obsidian.py --config config.json
 ```
 
 - 同步后会生成索引：`<obsidian_root>/<obsidian_program_name>/开发文档/_sync_index.md`。
@@ -122,10 +122,14 @@ python sync_docs_to_obsidian.py --config config.json
 ├── office_gui.py        # GUI 入口（Tk / ttkbootstrap）
 ├── office_converter.py  # 核心逻辑：转换、合并、梳理、MSHelp、增量等
 ├── ui_translations.py   # 界面文案
+├── cab_to_pdf.py        # MS Help CAB→PDF 独立脚本（可选）
 ├── build_exe.py         # 一键打包脚本
+├── scripts/             # 工具脚本（如 Obsidian 文档同步）
 ├── config.example.json   # 配置示例（复制为 config.json 后修改）
-├── 使用说明书.md
-├── 打包说明.md
+├── docs/
+│   ├── notes/
+│   │   ├── 使用说明书.md
+│   │   └── 打包说明.md
 ├── CHANGELOG.md
 └── README.md
 ```

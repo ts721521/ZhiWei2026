@@ -21,6 +21,14 @@ def _resolve_obsidian_root(cfg):
     return ""
 
 
+def _project_root():
+    """Project root (2026 directory). When script is in scripts/, use parent dir."""
+    _script_dir = os.path.dirname(os.path.abspath(__file__))
+    if os.path.basename(_script_dir) == "scripts":
+        return os.path.dirname(_script_dir)
+    return _script_dir
+
+
 def _iter_markdown_files(project_root):
     root_entries = sorted(os.listdir(project_root))
     for name in root_entries:
@@ -77,7 +85,7 @@ def _determine_category_and_dest(rel_path):
 
 
 def sync_docs(config_path):
-    project_root = os.path.dirname(os.path.abspath(__file__))
+    project_root = _project_root()
     cfg = _load_config(config_path)
     obsidian_root = _resolve_obsidian_root(cfg)
     if not obsidian_root:
@@ -142,9 +150,8 @@ def sync_docs(config_path):
 
 def main():
     parser = argparse.ArgumentParser()
-    parser.add_argument(
-        "--config", default=os.path.join(os.path.dirname(__file__), "config.json")
-    )
+    default_config = os.path.join(_project_root(), "config.json")
+    parser.add_argument("--config", default=default_config)
     args = parser.parse_args()
 
     dst_root, copied, index_path = sync_docs(args.config)
