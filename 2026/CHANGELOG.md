@@ -1,7 +1,30 @@
-# Changelog
+﻿# Changelog
 
 All notable changes to this project are documented in this file.
 
+## [Post v5.19.1] - 2026-02-24
+### Added
+- **任务列表配置范围过滤**：新增“仅当前配置”开关，任务列表可只显示与当前活动配置/配置档绑定的任务。
+- **任务筛选一致性**：状态筛选候选项改为基于当前可见任务集合生成，避免出现筛选项与列表不一致。
+- **默认配置字段对齐**：`create_default_config()` 明确包含 `ui.task_current_config_only = true`。
+
+### Changed
+- **任务模式配置持久化**：`ui.task_current_config_only` 已接入读取、保存、配置合成与脏状态比较逻辑。
+- **任务模式交互稳定性**：任务列表刷新、选择、写入细节等流程的非致命异常上报覆盖范围扩大，避免 UI 静默失败。
+
+### Tests
+- 新增/补充测试：
+  - `tests/test_task_list_filter_sort.py`（含当前配置范围过滤）
+  - `tests/test_default_config_schema.py`（默认 schema 字段校验）
+  - `tests/test_nonfatal_ui_error_reporting.py`
+  - `tests/test_gui_run_mode_state_behavior.py`
+- 2026-02-24 全量验证：`python -m unittest discover -s tests -p "test_*.py" -v` -> `Ran 71 tests ... OK`
+
+### Documentation
+- 更新 `README.md`、`docs/test-reports/README.md`、`docs/test-reports/TEST_REPORT_SUMMARY.md`、`docs/notes/使用说明书.md`。
+- 新增 `docs/plans/2026-02-24-office-converter-split-plan.md`（`office_converter.py` 拆分实施计划）。
+
+---
 ## [v5.19.1] - 2026-02-15
 ### Fixed
 - **GUI 滚动页面渲染修复**：修复 Canvas 内嵌窗口初始宽度为 0 导致所有 Tab 内容不可见的问题
@@ -225,3 +248,5 @@ All notable changes to this project are documented in this file.
 - Date-based file filtering (before/after).
 - Merge options: index page generation and Excel list export.
 - UI controls for new options.
+
+

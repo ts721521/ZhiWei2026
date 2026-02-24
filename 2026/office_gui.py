@@ -3,7 +3,7 @@
 office_gui.py - Office 文档批量转换 & 整理工具 GUI 版
 
 说明：
-- 依赖 office_converter.py 中的 OfficeConverter（已更新到 v5.17.0）
+- 依赖 office_converter.py 中的 OfficeConverter（已更新到 v5.19.1）
 - GUI 中含：
     * "运行参数"页：选择源/目标目录、运行模式、内容策略、合并模式、沙箱等
     * "配置管理"页：直接编辑 config.json 的部分配置（日志目录、排除目录、关键字、超时参数等）

@@ -1,17 +1,23 @@
+import unittest
 
-from pypdf import PdfWriter, PdfReader
+from pypdf import PdfWriter
 
-try:
-    writer = PdfWriter()
-    # Create a dummy blank page
-    writer.add_blank_page(width=595, height=842)
-    writer.add_blank_page(width=595, height=842)
-    
-    # Try to add a link
-    # signature: add_link(page_nr, target_page_nr, rect, border=None)
-    # rect is [x1, y1, x2, y2]
-    writer.add_link(0, 1, [50, 50, 200, 100])
-    
-    print("pypdf add_link seems available and signature matches expectation.")
-except Exception as e:
-    print(f"Error: {e}")
+
+class PypdfWriterApiTests(unittest.TestCase):
+    def test_writer_creates_blank_pages(self):
+        writer = PdfWriter()
+        writer.add_blank_page(width=595, height=842)
+        writer.add_blank_page(width=595, height=842)
+        self.assertEqual(2, len(writer.pages))
+
+    def test_writer_exposes_link_capable_api(self):
+        # pypdf>=4 removed add_link; modern APIs include add_annotation/add_uri.
+        writer = PdfWriter()
+        has_modern_link_api = hasattr(writer, "add_annotation") and hasattr(
+            writer, "add_uri"
+        )
+        self.assertTrue(has_modern_link_api)
+
+
+if __name__ == "__main__":
+    unittest.main()

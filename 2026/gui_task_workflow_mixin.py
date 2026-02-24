@@ -30,6 +30,30 @@ from task_manager import (
 
 
 class TaskWorkflowMixin:
+    def _resolve_text_core_widget(self, widget):
+        if widget is None:
+            return None
+        core = getattr(widget, "text", None)
+        return core if core is not None else widget
+
+    def _set_text_widget_content(self, widget, text):
+        core = self._resolve_text_core_widget(widget)
+        if core is None:
+            return
+        try:
+            core.configure(state="normal")
+        except Exception:
+            pass
+        try:
+            core.delete("1.0", tk.END)
+            core.insert(tk.END, text)
+        except Exception:
+            return
+        try:
+            core.configure(state="disabled")
+        except Exception:
+            pass
+
     def _get_selected_task_id(self):
         if not hasattr(self, "tree_tasks"):
             return None
@@ -44,42 +68,259 @@ class TaskWorkflowMixin:
             return p
         return "..." + p[-(max_len - 3) :]
 
+    def _report_nonfatal_ui_error(self, scope, exc=None, detail=""):
+        scope_text = str(scope or "ui").strip() or "ui"
+        message = str(detail or "").strip()
+        if not message and exc is not None:
+            message = str(exc)
+        if not message:
+            message = "(no detail)"
+
+        record = {
+            "at": datetime.now().isoformat(timespec="seconds"),
+            "scope": scope_text,
+            "message": message,
+        }
+        errors = getattr(self, "_ui_nonfatal_errors", None)
+        if not isinstance(errors, list):
+            errors = []
+            self._ui_nonfatal_errors = errors
+        errors.append(record)
+        if len(errors) > 50:
+            del errors[:-50]
+
+        try:
+            q = getattr(self, "log_queue", None)
+            if q is not None:
+                q.put(f"[UI-WARN] {scope_text}: {message}")
+        except Exception:
+            pass
+        return record
+
+    def _task_list_filter_text(self):
+        try:
+            var = getattr(self, "var_task_filter_text", None)
+            return str(var.get() if var is not None else "").strip().lower()
+        except Exception:
+            return ""
+
+    def _task_list_status_filter(self):
+        try:
+            var = getattr(self, "var_task_status_filter", None)
+            value = str(var.get() if var is not None else "").strip().lower()
+            return value or "all"
+        except Exception:
+            return "all"
+
+    def _task_list_sort_by(self):
+        try:
+            var = getattr(self, "var_task_sort_by", None)
+            value = str(var.get() if var is not None else "").strip().lower()
+            return value or "updated_desc"
+        except Exception:
+            return "updated_desc"
+
+    def _task_scope_current_config_only(self):
+        try:
+            var = getattr(self, "var_task_scope_current_config_only", None)
+            if var is None:
+                return False
+            return bool(int(var.get()))
+        except Exception:
+            return False
+
+    def _task_matches_current_config_scope(self, task):
+        if not self._task_scope_current_config_only():
+            return True
+        if not isinstance(task, dict):
+            return False
+
+        current_config = self._safe_abs_path(getattr(self, "config_path", ""))
+        if not current_config:
+            return True
+
+        task_cfg_path = self._safe_abs_path(task.get("config_snapshot_path", ""))
+        if task_cfg_path:
+            return task_cfg_path == current_config
+
+        mode = normalize_task_binding_mode(task.get("config_binding_mode"))
+        if mode == TASK_BINDING_ACTIVE:
+            return True
+
+        task_snapshot_sig = self._normalize_config_for_compare(
+            task.get("project_config_snapshot")
+        )
+        if not task_snapshot_sig:
+            return False
+        loader = getattr(self, "_load_config_for_write", None)
+        if not callable(loader):
+            return False
+        try:
+            current_cfg_sig = self._normalize_config_for_compare(loader())
+        except Exception as e:
+            self._report_nonfatal_ui_error("task.scope.current_cfg", exc=e)
+            return False
+        return bool(current_cfg_sig and current_cfg_sig == task_snapshot_sig)
+
+    def _refresh_task_status_filter_values(self, tasks):
+        cb = getattr(self, "cb_task_status_filter", None)
+        if cb is None:
+            return
+        statuses = []
+        for task in tasks or []:
+            if not isinstance(task, dict):
+                continue
+            status = str(task.get("status", "")).strip().lower()
+            if status and status not in statuses:
+                statuses.append(status)
+        values = ["all"] + sorted(statuses)
+        try:
+            current = tuple(cb.cget("values"))
+        except Exception:
+            current = tuple()
+        if current != tuple(values):
+            try:
+                cb.configure(values=values)
+            except Exception:
+                try:
+                    cb["values"] = values
+                except Exception:
+                    return
+        var = getattr(self, "var_task_status_filter", None)
+        if var is None:
+            return
+        try:
+            cur = str(var.get() or "").strip().lower()
+        except Exception:
+            cur = ""
+        if cur not in values:
+            try:
+                var.set("all")
+            except Exception:
+                pass
+
+    def _filter_task_list_rows(self, tasks):
+        rows = [t for t in (tasks or []) if isinstance(t, dict)]
+        query = self._task_list_filter_text()
+        status_filter = self._task_list_status_filter()
+        out = []
+        for task in rows:
+            if not self._task_matches_current_config_scope(task):
+                continue
+            if status_filter != "all":
+                row_status = str(task.get("status", "idle")).strip().lower()
+                if row_status != status_filter:
+                    continue
+            if query:
+                haystack = " ".join(
+                    [
+                        str(task.get("id", "")),
+                        str(task.get("name", "")),
+                        str(task.get("source_folder", "")),
+                        str(task.get("target_folder", "")),
+                        str(task.get("status", "")),
+                    ]
+                ).lower()
+                if query not in haystack:
+                    continue
+            out.append(task)
+        return out
+
+    def _sort_task_list_rows(self, tasks):
+        rows = [dict(t) for t in (tasks or []) if isinstance(t, dict)]
+        sort_by = self._task_list_sort_by()
+        if sort_by == "name_asc":
+            rows.sort(key=lambda t: str(t.get("name", "")).lower())
+            return rows
+        if sort_by == "name_desc":
+            rows.sort(key=lambda t: str(t.get("name", "")).lower(), reverse=True)
+            return rows
+        if sort_by == "last_run_desc":
+            rows.sort(key=lambda t: str(t.get("last_run_at", "") or ""), reverse=True)
+            return rows
+        if sort_by == "status_name":
+            rows.sort(
+                key=lambda t: (
+                    str(t.get("status", "idle")).lower(),
+                    str(t.get("name", "")).lower(),
+                )
+            )
+            return rows
+        rows.sort(
+            key=lambda t: str(
+                t.get("updated_at") or t.get("last_run_at") or t.get("created_at") or ""
+            ),
+            reverse=True,
+        )
+        return rows
+
+    def _reset_task_list_filters(self):
+        try:
+            if hasattr(self, "var_task_filter_text"):
+                self.var_task_filter_text.set("")
+            if hasattr(self, "var_task_status_filter"):
+                self.var_task_status_filter.set("all")
+            if hasattr(self, "var_task_sort_by"):
+                self.var_task_sort_by.set("updated_desc")
+        except Exception as e:
+            self._report_nonfatal_ui_error("task.reset_filters", exc=e)
+        self._refresh_task_list_ui()
+
     def _refresh_task_list_ui(self):
         if not hasattr(self, "tree_tasks"):
             return
         selected_id = self._get_selected_task_id()
         for iid in self.tree_tasks.get_children():
             self.tree_tasks.delete(iid)
-        tasks = self.task_store.list_tasks()
+        tasks = []
+        try:
+            tasks = self.task_store.list_tasks()
+        except Exception as e:
+            self._report_nonfatal_ui_error("task.list_tasks", exc=e)
+            tasks = []
+        scoped_tasks = [t for t in tasks if self._task_matches_current_config_scope(t)]
+        self._refresh_task_status_filter_values(scoped_tasks)
+        tasks = self._filter_task_list_rows(tasks)
+        tasks = self._sort_task_list_rows(tasks)
         for task in tasks:
             task_id = str(task.get("id", ""))
             name = str(task.get("name", ""))[:48]
             source = self._short_path(task.get("source_folder", ""))
             target = self._short_path(task.get("target_folder", ""))
-            full_task = self.task_store.get_task(task_id) or task
+            try:
+                full_task = self.task_store.get_task(task_id) or task
+            except Exception as e:
+                self._report_nonfatal_ui_error("task.get_task", exc=e, detail=task_id)
+                full_task = task
             binding = self._summarize_task_config_binding(full_task, runtime_preview={})
             binding_name = str(binding.get("display_name", "") or "-")
             binding_relation = str(binding.get("relation_label", "") or "-")
             status = str(task.get("status", "idle"))
             last_run = (task.get("last_run_at") or "")[:16]
-            self.tree_tasks.insert(
-                "",
-                END,
-                iid=task_id,
-                values=(
-                    name,
-                    source,
-                    target,
-                    binding_name,
-                    binding_relation,
-                    status,
-                    last_run,
-                ),
-            )
+            try:
+                self.tree_tasks.insert(
+                    "",
+                    END,
+                    iid=task_id,
+                    values=(
+                        name,
+                        source,
+                        target,
+                        binding_name,
+                        binding_relation,
+                        status,
+                        last_run,
+                    ),
+                )
+            except Exception as e:
+                self._report_nonfatal_ui_error("task.tree_insert", exc=e, detail=task_id)
         if selected_id and self.tree_tasks.exists(selected_id):
             self.tree_tasks.selection_set(selected_id)
             self.tree_tasks.focus(selected_id)
-        self._on_task_select()
+        try:
+            self._on_task_select()
+        except Exception as e:
+            self._report_nonfatal_ui_error("task.on_select", exc=e)
 
     def _strip_task_runtime_meta(self, cfg):
         if not isinstance(cfg, dict):
@@ -337,8 +578,8 @@ class TaskWorkflowMixin:
                 saved = self.task_store.save_task(task)
                 if isinstance(saved, dict):
                     task = saved
-            except Exception:
-                pass
+            except Exception as e:
+                self._report_nonfatal_ui_error("task.save_runtime_snapshot", exc=e)
 
         runtime_cfg = build_task_runtime_config(
             base_cfg,
@@ -353,15 +594,9 @@ class TaskWorkflowMixin:
         task = self.task_store.get_task(task_id) if task_id else None
         if not task:
             if hasattr(self, "txt_task_detail"):
-                try:
-                    self.txt_task_detail.configure(state="normal")
-                    self.txt_task_detail.delete("1.0", tk.END)
-                    self.txt_task_detail.insert(
-                        tk.END, self.tr("msg_task_none_selected")
-                    )
-                    self.txt_task_detail.configure(state="disabled")
-                except Exception:
-                    pass
+                self._set_text_widget_content(
+                    self.txt_task_detail, self.tr("msg_task_none_selected")
+                )
             if hasattr(self, "btn_task_resume"):
                 self.btn_task_resume.configure(state="disabled")
             self._update_task_tab_for_app_mode()
@@ -467,22 +702,18 @@ class TaskWorkflowMixin:
         full_text = "\n".join(full_lines)
 
         if hasattr(self, "txt_task_detail"):
-            try:
-                self.txt_task_detail.configure(state="normal")
-                self.txt_task_detail.delete("1.0", tk.END)
-                self.txt_task_detail.insert(tk.END, full_text)
-                self.txt_task_detail.configure(state="disabled")
-            except Exception:
-                pass
+            self._set_text_widget_content(self.txt_task_detail, full_text)
         if (
             runtime_preview
             and getattr(self, "var_app_mode", None)
             and self.var_app_mode.get() == "task"
         ):
             try:
-                self._apply_task_runtime_to_ui(runtime_preview)
-            except Exception:
-                pass
+                self._apply_task_runtime_to_ui(
+                    runtime_preview, preserve_current_run_tab=True
+                )
+            except Exception as e:
+                self._report_nonfatal_ui_error("task.apply_runtime_to_ui", exc=e)
         can_resume = bool(cp and done < planned)
         self.btn_task_resume.configure(state="normal" if can_resume else "disabled")
         self._update_task_tab_for_app_mode()
@@ -1493,7 +1724,7 @@ class TaskWorkflowMixin:
             parent=self,
         )
 
-    def _apply_task_runtime_to_ui(self, cfg):
+    def _apply_task_runtime_to_ui(self, cfg, preserve_current_run_tab=False):
         self._suspend_cfg_dirty = True
         try:
             src_list = cfg.get("source_folders") or []
@@ -1543,7 +1774,13 @@ class TaskWorkflowMixin:
             )
         finally:
             self._suspend_cfg_dirty = False
-        self._on_run_mode_change()
+        prev_suppress = bool(getattr(self, "_suppress_run_tab_autoselect", False))
+        if preserve_current_run_tab:
+            self._suppress_run_tab_autoselect = True
+        try:
+            self._on_run_mode_change()
+        finally:
+            self._suppress_run_tab_autoselect = prev_suppress
         self._on_toggle_incremental_mode()
         self.validate_runtime_inputs(silent=True, scope="all")
 

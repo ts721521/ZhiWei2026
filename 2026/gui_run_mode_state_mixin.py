@@ -12,6 +12,14 @@ from office_converter import (
 
 
 class RunModeStateMixin:
+    def _report_nonfatal_run_mode_error(self, scope, exc):
+        reporter = getattr(self, "_report_nonfatal_ui_error", None)
+        if callable(reporter):
+            try:
+                reporter(scope, exc=exc)
+            except Exception:
+                pass
+
     def _set_task_tab_highlight(self, on):
         """Highlight the task tab in task mode and restore normal style otherwise."""
         if not hasattr(self, "main_notebook") or not hasattr(self, "tab_run_tasks"):
@@ -103,18 +111,19 @@ class RunModeStateMixin:
             self._set_widget_tree_state(self.frm_collect_opts, "disabled")
 
         # 閼奉亜濮╅柅澶夎厬鐎电懓绨查惃鍕€婄仦?tab閿涘牆鎮庨獮鏈电啊濮婂磭鎮婇妴涓甋Help/鐎规矮缍呴敍?
-        try:
-            if is_collect:
-                # 濮婂磭鎮婂Ο鈥崇础娴ｈ法鏁ら妴灞芥値楠?/ 濮婂磭鎮婇妴宥堜粵閸氬牓銆?
-                self.main_notebook.select(self.tab_run_merge)
-            elif is_mshelp:
-                self.main_notebook.select(self.tab_run_mshelp)
-            elif mode == MODE_MERGE_ONLY:
-                self.main_notebook.select(self.tab_run_merge)
-            else:
-                self.main_notebook.select(self.tab_run_convert)
-        except Exception:
-            pass
+        if not bool(getattr(self, "_suppress_run_tab_autoselect", False)):
+            try:
+                if is_collect:
+                    # 濮婂磭鎮婂Ο鈥崇础娴ｈ法鏁ら妴灞芥値楠?/ 濮婂磭鎮婇妴宥堜粵閸氬牓銆?
+                    self.main_notebook.select(self.tab_run_merge)
+                elif is_mshelp:
+                    self.main_notebook.select(self.tab_run_mshelp)
+                elif mode == MODE_MERGE_ONLY:
+                    self.main_notebook.select(self.tab_run_merge)
+                else:
+                    self.main_notebook.select(self.tab_run_convert)
+            except Exception:
+                pass
 
         # Engine & Sandbox (Enable only if converting)
         state_exec = "normal" if is_convert else "disabled"
@@ -166,8 +175,10 @@ class RunModeStateMixin:
             for child in self.frm_date.winfo_children():
                 try:
                     child.configure(state="disabled")
-                except:
-                    pass
+                except Exception as e:
+                    self._report_nonfatal_run_mode_error(
+                        "run_mode.disable_date_children", e
+                    )
             try:
                 self.ent_date.configure(state="disabled")
             except Exception:
@@ -406,8 +417,10 @@ class RunModeStateMixin:
         for child in self.frm_date.winfo_children():
             try:
                 child.configure(state=state)
-            except:
-                pass
+            except Exception as e:
+                self._report_nonfatal_run_mode_error(
+                    "run_mode.toggle_date_filter.child_state", e
+                )
         self.ent_date.configure(state=state)
 
     def _on_toggle_sandbox(self):

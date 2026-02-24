@@ -3,43 +3,47 @@
 ## 验证命令
 
 ```bash
-# 项目根目录执行
 python -m unittest discover -s tests -p "test_*.py" -v
 ```
 
-## 最新验证结果
+## 最新结果（2026-02-24）
 
 | 项目 | 结果 |
 |------|------|
-| **执行日期** | 2026-02-13 |
-| **总用例数** | 25 |
-| **通过** | 23 |
-| **跳过** | 2（GUI 任务模式：需 ttkbootstrap 的 2 个 Tab 显示用例） |
-| **失败** | 0 |
-| **退出码** | 0 |
-| **耗时** | ~1.0s |
+| 总用例数 | 71 |
+| 通过 | 71 |
+| 跳过 | 0 |
+| 失败 | 0 |
+| 退出码 | 0 |
+| 结论 | OK |
 
-## 输出摘要
+## 控制台摘要
 
+```text
+Ran 71 tests in 7.762s
+OK
 ```
-Ran 25 tests in 0.993s
-OK (skipped=2)
-```
 
-## 各模块结果
+## 覆盖模块概览
 
-| 模块 | 文件 | 用例数 | 通过 | 跳过 |
-|------|------|--------|------|------|
-| GUI 任务/传统模式 | test_gui_task_mode.py | 10 | 8 | 2 |
-| 任务管理 | test_task_manager.py | 5 | 5 | 0 |
-| 转换器断点续传 | test_converter_resume.py | 1 | 1 | 0 |
-| 合并/转换流水线 | test_merge_convert_pipeline.py | 4 | 4 | 0 |
-| 输出控制 | test_output_controls.py | 5 | 5 | 0 |
+- 任务系统：任务管理、绑定关系、列表筛选/排序、选中详情渲染、任务切换状态保持。
+- GUI 运行态：Run Mode 状态切换、关键 Mixin 的依赖绑定与入口保障。
+- 核心流水线：转换恢复、合并/转换路径、输出策略、失败重试与扫描跳过。
+- 默认配置与 i18n：默认 schema 结构、翻译 key 覆盖一致性。
+- 三方兼容：`pypdf` API 兼容性测试。
+
+## 关键新增验证点（相对旧报告）
+
+- `test_task_list_filter_sort.py`：任务列表关键字/状态过滤、排序、当前配置范围过滤。
+- `test_default_config_schema.py`：`ui.task_current_config_only` 默认值与 schema 存在性。
+- `test_nonfatal_ui_error_reporting.py`：UI 非致命错误记录窗口与日志输出行为。
+- `test_gui_run_mode_state_behavior.py`：run mode 切换异常上报及无裸 `except` 约束。
 
 ## 分报告链接
 
-- [GUI 任务模式](TEST_REPORT_GUI_TASK_MODE.md)
-- [任务管理](TEST_REPORT_TASK_MANAGER.md)
-- [转换器断点续传](TEST_REPORT_CONVERTER_RESUME.md)
-- [合并/转换流水线](TEST_REPORT_MERGE_CONVERT_PIPELINE.md)
-- [输出控制](TEST_REPORT_OUTPUT_CONTROLS.md)
+- [TEST_REPORT_GUI_TASK_MODE.md](TEST_REPORT_GUI_TASK_MODE.md)
+- [TEST_REPORT_TASK_MANAGER.md](TEST_REPORT_TASK_MANAGER.md)
+- [TEST_REPORT_CONVERTER_RESUME.md](TEST_REPORT_CONVERTER_RESUME.md)
+- [TEST_REPORT_MERGE_CONVERT_PIPELINE.md](TEST_REPORT_MERGE_CONVERT_PIPELINE.md)
+- [TEST_REPORT_OUTPUT_CONTROLS.md](TEST_REPORT_OUTPUT_CONTROLS.md)
+

@@ -115,6 +115,28 @@ class TaskManagerTests(unittest.TestCase):
         self.assertIsNone(self.store.load_checkpoint("beta"))
         self.assertEqual([], self.store.list_tasks())
 
+    def test_get_task_falls_back_to_index_when_task_file_missing(self):
+        self.store.save_task(
+            {
+                "id": "gamma_missing_file",
+                "name": "Gamma Missing File",
+                "source_folder": r"C:\src3",
+                "target_folder": r"C:\out3",
+                "run_incremental": True,
+                "config_binding_mode": "active",
+            }
+        )
+        os.remove(self.store.task_path("gamma_missing_file"))
+
+        task = self.store.get_task("gamma_missing_file")
+        self.assertIsInstance(task, dict)
+        self.assertEqual("gamma_missing_file", task.get("id"))
+        self.assertEqual("Gamma Missing File", task.get("name"))
+        self.assertEqual(r"C:\src3", task.get("source_folder"))
+        self.assertEqual(r"C:\out3", task.get("target_folder"))
+        self.assertEqual([r"C:\src3"], task.get("source_folders"))
+        self.assertEqual("active", task.get("config_binding_mode"))
+
     def test_build_task_runtime_config_resolves_conflicting_keys(self):
         project_cfg = {
             "run_mode": "convert_then_merge",

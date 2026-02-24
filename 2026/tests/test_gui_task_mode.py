@@ -47,6 +47,31 @@ def _drain_events(app, rounds=5):
             break
 
 
+def _close_app(app):
+    if app is None:
+        return
+    try:
+        _drain_events(app, rounds=2)
+    except Exception:
+        pass
+    try:
+        # Suppress noisy async Tcl callbacks after window teardown in GUI tests.
+        app.tk.call("proc", "bgerror", "msg", "return")
+    except Exception:
+        pass
+    try:
+        if hasattr(app, "_on_close_main_window"):
+            app._on_close_main_window()
+        elif app.winfo_exists():
+            app.destroy()
+    except Exception:
+        try:
+            if app.winfo_exists():
+                app.destroy()
+        except Exception:
+            pass
+
+
 class TestAppModeConfig(unittest.TestCase):
     """app_mode 配置读写（不启动 GUI）."""
 
@@ -89,11 +114,8 @@ class TestGuiTaskTabVisibility(unittest.TestCase):
             json.dump(cfg, f, indent=4, ensure_ascii=False)
 
     def tearDown(self):
-        try:
-            if hasattr(self, "app") and self.app.winfo_exists():
-                self.app.destroy()
-        except Exception:
-            pass
+        _close_app(getattr(self, "app", None))
+        self.app = None
         try:
             import shutil
             shutil.rmtree(self.tmp, ignore_errors=True)
@@ -110,7 +132,7 @@ class TestGuiTaskTabVisibility(unittest.TestCase):
             _task_tab_visible(self.app),
             "传统模式下任务 Tab 应被隐藏",
         )
-        self.app.destroy()
+        _close_app(self.app)
         self.app = None
 
     @unittest.skipIf(not _has_ttkbootstrap(), "任务 Tab 恢复显示需 ttkbootstrap；Windows 下推荐安装以完整验证")
@@ -126,7 +148,7 @@ class TestGuiTaskTabVisibility(unittest.TestCase):
             _task_tab_visible(self.app),
             "切换到任务模式后任务 Tab 应显示",
         )
-        self.app.destroy()
+        _close_app(self.app)
         self.app = None
 
     @unittest.skipIf(not _has_ttkbootstrap(), "任务 Tab 恢复显示需 ttkbootstrap；Windows 下推荐安装以完整验证")
@@ -145,7 +167,7 @@ class TestGuiTaskTabVisibility(unittest.TestCase):
             _task_tab_visible(self.app),
             "配置为 task 时启动后任务 Tab 应显示",
         )
-        self.app.destroy()
+        _close_app(self.app)
         self.app = None
 
 
@@ -218,11 +240,8 @@ class TestWizardStepLabelsOnWindows(unittest.TestCase):
             json.dump(cfg, f, indent=4, ensure_ascii=False)
 
     def tearDown(self):
-        try:
-            if hasattr(self, "app") and self.app.winfo_exists():
-                self.app.destroy()
-        except Exception:
-            pass
+        _close_app(getattr(self, "app", None))
+        self.app = None
         try:
             import shutil
             shutil.rmtree(self.tmp, ignore_errors=True)
@@ -237,7 +256,7 @@ class TestWizardStepLabelsOnWindows(unittest.TestCase):
             label = self.app.tr(f"wizard_step{i}")
             self.assertIsInstance(label, str, f"wizard_step{i} 应为字符串")
             self.assertTrue(len(label) > 0, f"wizard_step{i} 不应为空")
-        self.app.destroy()
+        _close_app(self.app)
         self.app = None
 
 

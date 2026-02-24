@@ -1,9 +1,17 @@
+import unittest
 
 import pypdf
-print(f"pypdf version: {pypdf.__version__}")
-try:
-    from pypdf.annotations import FreeText
-    print("pypdf.annotations exists")
-    print(dir(pypdf.annotations))
-except ImportError:
-    print("pypdf.annotations not found")
+from pypdf.annotations import FreeText
+
+
+class PypdfVersionTests(unittest.TestCase):
+    def test_version_string_present(self):
+        self.assertIsInstance(pypdf.__version__, str)
+        self.assertTrue(pypdf.__version__.strip())
+
+    def test_annotations_module_exposes_freetext(self):
+        self.assertTrue(callable(FreeText))
+
+
+if __name__ == "__main__":
+    unittest.main()

@@ -254,14 +254,52 @@ class TaskStore:
         return out
 
     def get_task(self, task_id):
+        task_id = str(task_id or "").strip()
+        if not task_id:
+            return None
+
         path = self.task_path(task_id)
         task = _read_json(path, {})
         if not task:
-            return None
+            index = self.load_index()
+            summary = None
+            for item in index.get("tasks", []):
+                if isinstance(item, dict) and str(item.get("id", "")).strip() == task_id:
+                    summary = copy.deepcopy(item)
+                    break
+            if not isinstance(summary, dict):
+                return None
+
+            source_folders = summary.get("source_folders")
+            if isinstance(source_folders, list):
+                source_folders = [str(p).strip() for p in source_folders if str(p).strip()]
+            if not source_folders:
+                source_folders = [str(summary.get("source_folder", "")).strip()]
+            source_folder = (source_folders or [""])[0]
+            target_folder = str(summary.get("target_folder", "")).strip()
+            name = str(summary.get("name", "")).strip()
+            if not name or not source_folder or not target_folder:
+                return None
+
+            task = summary
+            task["id"] = task_id
+            task["name"] = name
+            task["source_folders"] = source_folders
+            task["source_folder"] = source_folder
+            task["target_folder"] = target_folder
+            task["run_incremental"] = bool(task.get("run_incremental", True))
+            task["status"] = task.get("status", "idle")
+            task["last_run_at"] = task.get("last_run_at", "")
+            task["config_overrides"] = (
+                task.get("config_overrides")
+                if isinstance(task.get("config_overrides"), dict)
+                else {}
+            )
         mode = normalize_task_binding_mode(task.get("config_binding_mode"))
         if task.get("config_binding_mode") != mode:
             task["config_binding_mode"] = mode
-            _write_json(path, task)
+            if os.path.isfile(path):
+                _write_json(path, task)
         return task
 
     def _iter_task_ids_from_disk(self):

@@ -1,6 +1,6 @@
 # 知喂 (ZhiWei) — 下一阶段开发交接文档
 
-供下一位开发者或 AI 接续开发时使用。文档日期：2026-02-15。
+供下一位开发者或 AI 接续开发时使用。文档日期：2026-02-24。
 
 ---
 
@@ -9,7 +9,7 @@
 | 项目 | 说明 |
 |------|------|
 | **产品名** | 知喂 (ZhiWei)，副标题：知识投喂工具 |
-| **版本** | v5.19.0（唯一定义在 `office_converter.py` 的 `__version__`） |
+| **版本** | v5.19.1（唯一定义在 `office_converter.py` 的 `__version__`） |
 | **仓库** | https://github.com/ts721521/ZhiWei2026.git；项目代码在 `2026/` 目录下 |
 | **界面** | 仅中文，无英文模式 |
 
@@ -52,7 +52,7 @@ python office_converter.py --help   # 查看参数
 - **运行模式**：`convert_only` / `merge_only` / `convert_then_merge` / `collect_only` / `mshelp_only`
 - **多源目录**：支持多选源文件夹，转换/合并/归集均会扫描并处理所有选中目录
 - **合并输出**：`merge_filename_pattern` 可配置，占位符 `{category}`, `{timestamp}`, `{date}`, `{time}`, `{idx}`
-- **任务模式**：多组「源+目标+参数」保存与一键运行，断点续传
+- **任务模式**：多组「源+目标+参数」保存与一键运行，断点续传；任务列表支持「仅当前配置」过滤（`ui.task_current_config_only`）及筛选/排序与状态下拉一致性
 - **增量同步**：账本、Added/Modified/Renamed/Deleted、增量包、MD5 去重、同名优先 Office
 - **并发转换**：多线程并发处理（ThreadPoolExecutor），可配置工作线程数，预期提速 3-4 倍
 - **断点续传**：定期保存进度，中断后可恢复继续处理
@@ -125,4 +125,5 @@ python -m unittest discover -s tests -p "test_*.py" -v
 
 ---
 
-*本文档随版本与需求更新，当前对应 v5.19.0。*
+*本文档随版本与需求更新，当前对应 v5.19.1。*
+

@@ -466,9 +466,72 @@ class UIShellMixin:
         lf_tasks = tb.Labelframe(parent, text=self.tr("grp_task_runtime"), padding=8)
         lf_tasks.pack(fill=BOTH, expand=YES, pady=3)
 
+        if not hasattr(self, "var_task_filter_text"):
+            self.var_task_filter_text = tk.StringVar(value="")
+        if not hasattr(self, "var_task_status_filter"):
+            self.var_task_status_filter = tk.StringVar(value="all")
+        if not hasattr(self, "var_task_sort_by"):
+            self.var_task_sort_by = tk.StringVar(value="updated_desc")
+        if not hasattr(self, "var_task_scope_current_config_only"):
+            self.var_task_scope_current_config_only = tk.IntVar(value=1)
+
+        list_col = tb.Frame(lf_tasks)
+        list_col.pack(side=LEFT, fill=BOTH, expand=YES)
+
+        filter_row = tb.Frame(list_col)
+        filter_row.pack(fill=X, pady=(0, 6))
+        tb.Label(filter_row, text=self.tr("lbl_task_filter")).pack(side=LEFT)
+        self.ent_task_filter = tb.Entry(
+            filter_row, textvariable=self.var_task_filter_text, width=18
+        )
+        self.ent_task_filter.pack(side=LEFT, padx=(4, 8))
+
+        tb.Label(filter_row, text=self.tr("lbl_task_status_filter")).pack(side=LEFT)
+        self.cb_task_status_filter = tb.Combobox(
+            filter_row,
+            textvariable=self.var_task_status_filter,
+            values=("all", "idle", "running", "failed", "completed"),
+            state="readonly",
+            width=10,
+        )
+        self.cb_task_status_filter.pack(side=LEFT, padx=(4, 8))
+
+        tb.Label(filter_row, text=self.tr("lbl_task_sort")).pack(side=LEFT)
+        self.cb_task_sort = tb.Combobox(
+            filter_row,
+            textvariable=self.var_task_sort_by,
+            values=("updated_desc", "last_run_desc", "name_asc", "name_desc"),
+            state="readonly",
+            width=14,
+        )
+        self.cb_task_sort.pack(side=LEFT, padx=(4, 8))
+
+        self.chk_task_scope_current_config_only = tb.Checkbutton(
+            filter_row,
+            text=self.tr("chk_task_scope_current_config_only"),
+            variable=self.var_task_scope_current_config_only,
+            bootstyle="round-toggle",
+        )
+        self.chk_task_scope_current_config_only.pack(side=LEFT, padx=(0, 8))
+        self._attach_tooltip(
+            self.chk_task_scope_current_config_only,
+            "tip_task_scope_current_config_only",
+        )
+
+        self.btn_task_filter_clear = tb.Button(
+            filter_row,
+            text=self.tr("btn_task_filter_clear"),
+            width=8,
+            bootstyle="secondary-outline",
+            command=self._reset_task_list_filters,
+        )
+        self.btn_task_filter_clear.pack(side=LEFT)
+
+        tree_row = tb.Frame(list_col)
+        tree_row.pack(fill=BOTH, expand=YES)
         cols = ("name", "source", "target", "config", "binding", "status", "last_run")
         self.tree_tasks = ttk.Treeview(
-            lf_tasks, columns=cols, show="headings", height=12, selectmode="browse"
+            tree_row, columns=cols, show="headings", height=12, selectmode="browse"
         )
         col_meta = (
             ("name", "col_task_name", "Name"),
@@ -491,7 +554,7 @@ class UIShellMixin:
         self.tree_tasks.column("last_run", width=100)
         self.tree_tasks.pack(fill=BOTH, expand=YES, side=LEFT)
         self._attach_tooltip(self.tree_tasks, "tip_task_list")
-        scr = tb.Scrollbar(lf_tasks, orient="vertical", command=self.tree_tasks.yview)
+        scr = tb.Scrollbar(tree_row, orient="vertical", command=self.tree_tasks.yview)
         scr.pack(side=LEFT, fill=Y)
         self.tree_tasks.configure(yscrollcommand=scr.set)
         self.tree_tasks.bind("<<TreeviewSelect>>", lambda _e: self._on_task_select())
@@ -596,6 +659,20 @@ class UIShellMixin:
 
         self._auto_attach_action_tooltips(lf_tasks)
         self._auto_attach_input_tooltips(lf_tasks, "tip_section_run_mode")
+        if not getattr(self, "_task_tab_filters_trace_done", False):
+            self.var_task_filter_text.trace_add(
+                "write", lambda *a: self.after(0, self._refresh_task_list_ui)
+            )
+            self.var_task_status_filter.trace_add(
+                "write", lambda *a: self.after(0, self._refresh_task_list_ui)
+            )
+            self.var_task_sort_by.trace_add(
+                "write", lambda *a: self.after(0, self._refresh_task_list_ui)
+            )
+            self.var_task_scope_current_config_only.trace_add(
+                "write", lambda *a: self.after(0, self._refresh_task_list_ui)
+            )
+            self._task_tab_filters_trace_done = True
         if not getattr(self, "_task_tab_app_mode_trace_done", False) and hasattr(
             self, "var_app_mode"
         ):

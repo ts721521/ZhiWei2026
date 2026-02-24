@@ -169,6 +169,11 @@ class ConfigLogicMixin:
                 ),
                 "tooltip_auto_theme": bool(self.var_tooltip_auto_theme.get()),
                 "confirm_revert_dirty": bool(self.var_confirm_revert_dirty.get()),
+                "task_current_config_only": (
+                    bool(self.var_task_scope_current_config_only.get())
+                    if hasattr(self, "var_task_scope_current_config_only")
+                    else True
+                ),
             },
         }
 
@@ -312,6 +317,9 @@ class ConfigLogicMixin:
                     )
                 ),
                 "confirm_revert_dirty": bool(ui_cfg.get("confirm_revert_dirty", True)),
+                "task_current_config_only": bool(
+                    ui_cfg.get("task_current_config_only", True)
+                ),
             },
         }
 

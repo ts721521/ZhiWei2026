@@ -54,6 +54,10 @@ class ConfigIOMixin:
             self.var_confirm_revert_dirty.set(
                 1 if ui_cfg.get("confirm_revert_dirty", True) else 0
             )
+        if hasattr(self, "var_task_scope_current_config_only"):
+            self.var_task_scope_current_config_only.set(
+                1 if ui_cfg.get("task_current_config_only", True) else 0
+            )
         if hasattr(self, "var_tooltip_delay_ms"):
             self.var_tooltip_delay_ms.set(str(self.tooltip_delay_ms))
         if hasattr(self, "var_tooltip_font_size"):
