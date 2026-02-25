@@ -112,3 +112,41 @@
 
 - 仓库根目录 `.gitignore` 已包含本项目忽略规则，请勿提交其中列出的路径。
 - 项目说明与使用方式见 `README.md`，开发交接见 `docs/` 下相关文档。
+
+---
+
+## Cursor Cloud specific instructions
+
+### 项目概述
+
+知喂 (ZhiWei) 是 Windows 桌面 Python 应用（Office 文档批量转 PDF），主代码位于 `2026/` 目录。
+
+### 运行测试
+
+```bash
+cd /workspace/2026
+python3 -m unittest discover -s tests -p "test_*.py" -v
+```
+
+- 总计约 193 个测试。在 Linux 上会有 ~5 个因 Windows 路径差异导致的 FAIL，属于预期行为（项目仅面向 Windows）。
+- 需要 `python3-tk` 系统包，否则 GUI 相关测试会 ERROR。
+
+### Lint
+
+项目无正式 lint 配置。可用 `ruff check .` 做基础检查（已有大量历史告警，非本项目 CI 阻断项）。
+
+### 启动 GUI
+
+```bash
+cd /workspace/2026
+python3 office_gui.py
+```
+
+- GUI 基于 tkinter + ttkbootstrap，需要 X display（Cloud VM 已自带 `:1`）。
+- 实际文档转换功能依赖 Windows COM（`win32com`），在 Linux 上不可用；但 GUI 可正常启动、配置和保存。
+
+### 关键注意事项
+
+- 代码入口在 `2026/` 子目录，不是仓库根目录。所有 Python 命令需从 `2026/` 运行。
+- `requirements.txt` 中注释掉的可选依赖（`pypdf`、`openpyxl`、`python-docx`、`beautifulsoup4`）在测试中会被用到，建议安装。
+- `config.json` 和 `config_profiles/` 在 `.gitignore` 中，不要提交。
