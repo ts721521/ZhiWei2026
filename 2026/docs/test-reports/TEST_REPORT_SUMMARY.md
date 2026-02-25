@@ -360,3 +360,6 @@ OK
 - Command: `python -m unittest discover -s tests -p "test_*.py" -v`
 - Result: `Ran 381 tests in 8.897s`
 - Status: `OK`
+## 2026-02-25 Docs sync round (handover + summary refresh)
+- Scope: docs only
+- Status: completed and pushed
