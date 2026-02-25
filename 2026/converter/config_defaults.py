@@ -61,6 +61,11 @@ def apply_config_defaults(
     cfg.setdefault("output_enable_md", True)
     cfg.setdefault("output_enable_merged", True)
     cfg.setdefault("output_enable_independent", False)
+    cfg.setdefault("enable_fast_md_engine", False)
+    cfg.setdefault("enable_traceability_anchor_and_map", True)
+    cfg.setdefault("enable_prompt_wrapper", False)
+    cfg.setdefault("prompt_template_type", "new_solution")
+    cfg.setdefault("short_id_prefix", "ZW-")
     # Keep legacy key aligned to avoid split-brain behavior across versions.
     cfg["enable_markdown"] = bool(cfg.get("output_enable_md", True))
     cfg.setdefault("merge_convert_submode", MERGE_CONVERT_SUBMODE_MERGE_ONLY)
@@ -154,3 +159,24 @@ def apply_config_defaults(
         "enable_merge_index": enable_merge_index,
         "enable_merge_excel": enable_merge_excel,
     }
+
+
+def apply_config_defaults_for_converter(converter):
+    cfg = converter.config
+    runtime = apply_config_defaults(
+        cfg,
+        run_mode_default=converter.run_mode,
+        collect_mode_default=converter.collect_mode,
+        content_strategy_default=converter.content_strategy,
+        enable_merge_index_default=converter.enable_merge_index,
+        enable_merge_excel_default=converter.enable_merge_excel,
+    )
+    converter.price_keywords = runtime["price_keywords"]
+    converter.excluded_folders = runtime["excluded_folders"]
+    converter.merge_mode = runtime["merge_mode"]
+    converter.run_mode = runtime["run_mode"]
+    converter.collect_mode = runtime["collect_mode"]
+    converter.content_strategy = runtime["content_strategy"]
+    converter.enable_merge_index = runtime["enable_merge_index"]
+    converter.enable_merge_excel = runtime["enable_merge_excel"]
+    return runtime

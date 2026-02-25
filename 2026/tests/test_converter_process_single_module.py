@@ -2,10 +2,16 @@
 import tempfile
 import unittest
 
+from pathlib import Path
+
 from office_converter import OfficeConverter
 
 
 class ConverterProcessSingleSplitTests(unittest.TestCase):
+    def test_process_single_module_has_no_bare_except_exception(self):
+        module_text = Path("converter/process_single.py").read_text(encoding="utf-8")
+        self.assertNotIn("except Exception", module_text)
+
     def test_process_single_core_empty_file_behavior(self):
         from converter.process_single import process_single_file
 

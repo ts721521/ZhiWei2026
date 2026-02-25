@@ -1,4 +1,5 @@
 import unittest
+from unittest.mock import patch
 
 from office_converter import (
     COLLECT_MODE_COPY_AND_INDEX,
@@ -26,7 +27,10 @@ class ConverterConfigDefaultsSplitTests(unittest.TestCase):
         self.assertEqual(MODE_CONVERT_THEN_MERGE, runtime.get("run_mode"))
 
     def test_office_converter_apply_config_defaults_matches_module(self):
-        from converter.config_defaults import apply_config_defaults
+        from converter.config_defaults import (
+            apply_config_defaults,
+            apply_config_defaults_for_converter,
+        )
 
         cfg_module = {}
         runtime = apply_config_defaults(
@@ -57,6 +61,15 @@ class ConverterConfigDefaultsSplitTests(unittest.TestCase):
         self.assertEqual(runtime.get("enable_merge_excel"), dummy.enable_merge_excel)
         self.assertEqual(runtime.get("price_keywords"), dummy.price_keywords)
         self.assertEqual(runtime.get("excluded_folders"), dummy.excluded_folders)
+        self.assertEqual(runtime, apply_config_defaults_for_converter(dummy))
+
+    def test_office_converter_apply_config_defaults_delegates_to_module(self):
+        import office_converter as oc
+
+        dummy = OfficeConverter.__new__(OfficeConverter)
+        with patch.object(oc, "apply_config_defaults_for_converter", return_value={"ok": 1}) as impl:
+            self.assertEqual({"ok": 1}, OfficeConverter._apply_config_defaults(dummy))
+            impl.assert_called_once_with(dummy)
 
 
 if __name__ == "__main__":

@@ -28,7 +28,7 @@ def build_mshelp_record(
             if parent.name.lower() == folder_name_lower:
                 mshelp_dir = str(parent)
                 break
-    except Exception:
+    except (OSError, RuntimeError, TypeError, ValueError, AttributeError):
         mshelp_dir = ""
 
     try:
@@ -38,7 +38,7 @@ def build_mshelp_record(
             else ""
         )
         src_rel = os.path.relpath(src_abs, root) if root else src_abs
-    except Exception:
+    except (OSError, RuntimeError, TypeError, ValueError, AttributeError):
         src_rel = src_abs
 
     return {
@@ -49,6 +49,26 @@ def build_mshelp_record(
         "topic_count": int(topic_count or 0),
         "status": "success",
     }
+
+
+def append_mshelp_record(
+    mshelp_records,
+    source_cab_path,
+    markdown_path,
+    topic_count,
+    *,
+    folder_name="MSHelpViewer",
+    get_source_root_for_path_fn=None,
+):
+    record = build_mshelp_record(
+        source_cab_path,
+        markdown_path,
+        topic_count,
+        folder_name=folder_name,
+        get_source_root_for_path_fn=get_source_root_for_path_fn,
+    )
+    mshelp_records.append(record)
+    return record
 
 
 def write_mshelp_index_files(

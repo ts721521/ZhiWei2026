@@ -52,7 +52,7 @@ def parse_mshelp_topics(
                     title = meta_title
                 elif title_tag and title_tag.get_text(strip=True):
                     title = title_tag.get_text(strip=True)
-            except Exception:
+            except (OSError, RuntimeError, TypeError, ValueError, AttributeError):
                 pass
 
         topics[topic_id] = {

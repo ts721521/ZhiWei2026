@@ -7,7 +7,7 @@ def emit_file_plan(callback, file_list, warn_func=None):
         return
     try:
         callback(list(file_list or []))
-    except Exception as e:
+    except (TypeError, ValueError, AttributeError, RuntimeError) as e:
         if callable(warn_func):
             warn_func(f"file_plan_callback failed: {e}")
 
@@ -19,6 +19,6 @@ def emit_file_done(callback, record, warn_func=None):
         return
     try:
         callback(dict(record))
-    except Exception as e:
+    except (TypeError, ValueError, AttributeError, RuntimeError) as e:
         if callable(warn_func):
             warn_func(f"file_done_callback failed: {e}")

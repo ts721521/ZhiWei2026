@@ -95,7 +95,7 @@ def run_batch(converter, file_list, is_retry=False, source_alias_map=None):
             elif checkpoint:
                 checkpoint = converter._mark_file_done_in_checkpoint(checkpoint, fpath)
 
-        except Exception as exc:
+        except (OSError, RuntimeError, TypeError, ValueError, AttributeError) as exc:
             elapsed = time.time() - started_at
             err_msg = str(exc)
 

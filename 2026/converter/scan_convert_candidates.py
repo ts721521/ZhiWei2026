@@ -19,6 +19,37 @@ def scan_convert_candidates(
     print_warn_fn=None,
     log_error_fn=None,
 ):
+    return list(
+        iter_convert_candidates(
+            config,
+            configured_roots,
+            probe_source_root_access_fn=probe_source_root_access_fn,
+            record_scan_access_skip_fn=record_scan_access_skip_fn,
+            filter_date=filter_date,
+            filter_mode=filter_mode,
+            isdir_fn=isdir_fn,
+            walk_fn=walk_fn,
+            getctime_fn=getctime_fn,
+            print_warn_fn=print_warn_fn,
+            log_error_fn=log_error_fn,
+        )
+    )
+
+
+def iter_convert_candidates(
+    config,
+    configured_roots,
+    *,
+    probe_source_root_access_fn,
+    record_scan_access_skip_fn,
+    filter_date=None,
+    filter_mode="after",
+    isdir_fn=None,
+    walk_fn=None,
+    getctime_fn=None,
+    print_warn_fn=None,
+    log_error_fn=None,
+):
     if isdir_fn is None:
         isdir_fn = os.path.isdir
     if walk_fn is None:
@@ -26,7 +57,6 @@ def scan_convert_candidates(
     if getctime_fn is None:
         getctime_fn = os.path.getctime
 
-    files = []
     scan_skip_seen = set()
     source_roots = []
     for source_root in configured_roots:
@@ -42,7 +72,7 @@ def scan_convert_candidates(
             print_warn_fn(msg)
         if callable(log_error_fn):
             log_error_fn("source directory does not exist or source_folders empty")
-        return files
+        return
 
     excl_config = config.get("excluded_folders", [])
     excl_names = {
@@ -96,7 +126,6 @@ def scan_convert_candidates(
                             continue
                         if filter_mode == "before" and file_date > filter_d:
                             continue
-                    except Exception:
+                    except (OSError, OverflowError, ValueError):
                         pass
-                files.append(full_path)
-    return files
+                yield full_path

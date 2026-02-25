@@ -70,6 +70,12 @@ class LocatorTests(unittest.TestCase):
         self.assertIsNotNone(result.record)
         self.assertEqual(result.record.source_filename, "B.pdf")
 
+    def test_locate_by_short_id_hit_with_zw_prefix(self):
+        result = locate_by_short_id("ZW-BBBBBBBB", self.map_dir)
+        self.assertEqual(result.error_code, EXIT_OK)
+        self.assertIsNotNone(result.record)
+        self.assertEqual(result.record.source_filename, "B.pdf")
+
 
 if __name__ == "__main__":
     unittest.main()

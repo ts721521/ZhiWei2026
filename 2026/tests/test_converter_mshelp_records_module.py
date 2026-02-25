@@ -2,6 +2,7 @@ import json
 import os
 import tempfile
 import unittest
+from pathlib import Path
 
 from office_converter import OfficeConverter
 
@@ -9,6 +10,7 @@ from office_converter import OfficeConverter
 class ConverterMshelpRecordsSplitTests(unittest.TestCase):
     def test_mshelp_records_core_behaviors(self):
         from converter.mshelp_records import (
+            append_mshelp_record,
             build_mshelp_record,
             write_mshelp_index_files,
         )
@@ -32,6 +34,17 @@ class ConverterMshelpRecordsSplitTests(unittest.TestCase):
         self.assertEqual(record["topic_count"], 3)
         self.assertEqual(record["status"], "success")
         self.assertTrue(record["source_cab_relpath"].endswith("MSHelpViewer\\a.cab"))
+        records = []
+        appended = append_mshelp_record(
+            records,
+            cab,
+            md,
+            1,
+            folder_name="MSHelpViewer",
+            get_source_root_for_path_fn=lambda p: root,
+        )
+        self.assertEqual(1, len(records))
+        self.assertEqual(appended, records[0])
 
         generated = []
         outputs = write_mshelp_index_files(
@@ -116,6 +129,11 @@ class ConverterMshelpRecordsSplitTests(unittest.TestCase):
                 os.rmdir(d)
             except Exception:
                 pass
+
+    def test_mshelp_records_module_has_no_bare_except_exception(self):
+        mod_path = Path(__file__).resolve().parents[1] / "converter" / "mshelp_records.py"
+        text = mod_path.read_text(encoding="utf-8")
+        self.assertNotIn("except Exception", text)
 
 
 if __name__ == "__main__":

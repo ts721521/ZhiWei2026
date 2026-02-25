@@ -10,6 +10,7 @@ class ConverterMergeCandidatesSplitTests(unittest.TestCase):
     def test_merge_candidates_module_core_behaviors(self):
         from converter.merge_candidates import (
             build_markdown_merge_tasks,
+            resolve_merge_scan_context,
             scan_candidates_by_ext,
         )
 
@@ -57,6 +58,18 @@ class ConverterMergeCandidatesSplitTests(unittest.TestCase):
         self.assertIn("Merged_Word_20260224_010203_001.md", names)
         self.assertIn("Merged_Markdown_20260224_010203_001.md", names)
 
+        cfg = {"target_folder": r"C:\T", "merge_source": "source"}
+        roots, excludes = resolve_merge_scan_context(
+            run_mode=MODE_MERGE_ONLY,
+            config=cfg,
+            get_source_roots_fn=lambda: [r"C:\S"],
+            failed_dir=r"C:\F",
+            merge_output_dir=r"C:\M",
+            mode_merge_only=MODE_MERGE_ONLY,
+        )
+        self.assertEqual([r"C:\S"], roots)
+        self.assertIn(r"C:\T", excludes)
+
     def test_office_converter_merge_candidate_methods_delegate_to_module(self):
         from converter.merge_candidates import (
             build_markdown_merge_tasks,
@@ -102,6 +115,29 @@ class ConverterMergeCandidatesSplitTests(unittest.TestCase):
                     os.rmdir(d)
                 except Exception:
                     pass
+
+    def test_office_converter_scan_merge_candidates_delegates_to_wrapper(self):
+        import office_converter as oc
+
+        original = oc.scan_merge_candidates_by_ext_for_converter
+        try:
+            seen = {}
+
+            def _fake(converter, ext, **kwargs):
+                seen["converter"] = converter
+                seen["ext"] = ext
+                seen["kwargs"] = kwargs
+                return ["a.pdf"]
+
+            oc.scan_merge_candidates_by_ext_for_converter = _fake
+            dummy = OfficeConverter.__new__(OfficeConverter)
+            out = dummy._scan_merge_candidates_by_ext(".pdf")
+            self.assertEqual(["a.pdf"], out)
+            self.assertIs(seen["converter"], dummy)
+            self.assertEqual(".pdf", seen["ext"])
+            self.assertEqual(oc.MODE_MERGE_ONLY, seen["kwargs"]["mode_merge_only"])
+        finally:
+            oc.scan_merge_candidates_by_ext_for_converter = original
 
 
 if __name__ == "__main__":

@@ -2,10 +2,16 @@
 import tempfile
 import unittest
 
+from pathlib import Path
+
 from office_converter import OfficeConverter
 
 
 class ConverterBatchSequentialSplitTests(unittest.TestCase):
+    def test_batch_sequential_module_has_no_bare_except_exception(self):
+        module_text = Path("converter/batch_sequential.py").read_text(encoding="utf-8")
+        self.assertNotIn("except Exception", module_text)
+
     def test_batch_sequential_core_behaviors(self):
         from converter.batch_sequential import run_batch
 

@@ -144,7 +144,7 @@ def process_single_file(
                     converter._kill_current_app("excel", force=True)
                 elif is_ppt:
                     converter._kill_current_app("ppt", force=True)
-                raise Exception("timeout")
+                raise RuntimeError("timeout")
             converter._add_perf_seconds(
                 "convert_core_seconds",
                 time.perf_counter() - convert_core_start,
@@ -187,7 +187,13 @@ def process_single_file(
                 if output_plan.get("need_markdown"):
                     markdown_start = time.perf_counter()
                     if final_path_res and os.path.exists(final_path_res):
-                        md_path_res = converter._export_pdf_markdown(final_path_res) or ""
+                        md_path_res = (
+                            converter._export_pdf_markdown(
+                                final_path_res,
+                                source_path_hint=file_path,
+                            )
+                            or ""
+                        )
                     else:
                         md_path_res = (
                             converter._export_pdf_markdown(
@@ -214,7 +220,7 @@ def process_single_file(
             "pdf_wait_seconds",
             time.perf_counter() - wait_pdf_start,
         )
-        raise Exception(
+        raise RuntimeError(
             f"conversion command sent but PDF not generated ({current_pdf_wait}s)"
         )
 
@@ -226,5 +232,5 @@ def process_single_file(
                 os.remove(sandbox_src_path)
             if os.path.exists(sandbox_pdf):
                 os.remove(sandbox_pdf)
-        except Exception:
+        except OSError:
             pass

@@ -2,11 +2,16 @@ import json
 import os
 import tempfile
 import unittest
+from pathlib import Path
 
 from office_converter import OfficeConverter
 
 
 class ConverterExcelJsonExportSplitTests(unittest.TestCase):
+    def test_excel_json_export_module_has_no_bare_except_exception(self):
+        module_text = Path("converter/excel_json_export.py").read_text(encoding="utf-8")
+        self.assertNotIn("except Exception", module_text)
+
     def test_excel_json_export_core_behaviors_without_openpyxl(self):
         from converter.excel_json_export import export_single_excel_json
 

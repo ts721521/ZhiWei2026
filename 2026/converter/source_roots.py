@@ -48,7 +48,7 @@ def probe_source_root_access(
     try:
         listdir_fn(abs_root)
         return True
-    except Exception as e:
+    except (OSError, RuntimeError, TypeError, ValueError) as e:
         record_skip_fn(abs_root, e, context=context, seen_keys=seen_keys)
         return False
 

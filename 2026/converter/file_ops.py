@@ -11,16 +11,16 @@ def unblock_file(file_path):
         zone_path = file_path + ":Zone.Identifier"
         try:
             os.remove(zone_path)
-        except Exception:
+        except (OSError, TypeError, ValueError):
             pass
-    except Exception:
+    except (TypeError, ValueError, AttributeError):
         pass
 
 
 def copy_pdf_direct(source, temp_target):
     try:
         shutil.copy2(source, temp_target)
-    except Exception as e:
+    except (OSError, shutil.Error, TypeError, ValueError) as e:
         raise Exception(f"[PDF copy failed] {e}")
 
 
@@ -36,7 +36,7 @@ def quarantine_failed_file(source_path, failed_dir, should_copy=True, now=None):
             target = os.path.join(failed_dir, f"{name}_{dt.strftime('%H%M%S')}{ext}")
         shutil.copy2(source_path, target)
         return target
-    except Exception:
+    except (OSError, shutil.Error, TypeError, ValueError):
         return None
 
 
@@ -51,7 +51,7 @@ def handle_file_conflict(temp_pdf_path, target_pdf_path, now=None):
             os.remove(target_pdf_path)
             shutil.move(temp_pdf_path, target_pdf_path)
             return "overwrite", target_pdf_path
-        except Exception:
+        except (OSError, shutil.Error, TypeError, ValueError):
             return "overwrite_failed", target_pdf_path
     conflict_dir = os.path.join(os.path.dirname(target_pdf_path), "conflicts")
     os.makedirs(conflict_dir, exist_ok=True)

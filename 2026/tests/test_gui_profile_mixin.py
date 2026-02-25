@@ -1,6 +1,6 @@
-import unittest
+﻿import unittest
 
-from gui_profile_mixin import ProfileManagementMixin
+from gui.mixins.gui_profile_mixin import ProfileManagementMixin
 
 
 class _DummyProfileMixin(ProfileManagementMixin):
@@ -16,3 +16,4 @@ class ProfileManagementMixinTests(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+

@@ -16,7 +16,7 @@ def build_source_meta(path, include_hash=False, compute_file_hash_fn=None, log_w
     if include_hash and callable(compute_file_hash_fn):
         try:
             source_hash = compute_file_hash_fn(abs_path)
-        except Exception as e:
+        except (OSError, RuntimeError, TypeError, ValueError, AttributeError) as e:
             if callable(log_warning):
                 log_warning(f"[incremental] failed to compute source hash: {abs_path} | {e}")
 
@@ -91,7 +91,7 @@ def flush_incremental_registry(
                 entry["last_output_pdf"] = os.path.abspath(final_path)
                 try:
                     entry["last_output_pdf_md5"] = compute_md5_fn(final_path)
-                except Exception:
+                except (OSError, RuntimeError, TypeError, ValueError, AttributeError):
                     pass
         elif meta.get("change_state") == "unchanged":
             entry["last_status"] = entry.get("last_status") or "unchanged"

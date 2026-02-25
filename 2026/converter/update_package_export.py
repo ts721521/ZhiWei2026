@@ -49,7 +49,7 @@ def _build_result_map(process_results, registry):
 def _safe_compute_md5(compute_md5_fn, path):
     try:
         return compute_md5_fn(path)
-    except Exception:
+    except (OSError, RuntimeError, TypeError, ValueError, AttributeError):
         return ""
 
 
@@ -127,7 +127,7 @@ def generate_update_package(
                 packaged_pdf = base_name
                 packaged_pdfs.append(packaged_pdf_path)
                 packaged_pdf_md5 = _safe_compute_md5(compute_md5_fn, packaged_pdf_path)
-            except Exception as exc:
+            except (OSError, shutil.Error, RuntimeError, TypeError, ValueError) as exc:
                 detail = f"{detail}; copy_failed={exc}" if detail else f"copy_failed={exc}"
 
         records.append(
@@ -214,3 +214,20 @@ def generate_update_package(
         logger_info(f"[update_package] update package generated: {package_dir}")
 
     return package_manifest, outputs
+
+
+def generate_update_package_for_converter(converter, process_results):
+    package_manifest, outputs = generate_update_package(
+        process_results,
+        incremental_context=converter._incremental_context,
+        config=converter.config,
+        run_mode=converter.run_mode,
+        resolve_update_package_root_fn=converter._resolve_update_package_root,
+        compute_md5_fn=converter._compute_md5,
+        write_update_package_index_xlsx_fn=converter._write_update_package_index_xlsx,
+        logger_info=converter._update_package_log_info,
+    )
+    if package_manifest:
+        converter.generated_update_package_outputs = outputs
+        converter.update_package_manifest_path = package_manifest
+    return package_manifest

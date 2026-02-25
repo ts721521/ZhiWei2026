@@ -1,12 +1,17 @@
 import os
 import tempfile
 import unittest
+from pathlib import Path
 
 from converter.file_registry import FileRegistry
 from office_converter import OfficeConverter
 
 
 class ConverterIncrementalScanSplitTests(unittest.TestCase):
+    def test_incremental_scan_module_has_no_bare_except_exception(self):
+        module_text = Path("converter/incremental_scan.py").read_text(encoding="utf-8")
+        self.assertNotIn("except Exception", module_text)
+
     def test_incremental_scan_disabled_mode_passthrough(self):
         from converter.incremental_scan import apply_incremental_filter
 
@@ -84,7 +89,10 @@ class ConverterIncrementalScanSplitTests(unittest.TestCase):
             pass
 
     def test_office_converter_incremental_scan_method_delegates_to_module(self):
-        from converter.incremental_scan import apply_incremental_filter
+        from converter.incremental_scan import (
+            apply_incremental_filter,
+            apply_incremental_filter_for_converter,
+        )
 
         dummy = OfficeConverter.__new__(OfficeConverter)
         dummy.config = {"enable_incremental_mode": False}
@@ -106,6 +114,7 @@ class ConverterIncrementalScanSplitTests(unittest.TestCase):
         self.assertEqual(actual, expected)
         self.assertIsNone(dummy._incremental_context)
         self.assertEqual(dummy.incremental_registry_path, "")
+        self.assertEqual(actual, apply_incremental_filter_for_converter(dummy, files))
 
 
 if __name__ == "__main__":

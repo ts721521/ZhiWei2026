@@ -3,11 +3,16 @@ import os
 import tempfile
 import unittest
 from datetime import datetime
+from pathlib import Path
 
 from office_converter import OfficeConverter
 
 
 class ConverterChromaDbExportSplitTests(unittest.TestCase):
+    def test_chromadb_export_module_has_no_bare_except_exception(self):
+        module_text = Path("converter/chromadb_export.py").read_text(encoding="utf-8")
+        self.assertNotIn("except Exception", module_text)
+
     def test_chromadb_export_core_behaviors(self):
         from converter.chromadb_export import write_chromadb_export
 

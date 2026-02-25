@@ -78,7 +78,7 @@ def write_failed_file_trace_log(
     if failed_copy_path:
         try:
             base_dir = os.path.dirname(os.path.abspath(failed_copy_path))
-        except Exception:
+        except (OSError, RuntimeError, TypeError, ValueError):
             base_dir = ""
     if not base_dir:
         base_dir = failed_dir or target_folder
@@ -87,7 +87,7 @@ def write_failed_file_trace_log(
 
     try:
         os.makedirs(base_dir, exist_ok=True)
-    except Exception:
+    except OSError:
         return None
 
     source_name = os.path.basename(str(payload.get("source_path", "") or ""))
@@ -103,7 +103,7 @@ def write_failed_file_trace_log(
         with open(log_path, "w", encoding="utf-8") as f:
             json.dump(payload, f, ensure_ascii=False, indent=2)
         return log_path
-    except Exception as e:
+    except (OSError, TypeError, ValueError) as e:
         if callable(log_error):
             log_error(f"failed to write failed-file trace log: {e}")
         return None

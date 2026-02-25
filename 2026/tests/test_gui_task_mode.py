@@ -191,11 +191,12 @@ class TestWizardExists(unittest.TestCase):
     def test_wizard_step_keys_defined(self):
         """向导 4 步的 tr key 存在（文档 5.3）。"""
         source = ""
-        for p in (
+        paths = [
             os.path.join(_ROOT, "office_gui.py"),
-            os.path.join(_ROOT, "gui_task_workflow_mixin.py"),
+            os.path.join(_ROOT, "gui", "mixins", "gui_task_workflow_mixin.py"),
             os.path.join(_ROOT, "ui_translations.py"),
-        ):
+        ]
+        for p in paths:
             with open(p, encoding="utf-8") as f:
                 source += "\n" + f.read()
         for i in range(1, 5):
@@ -209,10 +210,11 @@ class TestWizardExists(unittest.TestCase):
     def test_start_button_branches_on_app_mode(self):
         """开始按钮按 app_mode 分支（文档 6.3 / 7.1）。"""
         source = ""
-        for p in (
+        paths = [
             os.path.join(_ROOT, "office_gui.py"),
-            os.path.join(_ROOT, "gui_execution_mixin.py"),
-        ):
+            os.path.join(_ROOT, "gui", "mixins", "gui_execution_mixin.py"),
+        ]
+        for p in paths:
             with open(p, encoding="utf-8") as f:
                 source += "\n" + f.read()
         self.assertIn("_on_click_start", source)

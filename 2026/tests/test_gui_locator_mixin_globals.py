@@ -1,6 +1,6 @@
-import unittest
+﻿import unittest
 
-from gui_locator_mixin import LocatorMixin
+from gui.mixins.gui_locator_mixin import LocatorMixin
 
 
 class LocatorMixinGlobalBindingsTests(unittest.TestCase):
@@ -15,3 +15,4 @@ class LocatorMixinGlobalBindingsTests(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+

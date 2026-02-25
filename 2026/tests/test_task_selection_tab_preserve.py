@@ -9,7 +9,7 @@ _ROOT = os.path.dirname(_TEST_DIR)
 
 class TaskSelectionTabPreserveTests(unittest.TestCase):
     def test_task_select_preserves_current_run_tab_when_syncing_runtime(self):
-        path = os.path.join(_ROOT, "gui_task_workflow_mixin.py")
+        path = os.path.join(_ROOT, "gui", "mixins", "gui_task_workflow_mixin.py")
         with open(path, "r", encoding="utf-8") as f:
             source = f.read()
 

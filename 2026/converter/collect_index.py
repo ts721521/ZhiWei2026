@@ -201,7 +201,7 @@ def collect_office_files_and_build_excel(
                     shutil.copy2(src, dst)
                 rec["copied"] = True
                 copied_count += 1
-            except Exception as exc:
+            except (OSError, RuntimeError, TypeError, ValueError) as exc:
                 logging.error(f"[collect_only] copy failed: {src} -> {dst} | {exc}")
                 rec["copied"] = False
 
@@ -328,7 +328,7 @@ def collect_office_files_and_build_excel(
                 try:
                     value = str(cell.value) if cell.value is not None else ""
                     max_length = max(max_length, len(value))
-                except Exception:
+                except (TypeError, ValueError, AttributeError):
                     pass
             ws.column_dimensions[col_letter].width = min(max_length + 2, 80)
 

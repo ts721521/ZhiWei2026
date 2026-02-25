@@ -1,6 +1,7 @@
 import os
 import tempfile
 import unittest
+from pathlib import Path
 
 from office_converter import OfficeConverter
 
@@ -104,6 +105,11 @@ class ConverterSourceRootsSplitTests(unittest.TestCase):
                     os.rmdir(d)
                 except Exception:
                     pass
+
+    def test_source_roots_module_has_no_bare_except_exception(self):
+        mod_path = Path(__file__).resolve().parents[1] / "converter" / "source_roots.py"
+        text = mod_path.read_text(encoding="utf-8")
+        self.assertNotIn("except Exception", text)
 
 
 if __name__ == "__main__":

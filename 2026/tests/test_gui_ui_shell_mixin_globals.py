@@ -1,6 +1,6 @@
-import unittest
+﻿import unittest
 
-from gui_ui_shell_mixin import UIShellMixin, tb
+from gui.mixins.gui_ui_shell_mixin import UIShellMixin, tb
 
 
 class UIShellMixinGlobalBindingsTests(unittest.TestCase):
@@ -23,3 +23,4 @@ class UIShellMixinGlobalBindingsTests(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+

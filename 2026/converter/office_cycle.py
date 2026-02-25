@@ -13,7 +13,7 @@ def get_office_restart_every(cfg):
     cfg = cfg or {}
     try:
         value = int(cfg.get("office_restart_every_n_files", 25))
-    except Exception:
+    except (TypeError, ValueError, AttributeError):
         value = 25
     return value if value > 0 else 0
 

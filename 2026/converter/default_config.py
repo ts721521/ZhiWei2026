@@ -43,6 +43,11 @@ def create_default_config(config_path):
             "output_enable_md": True,
             "output_enable_merged": True,
             "output_enable_independent": False,
+            "enable_fast_md_engine": False,
+            "enable_traceability_anchor_and_map": True,
+            "enable_prompt_wrapper": False,
+            "prompt_template_type": "new_solution",
+            "short_id_prefix": "ZW-",
             "merge_convert_submode": MERGE_CONVERT_SUBMODE_MERGE_ONLY,
             "enable_corpus_manifest": True,
             "markdown_strip_header_footer": True,
@@ -147,6 +152,6 @@ def create_default_config(config_path):
             json.dump(default_config, f, indent=4, ensure_ascii=False)
         print(f"Default config created: {config_path}")
         return True
-    except Exception as e:
+    except (OSError, TypeError, ValueError) as e:
         print(f"Failed to create default config: {e}")
         return False

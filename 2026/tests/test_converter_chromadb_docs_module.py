@@ -1,11 +1,16 @@
 import os
 import tempfile
 import unittest
+from pathlib import Path
 
 from office_converter import OfficeConverter
 
 
 class ConverterChromaDbDocsSplitTests(unittest.TestCase):
+    def test_chromadb_docs_module_has_no_bare_except_exception(self):
+        module_text = Path("converter/chromadb_docs.py").read_text(encoding="utf-8")
+        self.assertNotIn("except Exception", module_text)
+
     def test_chromadb_docs_core_behaviors(self):
         from converter.chromadb_docs import collect_chromadb_documents
 

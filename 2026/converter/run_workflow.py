@@ -4,6 +4,7 @@
 import logging
 import os
 import shutil
+import sys
 import time
 
 from converter.constants import (
@@ -32,10 +33,14 @@ def run(converter, resume_file_list=None, app_version=""):
     converter.generated_markdown_quality_outputs = []
     converter.generated_excel_json_outputs = []
     converter.generated_records_json_outputs = []
+    converter.generated_trace_map_outputs = []
+    converter.generated_fast_md_outputs = []
+    converter.generated_prompt_outputs = []
     converter.generated_chromadb_outputs = []
     converter.generated_update_package_outputs = []
     converter.generated_mshelp_outputs = []
     converter.markdown_quality_records = []
+    converter.trace_short_id_taken = set()
     converter.conversion_index_records = []
     converter.merge_index_records = []
     converter.mshelp_records = []
@@ -52,7 +57,7 @@ def run(converter, resume_file_list=None, app_version=""):
 
     try:
         converter._check_sandbox_free_space_or_raise()
-    except Exception as exc:
+    except (OSError, RuntimeError, ValueError) as exc:
         logging.error(f"sandbox free space precheck failed: {exc}")
         raise
 
@@ -132,14 +137,21 @@ def run(converter, resume_file_list=None, app_version=""):
             if files:
                 logging.info("start processing %s files", len(files))
                 batch_start = time.perf_counter()
-
-                if converter.config.get("enable_parallel_conversion", False):
-                    print(
-                        f"[parallel] using {converter.config.get('parallel_workers', 4)} workers"
-                    )
-                    batch_results.extend(converter.run_batch_parallel(files))
+                if converter.config.get("enable_fast_md_engine", False):
+                    fast_out = converter._run_fast_md_pipeline(files) or {}
+                    batch_results.extend(fast_out.get("batch_results", []))
+                    bundle_path = fast_out.get("bundle_path")
+                    converter.generated_fast_md_outputs = []
+                    if bundle_path:
+                        converter.generated_fast_md_outputs.append(bundle_path)
                 else:
-                    batch_results.extend(converter.run_batch(files))
+                    if converter.config.get("enable_parallel_conversion", False):
+                        print(
+                            f"[parallel] using {converter.config.get('parallel_workers', 4)} workers"
+                        )
+                        batch_results.extend(converter.run_batch_parallel(files))
+                    else:
+                        batch_results.extend(converter.run_batch(files))
 
                 converter._add_perf_seconds("batch_seconds", time.perf_counter() - batch_start)
             else:
@@ -199,16 +211,16 @@ def run(converter, resume_file_list=None, app_version=""):
             if converter.run_mode == MODE_CONVERT_ONLY and converter.enable_merge_excel:
                 try:
                     converter._write_conversion_index_workbook()
-                except Exception as exc:
+                except (OSError, RuntimeError, ValueError) as exc:
                     logging.error(f"failed to write conversion index: {exc}")
 
             try:
                 converter._flush_incremental_registry(batch_results)
-            except Exception as exc:
+            except (OSError, RuntimeError, ValueError) as exc:
                 logging.error(f"failed to write incremental registry: {exc}")
             try:
                 converter._generate_update_package(batch_results)
-            except Exception as exc:
+            except (OSError, RuntimeError, ValueError) as exc:
                 logging.error(f"failed to generate update package: {exc}")
 
         elif converter.run_mode == MODE_MERGE_ONLY:
@@ -221,6 +233,7 @@ def run(converter, resume_file_list=None, app_version=""):
             converter.run_mode == MODE_CONVERT_THEN_MERGE
             and converter.config.get("enable_merge", True)
             and bool(converter.config.get("output_enable_merged", True))
+            and not converter.config.get("enable_fast_md_engine", False)
         ):
             merge_start = time.perf_counter()
             merge_outputs = []
@@ -264,27 +277,41 @@ def run(converter, resume_file_list=None, app_version=""):
     postprocess_start = time.perf_counter()
     try:
         converter._write_excel_structured_json_exports()
-    except Exception as exc:
+    except (OSError, RuntimeError, ValueError) as exc:
         logging.error(f"failed to write Excel JSON: {exc}")
 
     try:
         converter._write_records_json_exports()
-    except Exception as exc:
+    except (OSError, RuntimeError, ValueError) as exc:
         logging.error(f"failed to write Records JSON: {exc}")
 
     try:
+        writer = getattr(converter, "_write_trace_map", None)
+        if callable(writer):
+            writer()
+    except (OSError, RuntimeError, ValueError) as exc:
+        logging.error(f"failed to write trace_map: {exc}")
+
+    try:
         converter._write_chromadb_export()
-    except Exception as exc:
+    except (OSError, RuntimeError, ValueError) as exc:
         logging.error(f"failed to write ChromaDB export: {exc}")
 
     try:
+        writer = getattr(converter, "_write_prompt_ready", None)
+        if callable(writer):
+            writer()
+    except (OSError, RuntimeError, ValueError) as exc:
+        logging.error(f"failed to write Prompt_Ready: {exc}")
+
+    try:
         converter._write_markdown_quality_report()
-    except Exception as exc:
+    except (OSError, RuntimeError, ValueError) as exc:
         logging.error(f"failed to write Markdown quality report: {exc}")
 
     try:
         converter._write_corpus_manifest(merge_outputs=merge_outputs)
-    except Exception as exc:
+    except (OSError, RuntimeError, ValueError) as exc:
         logging.error(f"failed to write corpus manifest: {exc}")
 
     if converter.detailed_error_records:
@@ -298,7 +325,7 @@ def run(converter, resume_file_list=None, app_version=""):
                 )
                 print(failed_summary)
                 logging.info(failed_summary)
-        except Exception as exc:
+        except (OSError, RuntimeError, ValueError) as exc:
             logging.error(f"failed to export failed files report: {exc}")
 
     converter._add_perf_seconds("postprocess_seconds", time.perf_counter() - postprocess_start)
@@ -308,16 +335,29 @@ def run(converter, resume_file_list=None, app_version=""):
     print(perf_summary)
 
     try:
-        open_dir = converter.config["target_folder"]
-        if merge_outputs and converter.merge_output_dir and os.path.isdir(converter.merge_output_dir):
-            open_dir = converter.merge_output_dir
-        if hasattr(os, "startfile"):
-            os.startfile(open_dir)
-    except Exception:
+        auto_open_enabled = bool(
+            (converter.config or {}).get("auto_open_output_dir", True)
+        )
+        in_test_context = bool(
+            os.environ.get("PYTEST_CURRENT_TEST")
+            or os.environ.get("ZW_TEST_MODE")
+            or any("unittest" in str(arg).lower() for arg in (sys.argv or []))
+        )
+        if auto_open_enabled and not in_test_context:
+            open_dir = converter.config["target_folder"]
+            if (
+                merge_outputs
+                and converter.merge_output_dir
+                and os.path.isdir(converter.merge_output_dir)
+            ):
+                open_dir = converter.merge_output_dir
+            if hasattr(os, "startfile"):
+                os.startfile(open_dir)
+    except (KeyError, OSError, AttributeError, TypeError, ValueError):
         pass
 
     if converter.temp_sandbox and os.path.exists(converter.temp_sandbox):
         try:
             shutil.rmtree(converter.temp_sandbox, ignore_errors=True)
-        except Exception:
+        except OSError:
             pass

@@ -2,6 +2,7 @@ import json
 import os
 import tempfile
 import unittest
+from pathlib import Path
 
 from converter.file_registry import FileRegistry
 from office_converter import OfficeConverter
@@ -142,6 +143,13 @@ class ConverterIncrementalRegistryOpsSplitTests(unittest.TestCase):
             os.rmdir(root)
         except Exception:
             pass
+
+    def test_incremental_registry_ops_module_has_no_bare_except_exception(self):
+        mod_path = (
+            Path(__file__).resolve().parents[1] / "converter" / "incremental_registry_ops.py"
+        )
+        text = mod_path.read_text(encoding="utf-8")
+        self.assertNotIn("except Exception", text)
 
 
 if __name__ == "__main__":

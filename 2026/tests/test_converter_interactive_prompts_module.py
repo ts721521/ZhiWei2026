@@ -1,4 +1,5 @@
 import unittest
+from pathlib import Path
 
 from office_converter import OfficeConverter
 
@@ -34,6 +35,11 @@ class ConverterInteractivePromptsSplitTests(unittest.TestCase):
         dummy = OfficeConverter.__new__(OfficeConverter)
         dummy.interactive = False
         self.assertTrue(dummy._confirm_continue_missing_md_merge())
+
+    def test_interactive_prompts_module_has_no_bare_except_exception(self):
+        mod_path = Path(__file__).resolve().parents[1] / "converter" / "interactive_prompts.py"
+        text = mod_path.read_text(encoding="utf-8")
+        self.assertNotIn("except Exception", text)
 
 
 if __name__ == "__main__":

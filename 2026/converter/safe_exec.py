@@ -24,12 +24,20 @@ def safe_exec(
 
         randint_fn = _random.randint
 
+    retryable_exceptions = (OSError, RuntimeError, TypeError, ValueError)
+    if (
+        isinstance(com_error_cls, type)
+        and issubclass(com_error_cls, BaseException)
+        and com_error_cls not in retryable_exceptions
+    ):
+        retryable_exceptions = retryable_exceptions + (com_error_cls,)
+
     for attempt in range(retries + 1):
         if not is_running_getter():
-            raise Exception("program stopped")
+            raise RuntimeError("program stopped")
         try:
             return func(*args, **kwargs)
-        except Exception as e:
+        except retryable_exceptions as e:
             if com_error_cls is not None and isinstance(e, com_error_cls):
                 error_code = getattr(e, "hresult", None)
                 if rpc_server_busy_code is not None and error_code == rpc_server_busy_code:
@@ -38,7 +46,7 @@ def safe_exec(
                 if attempt < retries:
                     sleep_fn(1)
                     continue
-                raise Exception(f"COM error ({error_code}): {e}")
+                raise RuntimeError(f"COM error ({error_code}): {e}")
             if attempt < retries:
                 sleep_fn(1)
                 continue

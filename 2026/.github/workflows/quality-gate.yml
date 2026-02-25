@@ -1,0 +1,49 @@
+﻿name: Quality Gate
+
+on:
+  pull_request:
+  push:
+    branches:
+      - "**"
+
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Resolve changed files
+        id: changed
+        shell: bash
+        run: |
+          set -euo pipefail
+          if [[ "${{ github.event_name }}" == "pull_request" ]]; then
+            BASE="origin/${{ github.base_ref }}"
+            git fetch origin "${{ github.base_ref }}" --depth=1
+            git diff --name-only "$BASE...HEAD" > changed_files.txt
+          else
+            BEFORE="${{ github.event.before }}"
+            AFTER="${{ github.sha }}"
+            if [[ -z "$BEFORE" || "$BEFORE" == "0000000000000000000000000000000000000000" ]]; then
+              git diff --name-only HEAD~1 HEAD > changed_files.txt || true
+            else
+              git diff --name-only "$BEFORE" "$AFTER" > changed_files.txt
+            fi
+          fi
+          cat changed_files.txt || true
+
+      - name: Check doc sync
+        shell: bash
+        run: |
+          set -euo pipefail
+          python scripts/check_doc_sync.py --changed $(cat changed_files.txt)
+
+      - name: Run unit tests
+        run: |
+          python -m unittest discover -s tests -p "test_*.py" -v

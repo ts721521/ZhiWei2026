@@ -76,7 +76,7 @@ def write_chromadb_export(
                 collection.upsert(ids=ids, documents=documents, metadatas=metadatas)
             collection_count = int(collection.count() or 0)
             status = "ok"
-        except Exception as e:
+        except (OSError, RuntimeError, TypeError, ValueError, AttributeError) as e:
             status = "failed"
             error = str(e)
     elif docs and not has_chromadb:

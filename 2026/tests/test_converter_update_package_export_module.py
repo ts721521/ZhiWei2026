@@ -4,6 +4,7 @@ import os
 import tempfile
 import unittest
 from datetime import datetime
+from pathlib import Path
 
 from office_converter import OfficeConverter
 
@@ -95,16 +96,16 @@ class ConverterUpdatePackageExportSplitTests(unittest.TestCase):
     def test_office_converter_generate_update_package_delegates_to_module(self):
         import office_converter as oc
 
-        original = oc.generate_update_package_impl
+        original = oc.generate_update_package_for_converter
         try:
             seen = {}
 
-            def _fake(process_results, **kwargs):
+            def _fake(converter, process_results):
+                seen["converter"] = converter
                 seen["process_results"] = process_results
-                seen["kwargs"] = kwargs
-                return "manifest.json", ["manifest.json", "index.json"]
+                return "manifest.json"
 
-            oc.generate_update_package_impl = _fake
+            oc.generate_update_package_for_converter = _fake
 
             dummy = OfficeConverter.__new__(OfficeConverter)
             dummy._incremental_context = {"enabled": True}
@@ -116,11 +117,41 @@ class ConverterUpdatePackageExportSplitTests(unittest.TestCase):
 
             out = dummy._generate_update_package([{"source_path": "a"}])
             self.assertEqual(out, "manifest.json")
-            self.assertEqual(dummy.generated_update_package_outputs, ["manifest.json", "index.json"])
-            self.assertEqual(dummy.update_package_manifest_path, "manifest.json")
             self.assertEqual(seen.get("process_results"), [{"source_path": "a"}])
+            self.assertIs(seen.get("converter"), dummy)
         finally:
-            oc.generate_update_package_impl = original
+            oc.generate_update_package_for_converter = original
+
+    def test_generate_update_package_for_converter_sets_converter_state(self):
+        from converter.update_package_export import generate_update_package_for_converter
+
+        dummy = OfficeConverter.__new__(OfficeConverter)
+        dummy._incremental_context = {"enabled": True}
+        dummy.config = {}
+        dummy.run_mode = "x"
+        dummy._resolve_update_package_root = lambda: "out"
+        dummy._compute_md5 = lambda _p: "md5"
+        dummy._write_update_package_index_xlsx = lambda _p, _r: None
+        dummy.generated_update_package_outputs = []
+        dummy.update_package_manifest_path = ""
+        dummy._update_package_log_info = lambda *_a, **_k: None
+
+        import converter.update_package_export as mod
+
+        original = mod.generate_update_package
+        try:
+            mod.generate_update_package = lambda *args, **kwargs: ("m.json", ["m.json", "i.json"])
+            out = generate_update_package_for_converter(dummy, [{"source_path": "a"}])
+            self.assertEqual("m.json", out)
+            self.assertEqual(["m.json", "i.json"], dummy.generated_update_package_outputs)
+            self.assertEqual("m.json", dummy.update_package_manifest_path)
+        finally:
+            mod.generate_update_package = original
+
+    def test_update_package_export_module_has_no_bare_except_exception(self):
+        mod_path = Path(__file__).resolve().parents[1] / "converter" / "update_package_export.py"
+        text = mod_path.read_text(encoding="utf-8")
+        self.assertNotIn("except Exception", text)
 
 
 if __name__ == "__main__":

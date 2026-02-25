@@ -11,7 +11,7 @@ def confirm_continue_missing_md_merge(interactive, input_fn=input, warn_func=Non
         try:
             ans = input_fn(msg).strip().lower()
             return ans in ("", "y", "yes")
-        except Exception:
+        except (EOFError, KeyboardInterrupt, OSError, RuntimeError, TypeError, ValueError):
             return False
     if callable(warn_func):
         warn_func(

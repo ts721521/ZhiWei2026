@@ -1,6 +1,6 @@
-import unittest
+﻿import unittest
 
-from gui_task_workflow_mixin import TaskWorkflowMixin
+from gui.mixins.gui_task_workflow_mixin import TaskWorkflowMixin
 
 
 class _FakeVar:
@@ -159,3 +159,4 @@ class TaskListFilterSortTests(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+

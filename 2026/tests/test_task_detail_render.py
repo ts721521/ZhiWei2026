@@ -1,6 +1,6 @@
-import unittest
+﻿import unittest
 
-from gui_task_workflow_mixin import TaskWorkflowMixin
+from gui.mixins.gui_task_workflow_mixin import TaskWorkflowMixin
 
 
 class _FakeVar:
@@ -94,7 +94,7 @@ class _DummyTaskWorkflow(TaskWorkflowMixin):
         self.task_store = _FakeTaskStore()
         self.config_path = r"C:\config.json"
         self.var_app_mode = _FakeVar("task")
-        self.txt_task_detail = _FakeScrolledTextWrapper(initial="当前未选择任务。\n")
+        self.txt_task_detail = _FakeScrolledTextWrapper(initial="褰撳墠鏈€夋嫨浠诲姟銆俓n")
         self.btn_task_resume = _FakeButton()
 
     def _get_selected_task_id(self):
@@ -119,8 +119,8 @@ class _DummyTaskWorkflow(TaskWorkflowMixin):
             "config_path": self.config_path,
             "profile_name": "",
             "profile_file": "config.json",
-            "relation_label": "跟随当前活动配置",
-            "runtime_source_desc": "当前活动配置",
+            "relation_label": "璺熼殢褰撳墠娲诲姩閰嶇疆",
+            "runtime_source_desc": "褰撳墠娲诲姩閰嶇疆",
             "match_mode": "active_config",
         }
 
@@ -138,9 +138,9 @@ class _DummyTaskWorkflow(TaskWorkflowMixin):
 
     def tr(self, key):
         mapping = {
-            "msg_task_none_selected": "当前未选择任务。",
-            "msg_task_detail": "任务：{}\n源目录：{}\n目标目录：{}\n运行模式：{}\n增量：{}\n状态：{}\n断点进度：{}/{}",
-            "lbl_task_full_config": "完整配置",
+            "msg_task_none_selected": "No task selected.",
+            "msg_task_detail": "Task:{}\nSource:{}\nTarget:{}\nRun Mode:{}\nIncremental:{}\nStatus:{}\nProgress:{}/{}",
+            "lbl_task_full_config": "Full Config",
         }
         return mapping.get(key, key)
 
@@ -150,9 +150,10 @@ class TaskDetailRenderTests(unittest.TestCase):
         wf = _DummyTaskWorkflow()
         wf._on_task_select()
         detail = wf.txt_task_detail.text.get("1.0", "end")
-        self.assertIn("任务：DemoTask", detail)
-        self.assertIn("完整配置", detail)
+        self.assertIn("Task:DemoTask", detail)
+        self.assertIn("Full Config", detail)
 
 
 if __name__ == "__main__":
     unittest.main()
+

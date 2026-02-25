@@ -20,18 +20,18 @@ def safe_file_meta(path, target_folder):
 
     try:
         rel_path = os.path.relpath(abs_path, target_folder)
-    except Exception:
+    except (TypeError, ValueError, OSError):
         rel_path = abs_path
 
     md5_value = ""
     sha256_value = ""
     try:
         md5_value = compute_md5(abs_path)
-    except Exception:
+    except (TypeError, ValueError, OSError):
         pass
     try:
         sha256_value = compute_file_hash(abs_path)
-    except Exception:
+    except (TypeError, ValueError, OSError):
         pass
 
     return {

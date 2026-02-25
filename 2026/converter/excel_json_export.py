@@ -20,7 +20,7 @@ from converter.excel_json_utils import (
 def _read_positive_int(config, key, default_value):
     try:
         return max(1, int(config.get(key, default_value) or default_value))
-    except Exception:
+    except (TypeError, ValueError):
         return max(1, int(default_value))
 
 
@@ -30,7 +30,7 @@ def _safe_source_relpath(source_excel_path, source_root_resolver):
             os.path.abspath(source_excel_path),
             source_root_resolver(source_excel_path),
         )
-    except Exception:
+    except (OSError, TypeError, ValueError):
         return os.path.basename(source_excel_path)
 
 
@@ -371,19 +371,19 @@ def export_single_excel_json(
                     key=lambda item: (item[0][0], item[0][1]),
                 )
             ]
-        except Exception as exc:
+        except (OSError, RuntimeError, TypeError, ValueError, AttributeError) as exc:
             payload["parse_status"] = "parse_failed"
             payload["error"] = str(exc)
         finally:
             if wb_values is not None:
                 try:
                     wb_values.close()
-                except Exception:
+                except (AttributeError, OSError, RuntimeError):
                     pass
             if wb_formula is not None:
                 try:
                     wb_formula.close()
-                except Exception:
+                except (AttributeError, OSError, RuntimeError):
                     pass
 
     with open(out_path, "w", encoding="utf-8") as f:

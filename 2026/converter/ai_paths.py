@@ -12,7 +12,7 @@ def build_ai_output_path(source_path, sub_dir, ext, target_root):
     source_abs = os.path.abspath(source_path)
     try:
         rel = os.path.relpath(source_abs, target_root)
-    except Exception:
+    except (TypeError, ValueError, OSError):
         rel = os.path.basename(source_abs)
     if rel.startswith(".."):
         rel = os.path.basename(source_abs)
@@ -38,7 +38,7 @@ def build_ai_output_path_from_source(
             rel_try = os.path.relpath(source_abs, src_root)
             if not rel_try.startswith(".."):
                 rel = rel_try
-        except Exception:
+        except (TypeError, ValueError, OSError):
             pass
     rel_no_ext = os.path.splitext(rel)[0]
 

@@ -1,11 +1,17 @@
 import os
 import tempfile
+import time
 import unittest
+from pathlib import Path
 
 from office_converter import OfficeConverter
 
 
 class ConverterBatchParallelSplitTests(unittest.TestCase):
+    def test_batch_parallel_module_has_no_bare_except_exception(self):
+        module_text = Path("converter/batch_parallel.py").read_text(encoding="utf-8")
+        self.assertNotIn("except Exception", module_text)
+
     def test_batch_parallel_core_behaviors(self):
         from converter.batch_parallel import run_batch_parallel
 
@@ -91,6 +97,119 @@ class ConverterBatchParallelSplitTests(unittest.TestCase):
         self.assertEqual(1, len(dummy.appended))
         self.assertEqual(1, len(dummy.done_records))
 
+    def test_convert_single_file_threadsafe_for_converter_core_behaviors(self):
+        from converter.batch_parallel import convert_single_file_threadsafe_for_converter
+
+        class Dummy:
+            def __init__(self):
+                self.calls = []
+
+            def process_single_file(self, *args):
+                self.calls.append(args)
+                return "success", "out.pdf"
+
+        dummy = Dummy()
+        com_calls = []
+        out = convert_single_file_threadsafe_for_converter(
+            dummy,
+            "a.docx",
+            "a.pdf",
+            ".docx",
+            "[1/1]",
+            is_retry=True,
+            has_win32=True,
+            co_initialize_fn=lambda: com_calls.append("init"),
+            co_uninitialize_fn=lambda: com_calls.append("uninit"),
+        )
+        self.assertEqual(("success", "out.pdf"), out)
+        self.assertEqual(["init", "uninit"], com_calls)
+        self.assertEqual(1, len(dummy.calls))
+
+    def test_batch_parallel_respects_small_pending_window(self):
+        from converter.batch_parallel import run_batch_parallel
+
+        root = tempfile.mkdtemp(prefix="batch_parallel_pending_")
+        src1 = os.path.join(root, "a.docx")
+        src2 = os.path.join(root, "b.docx")
+        out_pdf = os.path.join(root, "a.pdf")
+        for p in (src1, src2, out_pdf):
+            with open(p, "w", encoding="utf-8") as f:
+                f.write("x")
+
+        class Dummy:
+            def __init__(self):
+                self.config = {
+                    "parallel_workers": 2,
+                    "parallel_max_pending": 1,
+                    "parallel_checkpoint_interval": 10,
+                }
+                self.is_running = True
+                self.stats = {"success": 0, "failed": 0}
+                self.error_records = []
+                self.done_records = []
+                self.appended = []
+
+            def _init_checkpoint(self, files):
+                return {"status": "running"}, list(files)
+
+            def _mark_file_done_in_checkpoint(self, checkpoint, _fpath):
+                if len(self.done_records) >= 1:
+                    checkpoint["status"] = "completed"
+                return checkpoint
+
+            def _save_checkpoint(self, checkpoint):
+                return checkpoint
+
+            def _clear_checkpoint(self):
+                return None
+
+            def get_target_path(self, logical_source, _ext):
+                return logical_source + ".pdf"
+
+            def get_progress_prefix(self, idx, total):
+                return f"[{idx}/{total}]"
+
+            def _convert_single_file_threadsafe(self, _fpath, _target, _ext, _prefix, _is_retry):
+                time.sleep(0.02)
+                return "success", out_pdf
+
+            def _append_conversion_index_record(self, source, final_path, status):
+                self.appended.append((source, final_path, status))
+
+            def _emit_file_done(self, record):
+                self.done_records.append(record)
+
+            def record_detailed_error(self, *_args, **_kwargs):
+                return {
+                    "error_type": "unknown",
+                    "error_category": "other",
+                    "suggestion": "",
+                    "is_retryable": False,
+                    "requires_manual_action": False,
+                    "failure_stage": "",
+                }
+
+            def get_readable_run_mode(self):
+                return "x"
+
+            def get_readable_engine_type(self):
+                return "y"
+
+            def quarantine_failed_file(self, _fpath):
+                return ""
+
+            def _build_failed_file_trace_payload(self, **kwargs):
+                return kwargs
+
+            def _write_failed_file_trace_log(self, _payload, failed_copy_path=None):
+                return failed_copy_path
+
+        dummy = Dummy()
+        results = run_batch_parallel(dummy, [src1, src2], is_retry=False, source_alias_map=None)
+        self.assertEqual(2, len(results))
+        self.assertEqual(2, dummy.stats["success"])
+        self.assertTrue(all(item["elapsed"] > 0 for item in results))
+
     def test_office_converter_run_batch_parallel_delegates_to_module(self):
         import office_converter as oc
 
@@ -113,6 +232,35 @@ class ConverterBatchParallelSplitTests(unittest.TestCase):
             self.assertTrue(seen.get("kwargs", {}).get("is_retry"))
         finally:
             oc.run_batch_parallel_impl = original
+
+    def test_office_converter_convert_single_file_threadsafe_delegates_to_module(self):
+        import office_converter as oc
+
+        original = oc.convert_single_file_threadsafe_for_converter
+        try:
+            seen = {}
+
+            def _fake(converter, fpath, target_path_initial, ext, progress_prefix, **kwargs):
+                seen["converter"] = converter
+                seen["fpath"] = fpath
+                seen["kwargs"] = kwargs
+                return "success", "x.pdf"
+
+            oc.convert_single_file_threadsafe_for_converter = _fake
+            dummy = OfficeConverter.__new__(OfficeConverter)
+            out = dummy._convert_single_file_threadsafe(
+                "a.docx",
+                "a.pdf",
+                ".docx",
+                "[1/1]",
+                is_retry=True,
+            )
+            self.assertEqual(("success", "x.pdf"), out)
+            self.assertIs(seen["converter"], dummy)
+            self.assertEqual("a.docx", seen["fpath"])
+            self.assertTrue(seen["kwargs"]["is_retry"])
+        finally:
+            oc.convert_single_file_threadsafe_for_converter = original
 
 
 if __name__ == "__main__":

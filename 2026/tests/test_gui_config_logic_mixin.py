@@ -1,6 +1,6 @@
-import unittest
+﻿import unittest
 
-from gui_config_logic_mixin import ConfigLogicMixin
+from gui.mixins.gui_config_logic_mixin import ConfigLogicMixin
 
 
 class _DummyConfigLogic(ConfigLogicMixin):
@@ -21,3 +21,4 @@ class ConfigLogicMixinTests(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+

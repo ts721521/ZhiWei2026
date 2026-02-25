@@ -1,4 +1,5 @@
 import unittest
+from pathlib import Path
 from unittest.mock import patch
 
 import office_converter as oc
@@ -61,6 +62,11 @@ class ConverterOfficeCycleSplitTests(unittest.TestCase):
             get_app_type_for_ext(dummy.config, ".xlsx"),
             dummy._get_app_type_for_ext(".xlsx"),
         )
+
+    def test_office_cycle_module_has_no_bare_except_exception(self):
+        mod_path = Path(__file__).resolve().parents[1] / "converter" / "office_cycle.py"
+        text = mod_path.read_text(encoding="utf-8")
+        self.assertNotIn("except Exception", text)
 
 
 if __name__ == "__main__":

@@ -7,6 +7,30 @@ from datetime import datetime
 from converter.constants import MERGE_MODE_ALL_IN_ONE
 
 
+def resolve_merge_scan_context(
+    *,
+    run_mode,
+    config,
+    get_source_roots_fn,
+    failed_dir,
+    merge_output_dir,
+    mode_merge_only,
+):
+    scan_source_type = "target"
+    if run_mode == mode_merge_only:
+        scan_source_type = (config or {}).get("merge_source", "source")
+
+    if scan_source_type == "source":
+        scan_roots = list(get_source_roots_fn() or [])
+    else:
+        scan_roots = [(config or {}).get("target_folder", "")]
+
+    exclude_abs_paths = [failed_dir, merge_output_dir]
+    if scan_source_type == "source":
+        exclude_abs_paths.append((config or {}).get("target_folder", ""))
+    return scan_roots, exclude_abs_paths
+
+
 def scan_candidates_by_ext(ext, scan_roots, exclude_abs_paths=None):
     ext = str(ext or "").lower()
     if not ext.startswith("."):
@@ -57,3 +81,20 @@ def build_markdown_merge_tasks(md_files, merge_mode, now=None):
     if others:
         tasks.append((f"Merged_Markdown_{ts}_001.md", others))
     return tasks
+
+
+def scan_merge_candidates_by_ext_for_converter(
+    converter,
+    ext,
+    *,
+    mode_merge_only,
+):
+    scan_roots, exclude_abs_paths = resolve_merge_scan_context(
+        run_mode=converter.run_mode,
+        config=converter.config,
+        get_source_roots_fn=converter._get_source_roots,
+        failed_dir=converter.failed_dir,
+        merge_output_dir=converter.merge_output_dir,
+        mode_merge_only=mode_merge_only,
+    )
+    return scan_candidates_by_ext(ext, scan_roots, exclude_abs_paths)

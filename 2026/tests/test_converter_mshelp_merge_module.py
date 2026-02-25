@@ -2,13 +2,21 @@ import os
 import tempfile
 import unittest
 from datetime import datetime
+from pathlib import Path
 
 from office_converter import OfficeConverter
 
 
 class ConverterMshelpMergeSplitTests(unittest.TestCase):
+    def test_mshelp_merge_module_has_no_bare_except_exception(self):
+        module_text = Path("converter/mshelp_merge.py").read_text(encoding="utf-8")
+        self.assertNotIn("except Exception", module_text)
+
     def test_mshelp_merge_core_behaviors(self):
-        from converter.mshelp_merge import merge_mshelp_markdowns
+        from converter.mshelp_merge import (
+            merge_mshelp_markdowns,
+            merge_mshelp_markdowns_for_converter,
+        )
 
         root = tempfile.mkdtemp(prefix="mshelp_merge_")
         md = os.path.join(root, "a.md")
@@ -45,6 +53,30 @@ class ConverterMshelpMergeSplitTests(unittest.TestCase):
             text = f.read()
         self.assertIn("MSHelp API Merged Package 1/1", text)
         self.assertIn("content-a", text)
+
+        dummy = OfficeConverter.__new__(OfficeConverter)
+        dummy.mshelp_records = records
+        dummy.config = {
+            "enable_mshelp_merge_output": True,
+            "target_folder": root,
+            "source_folder": root,
+            "enable_mshelp_output_docx": False,
+            "enable_mshelp_output_pdf": False,
+        }
+        dummy.generated_mshelp_outputs = []
+        dummy._export_markdown_to_docx = lambda _inp, _out: None
+        dummy._export_markdown_to_pdf = lambda _inp, _out: None
+        perf = []
+        dummy._add_perf_seconds = lambda key, seconds: perf.append((key, seconds))
+        wrapped = merge_mshelp_markdowns_for_converter(
+            dummy,
+            now_fn=lambda: fixed_now,
+            perf_counter_fn=lambda: 10.0 if not perf else 12.5,
+            log_info=lambda *_a, **_k: None,
+            log_warning=lambda *_a, **_k: None,
+        )
+        self.assertEqual(1, len(wrapped))
+        self.assertTrue(perf)
 
         for p in [outputs[0], md]:
             try:
@@ -118,16 +150,15 @@ class ConverterMshelpMergeSplitTests(unittest.TestCase):
     def test_office_converter_merge_mshelp_markdowns_delegates_to_module(self):
         import office_converter as oc
 
-        original = oc.merge_mshelp_markdowns_impl
+        original = oc.merge_mshelp_markdowns_impl_for_converter
         try:
             seen = {}
 
-            def _fake(records, config, **kwargs):
-                seen["records"] = records
-                seen["config"] = config
+            def _fake(converter, **kwargs):
+                seen["converter"] = converter
                 return ["x"]
 
-            oc.merge_mshelp_markdowns_impl = _fake
+            oc.merge_mshelp_markdowns_impl_for_converter = _fake
             dummy = OfficeConverter.__new__(OfficeConverter)
             dummy.mshelp_records = [{"markdown_path": "a.md"}]
             dummy.config = {"enable_mshelp_merge_output": True}
@@ -138,9 +169,9 @@ class ConverterMshelpMergeSplitTests(unittest.TestCase):
 
             out = dummy._merge_mshelp_markdowns()
             self.assertEqual(out, ["x"])
-            self.assertEqual(seen["records"], dummy.mshelp_records)
+            self.assertIs(seen["converter"], dummy)
         finally:
-            oc.merge_mshelp_markdowns_impl = original
+            oc.merge_mshelp_markdowns_impl_for_converter = original
 
 
 if __name__ == "__main__":

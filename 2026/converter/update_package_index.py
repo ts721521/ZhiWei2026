@@ -80,7 +80,7 @@ def write_update_package_index_xlsx(
 
         wb.save(xlsx_path)
         return xlsx_path
-    except Exception as e:
+    except (OSError, RuntimeError, TypeError, ValueError, AttributeError) as e:
         if callable(log_error):
             log_error(f"[update_package] failed to write XLSX index: {e}")
         return None

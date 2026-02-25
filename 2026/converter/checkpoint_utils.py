@@ -29,7 +29,7 @@ def save_checkpoint(checkpoint, checkpoint_path):
         checkpoint["updated_at"] = datetime.now().isoformat(timespec="seconds")
         with open(checkpoint_path, "w", encoding="utf-8") as f:
             json.dump(checkpoint, f, ensure_ascii=False, indent=2)
-    except Exception as e:
+    except (OSError, TypeError, ValueError) as e:
         logging.warning(f"Failed to save checkpoint: {e}")
 
 
@@ -55,5 +55,5 @@ def clear_checkpoint_file(checkpoint_path):
         try:
             os.remove(checkpoint_path)
             logging.info(f"Checkpoint cleared: {checkpoint_path}")
-        except Exception as e:
+        except OSError as e:
             logging.warning(f"Failed to clear checkpoint: {e}")

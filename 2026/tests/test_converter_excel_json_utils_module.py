@@ -2,6 +2,7 @@ import unittest
 from datetime import date
 from datetime import datetime
 from datetime import time
+from pathlib import Path
 
 from office_converter import OfficeConverter
 
@@ -92,6 +93,11 @@ class ConverterExcelJsonUtilsSplitTests(unittest.TestCase):
             OfficeConverter._extract_formula_sheet_refs("=A!A1+'B B'!C1", "A"),
             extract_formula_sheet_refs("=A!A1+'B B'!C1", "A"),
         )
+
+    def test_excel_json_utils_module_has_no_bare_except_exception(self):
+        mod_path = Path(__file__).resolve().parents[1] / "converter" / "excel_json_utils.py"
+        text = mod_path.read_text(encoding="utf-8")
+        self.assertNotIn("except Exception", text)
 
 
 if __name__ == "__main__":

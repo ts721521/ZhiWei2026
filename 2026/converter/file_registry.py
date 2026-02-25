@@ -82,7 +82,7 @@ class FileRegistry:
                     migrated[new_key] = entry
                 self.entries = migrated
             self.version = int(data.get("version", 1) or 1)
-        except Exception:
+        except (OSError, json.JSONDecodeError, TypeError, ValueError, AttributeError):
             self.entries = {}
             self.version = 1
         self.loaded = True

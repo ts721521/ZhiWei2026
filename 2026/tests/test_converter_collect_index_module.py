@@ -1,9 +1,15 @@
 ﻿import unittest
 
+from pathlib import Path
+
 from office_converter import OfficeConverter
 
 
 class ConverterCollectIndexSplitTests(unittest.TestCase):
+    def test_collect_index_module_has_no_bare_except_exception(self):
+        module_text = Path("converter/collect_index.py").read_text(encoding="utf-8")
+        self.assertNotIn("except Exception", module_text)
+
     def test_collect_index_core_behaviors_when_openpyxl_missing(self):
         from converter.collect_index import collect_office_files_and_build_excel
 

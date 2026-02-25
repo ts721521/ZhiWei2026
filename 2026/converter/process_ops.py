@@ -23,3 +23,16 @@ def kill_process_by_name(app_name, has_win32, run_cmd=None):
     run_cmd = run_cmd or subprocess.run
     cmd = f"taskkill /F /IM {app_name}.exe"
     run_cmd(cmd, shell=True, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+
+
+def kill_process_by_name_for_converter(
+    app_name,
+    *,
+    has_win32,
+    run_cmd=None,
+):
+    try:
+        kill_process_by_name(app_name, has_win32=has_win32, run_cmd=run_cmd)
+    except (OSError, RuntimeError, TypeError, ValueError, AttributeError):
+        return False
+    return True

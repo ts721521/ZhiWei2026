@@ -1,4 +1,5 @@
 import unittest
+from pathlib import Path
 
 from office_converter import OfficeConverter
 
@@ -59,6 +60,11 @@ class ConverterExcelSheetUtilsSplitTests(unittest.TestCase):
         OfficeConverter._auto_fit_sheet(ws, max_width=6)
         self.assertEqual(ws.column_dimensions["A"].width, 5)
         self.assertEqual(ws.column_dimensions["B"].width, 6)
+
+    def test_excel_sheet_utils_module_has_no_bare_except_exception(self):
+        mod_path = Path(__file__).resolve().parents[1] / "converter" / "excel_sheet_utils.py"
+        text = mod_path.read_text(encoding="utf-8")
+        self.assertNotIn("except Exception", text)
 
 
 if __name__ == "__main__":

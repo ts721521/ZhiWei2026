@@ -80,7 +80,7 @@ def apply_global_md5_dedup(
         bucket = ext_bucket_fn(path)
         try:
             md5_value = compute_md5_fn(path)
-        except Exception as e:
+        except (OSError, RuntimeError, TypeError, ValueError) as e:
             if callable(log_warning):
                 log_warning(f"[global_md5] failed to compute MD5, keep file: {path} | {e}")
             kept.append(path)

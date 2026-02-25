@@ -1,6 +1,6 @@
-import unittest
+﻿import unittest
 
-from gui_run_tab_mixin import RunTabUIMixin
+from gui.mixins.gui_run_tab_mixin import RunTabUIMixin
 
 
 class RunTabUIMixinGlobalBindingsTests(unittest.TestCase):
@@ -15,3 +15,4 @@ class RunTabUIMixinGlobalBindingsTests(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+

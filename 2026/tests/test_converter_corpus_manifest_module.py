@@ -3,10 +3,16 @@ import os
 import tempfile
 import unittest
 
+from pathlib import Path
+
 from office_converter import OfficeConverter
 
 
 class ConverterCorpusManifestSplitTests(unittest.TestCase):
+    def test_corpus_manifest_module_has_no_bare_except_exception(self):
+        module_text = Path("converter/corpus_manifest.py").read_text(encoding="utf-8")
+        self.assertNotIn("except Exception", module_text)
+
     def test_llm_delivery_hub_core_behaviors(self):
         from converter.corpus_manifest import maybe_build_llm_delivery_hub
 

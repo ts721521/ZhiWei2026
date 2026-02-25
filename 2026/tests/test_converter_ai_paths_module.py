@@ -1,6 +1,8 @@
 import os
 import tempfile
 import unittest
+from pathlib import Path
+from unittest import mock
 
 from office_converter import OfficeConverter
 
@@ -105,6 +107,61 @@ class ConverterAiPathsSplitTests(unittest.TestCase):
                     os.rmdir(d)
                 except Exception:
                     pass
+
+    def test_build_ai_output_path_falls_back_when_relpath_raises(self):
+        from converter.ai_paths import build_ai_output_path
+
+        root = tempfile.mkdtemp(prefix="ai_paths_relpath_")
+        target = os.path.join(root, "target")
+        os.makedirs(target, exist_ok=True)
+        src = os.path.join(root, "a.docx")
+        with open(src, "w", encoding="utf-8") as f:
+            f.write("x")
+        try:
+            with mock.patch(
+                "converter.ai_paths.os.path.relpath",
+                side_effect=ValueError("bad relpath"),
+            ):
+                out = build_ai_output_path(src, "Markdown", ".md", target)
+            self.assertTrue(out.endswith(os.path.join("_AI", "Markdown", "a.md")))
+        finally:
+            for p in (src,):
+                try:
+                    os.remove(p)
+                except Exception:
+                    pass
+
+    def test_build_ai_output_path_from_source_ignores_resolver_error(self):
+        from converter.ai_paths import build_ai_output_path_from_source
+
+        root = tempfile.mkdtemp(prefix="ai_paths_resolver_")
+        target = os.path.join(root, "target")
+        source = os.path.join(root, "src")
+        os.makedirs(source, exist_ok=True)
+        os.makedirs(target, exist_ok=True)
+        src = os.path.join(source, "b.xlsx")
+        with open(src, "w", encoding="utf-8") as f:
+            f.write("x")
+        try:
+            out = build_ai_output_path_from_source(
+                src,
+                "ExcelJSON",
+                ".json",
+                target,
+                source_root_resolver=lambda _p: (_ for _ in ()).throw(OSError("boom")),
+            )
+            self.assertTrue(out.endswith(os.path.join("_AI", "ExcelJSON", "b.json")))
+        finally:
+            for p in (src,):
+                try:
+                    os.remove(p)
+                except Exception:
+                    pass
+
+    def test_ai_paths_module_has_no_bare_except_exception(self):
+        mod_path = Path(__file__).resolve().parents[1] / "converter" / "ai_paths.py"
+        text = mod_path.read_text(encoding="utf-8")
+        self.assertNotIn("except Exception", text)
 
 
 if __name__ == "__main__":

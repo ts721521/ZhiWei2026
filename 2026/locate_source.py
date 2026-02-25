@@ -12,6 +12,7 @@ from dataclasses import asdict, dataclass
 from typing import Optional
 
 from search_adapter import EverythingAdapter, build_listary_query
+from converter.traceability import normalize_short_id_for_match
 
 EXIT_OK = 0
 EXIT_NOT_FOUND = 2
@@ -128,9 +129,10 @@ def locate_by_page(merged_name: str, page: int, map_dir: str) -> LocateResult:
 
 
 def locate_by_short_id(short_id: str, map_dir: str) -> LocateResult:
-    short_id = short_id.strip().upper()
-    if not short_id:
+    query_raw = short_id.strip().upper()
+    if not query_raw:
         return LocateResult("invalid", None, [], EXIT_INVALID_INPUT)
+    short_id = normalize_short_id_for_match(query_raw)
 
     all_maps = glob.glob(os.path.join(map_dir, "*.map.json"))
     if not all_maps:
@@ -143,7 +145,8 @@ def locate_by_short_id(short_id: str, map_dir: str) -> LocateResult:
         except Exception:
             continue
         for r in records:
-            if r.source_short_id.upper() == short_id:
+            sid = normalize_short_id_for_match(r.source_short_id)
+            if sid == short_id or r.source_short_id.strip().upper() == query_raw:
                 matches.append(r)
 
     if not matches:

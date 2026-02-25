@@ -24,5 +24,5 @@ def clear_console():
     try:
         if sys.stdout.isatty():
             os.system("cls" if os.name == "nt" else "clear")
-    except Exception:
+    except (AttributeError, OSError, TypeError, ValueError):
         pass

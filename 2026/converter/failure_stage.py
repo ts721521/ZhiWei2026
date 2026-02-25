@@ -14,7 +14,7 @@ def sanitize_failure_log_stem(value):
 def get_failure_output_expectation(run_mode, config, compute_convert_output_plan):
     try:
         plan = compute_convert_output_plan(run_mode, config)
-    except Exception:
+    except (TypeError, ValueError, AttributeError, RuntimeError):
         return {"need_final_pdf": None, "need_markdown": None}
     return {
         "need_final_pdf": bool(plan.get("need_final_pdf")),
@@ -50,7 +50,7 @@ def infer_failure_stage(
         if callable(expected_outputs_getter):
             try:
                 expected = expected_outputs_getter() or {}
-            except Exception:
+            except (TypeError, ValueError, AttributeError, RuntimeError):
                 expected = {}
         if expected.get("need_markdown") and not expected.get("need_final_pdf"):
             return "pdf_to_markdown"

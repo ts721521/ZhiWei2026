@@ -17,6 +17,6 @@ def auto_fit_sheet(ws, max_width=90):
             try:
                 v = str(cell.value) if cell.value is not None else ""
                 max_length = max(max_length, len(v))
-            except Exception:
+            except (TypeError, ValueError, AttributeError):
                 pass
         ws.column_dimensions[col_letter].width = min(max_length + 2, max_width)

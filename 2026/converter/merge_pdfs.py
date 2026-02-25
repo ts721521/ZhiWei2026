@@ -6,6 +6,8 @@ import os
 import traceback
 from datetime import datetime
 
+from converter.traceability import apply_short_id_prefix
+
 
 def merge_pdfs(
     converter,
@@ -80,7 +82,7 @@ def merge_pdfs(
             word_app = win32_client.Dispatch("Word.Application")
             word_app.Visible = False
             word_app.DisplayAlerts = 0
-        except Exception as exc:
+        except (OSError, RuntimeError, TypeError, ValueError, AttributeError) as exc:
             logging.error(f"Failed to start Word. Cannot generate index page: {exc}")
             word_app = None
 
@@ -136,6 +138,10 @@ def merge_pdfs(
                     source_page_count = len(reader.pages)
                     source_md5 = converter._compute_md5(pdf_file)
                     source_short_id = converter._build_short_id(source_md5, short_id_taken)
+                    source_short_id = apply_short_id_prefix(
+                        source_short_id,
+                        converter.config.get("short_id_prefix", "ZW-"),
+                    )
                     bookmark_title = fname
                     if converter.config.get("bookmark_with_short_id", True):
                         bookmark_title = f"[ID:{source_short_id}] {fname}"
@@ -156,7 +162,7 @@ def merge_pdfs(
                             source_abs_path,
                             converter._get_source_root_for_path(source_abs_path),
                         )
-                    except Exception:
+                    except (OSError, RuntimeError, TypeError, ValueError):
                         pass
 
                     map_records.append(
@@ -184,7 +190,7 @@ def merge_pdfs(
                     logging.info(
                         f"merge map record: {fname} | pages {start_page_1based}-{end_page_1based} | ID={source_short_id} | MD5={md5_log}"
                     )
-                except Exception as exc:
+                except (OSError, RuntimeError, TypeError, ValueError, AttributeError) as exc:
                     logging.error(f"merge read failed {pdf_file}: {exc}")
 
             if index_page_count > 0 and has_pypdf_generic:
@@ -260,7 +266,7 @@ def merge_pdfs(
                 merged_pdf_md5 = ""
                 try:
                     merged_pdf_md5 = converter._compute_md5(output_path)
-                except Exception:
+                except (OSError, RuntimeError, TypeError, ValueError, AttributeError):
                     pass
                 for rec in map_records:
                     rec["merged_pdf_md5"] = merged_pdf_md5
@@ -273,13 +279,13 @@ def merge_pdfs(
                         generated_map_outputs.extend([csv_path, json_path])
                         logging.info(f"map file generated: {csv_path}")
                         logging.info(f"map file generated: {json_path}")
-                except Exception as exc:
+                except (OSError, RuntimeError, TypeError, ValueError, AttributeError) as exc:
                     logging.error(f"failed to write map files {output_path}: {exc}")
 
             if index_pdf_path and os.path.exists(index_pdf_path):
                 os.remove(index_pdf_path)
 
-        except Exception as exc:
+        except (OSError, RuntimeError, TypeError, ValueError, AttributeError) as exc:
             print(f" [FAILED] {exc}")
             logging.error(f"merge task failed {output_filename}: {exc}")
             traceback.print_exc()
@@ -287,7 +293,7 @@ def merge_pdfs(
     if word_app:
         try:
             word_app.Quit()
-        except Exception:
+        except (OSError, RuntimeError, TypeError, ValueError, AttributeError):
             pass
         pythoncom_mod.CoUninitialize()
 
@@ -312,7 +318,7 @@ def merge_pdfs(
             wb_merge.save(merge_excel_path)
             converter.merge_excel_path = merge_excel_path
             print(f"\n  Excel index saved: {merge_excel_path}")
-        except Exception as exc:
+        except (OSError, RuntimeError, TypeError, ValueError, AttributeError) as exc:
             logging.error(f"failed to save Excel merge list: {exc}")
 
     if total_tasks <= 0:

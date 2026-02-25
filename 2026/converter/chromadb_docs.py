@@ -35,7 +35,7 @@ def collect_chromadb_documents(
         try:
             with open(md_path, "r", encoding="utf-8") as f:
                 raw = f.read()
-        except Exception:
+        except (OSError, RuntimeError, TypeError, ValueError, UnicodeError):
             continue
         chunks = chunk_text_for_vector_fn(raw, max_chars=max_chars, overlap=overlap)
         if not chunks:

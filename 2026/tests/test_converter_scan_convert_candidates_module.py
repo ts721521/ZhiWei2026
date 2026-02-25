@@ -7,7 +7,10 @@ from office_converter import OfficeConverter
 
 class ConverterScanConvertCandidatesSplitTests(unittest.TestCase):
     def test_scan_convert_candidates_core_behaviors(self):
-        from converter.scan_convert_candidates import scan_convert_candidates
+        from converter.scan_convert_candidates import (
+            iter_convert_candidates,
+            scan_convert_candidates,
+        )
 
         root = tempfile.mkdtemp(prefix="scan_convert_")
         keep = os.path.join(root, "a.docx")
@@ -33,6 +36,17 @@ class ConverterScanConvertCandidatesSplitTests(unittest.TestCase):
             filter_mode="after",
         )
         self.assertEqual(files, [keep])
+        iter_files = list(
+            iter_convert_candidates(
+                cfg,
+                [root],
+                probe_source_root_access_fn=lambda path, context=None, seen_keys=None: True,
+                record_scan_access_skip_fn=lambda *args, **kwargs: None,
+                filter_date=None,
+                filter_mode="after",
+            )
+        )
+        self.assertEqual(iter_files, [keep])
 
         warns = []
         errs = []

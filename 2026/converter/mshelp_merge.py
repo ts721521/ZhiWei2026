@@ -32,7 +32,7 @@ def merge_mshelp_markdowns(
 
     try:
         max_size_mb = int(config.get("max_merge_size_mb", 80) or 80)
-    except Exception:
+    except (TypeError, ValueError):
         max_size_mb = 80
     max_size_bytes = max(1, max_size_mb) * 1024 * 1024
 
@@ -44,7 +44,7 @@ def merge_mshelp_markdowns(
         try:
             with open(mdp, "r", encoding="utf-8", errors="ignore") as f:
                 content = f.read()
-        except Exception:
+        except (OSError, RuntimeError, TypeError, ValueError, UnicodeError):
             continue
         item = dict(rec)
         item["_content"] = content
@@ -135,7 +135,7 @@ def merge_mshelp_markdowns(
                     generated_outputs.append(docx_path)
                 if callable(log_info):
                     log_info(f"MSHelp merged DOCX generated: {docx_path}")
-            except Exception as e:
+            except (OSError, RuntimeError, TypeError, ValueError, AttributeError) as e:
                 if callable(log_warning):
                     log_warning(f"MSHelp merged DOCX skipped: {e}")
 
@@ -149,8 +149,32 @@ def merge_mshelp_markdowns(
                     generated_outputs.append(pdf_path)
                 if callable(log_info):
                     log_info(f"MSHelp merged PDF generated: {pdf_path}")
-            except Exception as e:
+            except (OSError, RuntimeError, TypeError, ValueError, AttributeError) as e:
                 if callable(log_warning):
                     log_warning(f"MSHelp merged PDF skipped: {e}")
 
+    return outputs
+
+
+def merge_mshelp_markdowns_for_converter(
+    converter,
+    *,
+    now_fn,
+    perf_counter_fn,
+    log_info,
+    log_warning,
+):
+    merge_start = perf_counter_fn()
+    outputs = merge_mshelp_markdowns(
+        converter.mshelp_records,
+        converter.config,
+        generated_outputs=converter.generated_mshelp_outputs,
+        export_markdown_to_docx_fn=converter._export_markdown_to_docx,
+        export_markdown_to_pdf_fn=converter._export_markdown_to_pdf,
+        now_fn=now_fn,
+        log_info=log_info,
+        log_warning=log_warning,
+    )
+    if outputs:
+        converter._add_perf_seconds("mshelp_merge_seconds", perf_counter_fn() - merge_start)
     return outputs

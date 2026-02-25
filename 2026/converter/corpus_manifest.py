@@ -30,7 +30,7 @@ def maybe_build_llm_delivery_hub(converter, target_folder, artifacts):
         )
     try:
         os.makedirs(llm_root, exist_ok=True)
-    except Exception as exc:
+    except (OSError, RuntimeError, TypeError, ValueError) as exc:
         logging.error(f"failed to create LLM hub root {llm_root}: {exc}")
         return None
 
@@ -132,19 +132,19 @@ def maybe_build_llm_delivery_hub(converter, target_folder, artifacts):
         hub_dir = os.path.dirname(hub_abs)
         try:
             os.makedirs(hub_dir, exist_ok=True)
-        except Exception as exc:
+        except (OSError, RuntimeError, TypeError, ValueError) as exc:
             logging.error(f"failed to create LLM hub subdir {hub_dir}: {exc}")
             continue
 
         try:
             shutil.copy2(abs_path, hub_abs)
-        except Exception as exc:
+        except (OSError, RuntimeError, TypeError, ValueError) as exc:
             logging.error(f"failed to copy to LLM hub {hub_abs}: {exc}")
             continue
 
         try:
             size_bytes = os.path.getsize(hub_abs)
-        except Exception:
+        except OSError:
             size_bytes = 0
 
         hub_items.append(
@@ -178,7 +178,7 @@ def maybe_build_llm_delivery_hub(converter, target_folder, artifacts):
         try:
             with open(manifest_path, "w", encoding="utf-8") as f:
                 json.dump(manifest, f, ensure_ascii=False, indent=2)
-        except Exception as exc:
+        except (OSError, RuntimeError, TypeError, ValueError) as exc:
             logging.error(f"failed to write LLM hub manifest {manifest_path}: {exc}")
 
     if converter.config.get("enable_upload_readme", True):
@@ -217,7 +217,7 @@ def maybe_build_llm_delivery_hub(converter, target_folder, artifacts):
             readme_lines.append("")
             with open(readme_path, "w", encoding="utf-8") as f:
                 f.write("\n".join(readme_lines))
-        except Exception as exc:
+        except (OSError, RuntimeError, TypeError, ValueError) as exc:
             logging.warning(f"failed to write upload readme: {exc}")
 
     logging.info(
@@ -285,12 +285,18 @@ def write_corpus_manifest(converter, merge_outputs=None):
             _append("merge_map_file", path)
     for path in converter.generated_markdown_outputs:
         _append("markdown_export", path)
+    for path in getattr(converter, "generated_fast_md_outputs", []) or []:
+        _append("knowledge_bundle_markdown", path)
     for path in converter.generated_markdown_quality_outputs:
         _append("markdown_quality_report", path)
     for path in converter.generated_excel_json_outputs:
         _append("excel_structured_json", path)
     for path in converter.generated_records_json_outputs:
         _append("records_json", path)
+    for path in getattr(converter, "generated_trace_map_outputs", []) or []:
+        _append("trace_map_xlsx", path)
+    for path in getattr(converter, "generated_prompt_outputs", []) or []:
+        _append("prompt_ready_txt", path)
     for path in converter.generated_chromadb_outputs:
         path_low = str(path).lower()
         if path_low.endswith(".jsonl"):
@@ -354,9 +360,12 @@ def write_corpus_manifest(converter, merge_outputs=None):
             "merged_markdown_count": len(converter.generated_merge_markdown_outputs),
             "merge_map_count": len(converter.generated_map_outputs),
             "markdown_count": len(converter.generated_markdown_outputs),
+            "knowledge_bundle_count": len(getattr(converter, "generated_fast_md_outputs", []) or []),
             "markdown_quality_report_count": len(converter.generated_markdown_quality_outputs),
             "excel_structured_json_count": len(converter.generated_excel_json_outputs),
             "records_json_count": len(converter.generated_records_json_outputs),
+            "trace_map_count": len(getattr(converter, "generated_trace_map_outputs", []) or []),
+            "prompt_ready_count": len(getattr(converter, "generated_prompt_outputs", []) or []),
             "chromadb_export_file_count": len(converter.generated_chromadb_outputs),
             "update_package_file_count": len(converter.generated_update_package_outputs),
             "mshelp_output_file_count": len(converter.generated_mshelp_outputs),
@@ -371,7 +380,7 @@ def write_corpus_manifest(converter, merge_outputs=None):
         if llm_hub_meta:
             artifacts.append(llm_hub_meta)
             manifest["summary"]["artifact_count"] = len(artifacts)
-    except Exception as exc:
+    except (OSError, RuntimeError, TypeError, ValueError, AttributeError) as exc:
         logging.error(f"failed to build LLM delivery hub: {exc}")
 
     manifest_path = os.path.join(target_folder, "corpus.json")

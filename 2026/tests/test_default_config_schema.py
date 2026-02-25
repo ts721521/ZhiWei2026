@@ -28,6 +28,11 @@ class DefaultConfigSchemaTests(unittest.TestCase):
         self.assertIn("parallel_workers", cfg)
         self.assertIn("enable_checkpoint", cfg)
         self.assertIn("checkpoint_auto_resume", cfg)
+        self.assertIn("enable_fast_md_engine", cfg)
+        self.assertIn("enable_traceability_anchor_and_map", cfg)
+        self.assertIn("enable_prompt_wrapper", cfg)
+        self.assertIn("prompt_template_type", cfg)
+        self.assertIn("short_id_prefix", cfg)
 
         self.assertIn("source_folders", cfg)
         self.assertIn("source_folder_win", cfg)

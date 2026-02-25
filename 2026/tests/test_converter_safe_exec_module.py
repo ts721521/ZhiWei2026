@@ -1,9 +1,14 @@
 import unittest
+from pathlib import Path
 
 from office_converter import OfficeConverter
 
 
 class ConverterSafeExecSplitTests(unittest.TestCase):
+    def test_safe_exec_module_has_no_bare_except_exception(self):
+        module_text = Path("converter/safe_exec.py").read_text(encoding="utf-8")
+        self.assertNotIn("except Exception", module_text)
+
     def test_safe_exec_core_behaviors(self):
         from converter.safe_exec import safe_exec
 

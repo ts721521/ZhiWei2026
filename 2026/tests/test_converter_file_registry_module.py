@@ -1,4 +1,5 @@
 import unittest
+from pathlib import Path
 
 
 class ConverterFileRegistrySplitTests(unittest.TestCase):
@@ -13,6 +14,11 @@ class ConverterFileRegistrySplitTests(unittest.TestCase):
         from office_converter import FileRegistry as office_registry
 
         self.assertIs(split_registry, office_registry)
+
+    def test_file_registry_module_has_no_bare_except_exception(self):
+        mod_path = Path(__file__).resolve().parents[1] / "converter" / "file_registry.py"
+        text = mod_path.read_text(encoding="utf-8")
+        self.assertNotIn("except Exception", text)
 
 
 if __name__ == "__main__":

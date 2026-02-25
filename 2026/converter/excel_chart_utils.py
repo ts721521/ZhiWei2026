@@ -24,12 +24,12 @@ def extract_chart_title_text(chart):
                         parts.append(str(txt))
             if parts:
                 return "".join(parts).strip()
-    except Exception:
+    except (TypeError, ValueError, AttributeError):
         pass
 
     try:
         return str(title_obj).strip()
-    except Exception:
+    except (TypeError, ValueError):
         return ""
 
 
@@ -42,9 +42,9 @@ def stringify_chart_anchor(anchor):
             col = int(getattr(marker, "col", 0)) + 1
             row = int(getattr(marker, "row", 0)) + 1
             return f"{col_index_to_label(col)}{row}"
-    except Exception:
+    except (TypeError, ValueError, AttributeError):
         pass
     try:
         return str(anchor)
-    except Exception:
+    except (TypeError, ValueError):
         return ""

@@ -2,6 +2,7 @@ import json
 import os
 import tempfile
 import unittest
+from pathlib import Path
 
 
 class ConverterDefaultConfigModuleSplitTests(unittest.TestCase):
@@ -22,6 +23,11 @@ class ConverterDefaultConfigModuleSplitTests(unittest.TestCase):
         from office_converter import create_default_config as office_create
 
         self.assertIs(split_create, office_create)
+
+    def test_default_config_module_has_no_bare_except_exception(self):
+        mod_path = Path(__file__).resolve().parents[1] / "converter" / "default_config.py"
+        text = mod_path.read_text(encoding="utf-8")
+        self.assertNotIn("except Exception", text)
 
 
 if __name__ == "__main__":

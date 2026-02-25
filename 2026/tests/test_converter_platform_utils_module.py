@@ -1,4 +1,5 @@
 import unittest
+from pathlib import Path
 
 
 class ConverterPlatformUtilsSplitTests(unittest.TestCase):
@@ -14,6 +15,11 @@ class ConverterPlatformUtilsSplitTests(unittest.TestCase):
         from office_converter import get_app_path as office_get_app_path
 
         self.assertIs(split_get_app_path, office_get_app_path)
+
+    def test_platform_utils_module_has_no_bare_except_exception(self):
+        mod_path = Path(__file__).resolve().parents[1] / "converter" / "platform_utils.py"
+        text = mod_path.read_text(encoding="utf-8")
+        self.assertNotIn("except Exception", text)
 
 
 if __name__ == "__main__":

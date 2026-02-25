@@ -3,13 +3,17 @@ import os
 import tempfile
 import unittest
 from datetime import datetime
+from pathlib import Path
 
 from office_converter import OfficeConverter
 
 
 class ConverterFailureReportSplitTests(unittest.TestCase):
     def test_failure_report_core_behaviors(self):
-        from converter.failure_report import export_failed_files_report
+        from converter.failure_report import (
+            export_failed_files_report,
+            export_failed_files_report_for_converter,
+        )
 
         result_empty = export_failed_files_report(
             [],
@@ -61,6 +65,20 @@ class ConverterFailureReportSplitTests(unittest.TestCase):
         self.assertEqual(payload["statistics"]["retryable_count"], 1)
         self.assertEqual(payload["statistics"]["manual_action_count"], 1)
 
+        dummy = OfficeConverter.__new__(OfficeConverter)
+        dummy.config = {"target_folder": root}
+        dummy.detailed_error_records = records
+        dummy.get_readable_run_mode = lambda: "convert_only"
+        dummy.failed_report_path = None
+        result2 = export_failed_files_report_for_converter(
+            dummy,
+            output_dir=root,
+            now_fn=lambda: fixed_now,
+            log_error=lambda *_a, **_k: None,
+        )
+        self.assertEqual(result["txt_path"], result2["txt_path"])
+        self.assertEqual(dummy.failed_report_path, result2["txt_path"])
+
         for p in (result["json_path"], result["txt_path"]):
             try:
                 os.remove(p)
@@ -74,12 +92,12 @@ class ConverterFailureReportSplitTests(unittest.TestCase):
     def test_office_converter_export_failed_files_report_delegates_to_module(self):
         import office_converter as oc
 
-        orig = oc.export_failed_files_report_impl
+        orig = oc.export_failed_files_report_for_converter
         try:
-            oc.export_failed_files_report_impl = (
-                lambda records, output_dir, **kwargs: {
-                    "json_path": os.path.join(output_dir, "a.json"),
-                    "txt_path": os.path.join(output_dir, "a.txt"),
+            oc.export_failed_files_report_for_converter = (
+                lambda converter, output_dir=None, **kwargs: {
+                    "json_path": os.path.join(output_dir or converter.config["target_folder"], "a.json"),
+                    "txt_path": os.path.join(output_dir or converter.config["target_folder"], "a.txt"),
                     "summary": "ok",
                 }
             )
@@ -92,10 +110,14 @@ class ConverterFailureReportSplitTests(unittest.TestCase):
 
             result = dummy.export_failed_files_report()
             self.assertEqual(result["summary"], "ok")
-            self.assertEqual(dummy.failed_report_path, os.path.join(root, "a.txt"))
             os.rmdir(root)
         finally:
-            oc.export_failed_files_report_impl = orig
+            oc.export_failed_files_report_for_converter = orig
+
+    def test_failure_report_module_has_no_bare_except_exception(self):
+        mod_path = Path(__file__).resolve().parents[1] / "converter" / "failure_report.py"
+        text = mod_path.read_text(encoding="utf-8")
+        self.assertNotIn("except Exception", text)
 
 
 if __name__ == "__main__":

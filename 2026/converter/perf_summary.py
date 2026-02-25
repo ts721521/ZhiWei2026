@@ -2,6 +2,18 @@
 """Performance summary helpers extracted from office_converter.py."""
 
 
+def add_perf_seconds(perf_metrics, key, seconds, *, float_fn=float):
+    if key not in perf_metrics:
+        return
+    try:
+        value = float_fn(seconds)
+    except (TypeError, ValueError):
+        return
+    if value < 0:
+        return
+    perf_metrics[key] += value
+
+
 def build_perf_summary(perf_metrics, stats):
     m = perf_metrics or {}
     stats = stats or {}

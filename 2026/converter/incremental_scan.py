@@ -124,7 +124,7 @@ def apply_incremental_filter(
             try:
                 curr_hash = compute_file_hash_fn(src_path)
                 meta["source_hash_sha256"] = curr_hash
-            except Exception:
+            except (OSError, RuntimeError, TypeError, ValueError):
                 curr_hash = ""
 
         matched = None
@@ -202,4 +202,22 @@ def apply_incremental_filter(
             unchanged,
             context["deleted_count"],
         )
+    return process_files, context
+
+
+def apply_incremental_filter_for_converter(converter, files):
+    process_files, context = apply_incremental_filter(
+        files,
+        converter.config,
+        resolve_registry_path_fn=converter._resolve_incremental_registry_path,
+        build_source_meta_fn=converter._build_source_meta,
+        compute_file_hash_fn=converter._compute_file_hash,
+        log_info=converter._incremental_log_info,
+    )
+    if not context.get("enabled"):
+        converter._incremental_context = None
+        converter.incremental_registry_path = ""
+        return process_files, context
+    converter._incremental_context = context
+    converter.incremental_registry_path = context.get("registry_path", "")
     return process_files, context

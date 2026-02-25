@@ -53,7 +53,7 @@ def export_failed_files_report(
     try:
         with open(json_path, "w", encoding="utf-8") as f:
             json.dump(report_data, f, indent=2, ensure_ascii=False)
-    except Exception as e:
+    except (OSError, TypeError, ValueError) as e:
         if callable(log_error):
             log_error(f"Failed to write JSON report: {e}")
         json_path = None
@@ -69,7 +69,7 @@ def export_failed_files_report(
         )
         with open(txt_path, "w", encoding="utf-8") as f:
             f.write("\n".join(lines))
-    except Exception as e:
+    except (OSError, TypeError, ValueError) as e:
         if callable(log_error):
             log_error(f"Failed to write TXT report: {e}")
         txt_path = None
@@ -82,6 +82,19 @@ def export_failed_files_report(
             f"retryable={report_data['statistics']['retryable_count']}"
         ),
     }
+
+
+def export_failed_files_report_for_converter(converter, output_dir=None, *, now_fn, log_error):
+    final_output_dir = output_dir or converter.config.get("target_folder", ".")
+    result = export_failed_files_report(
+        converter.detailed_error_records,
+        final_output_dir,
+        run_mode=converter.get_readable_run_mode(),
+        now_fn=now_fn,
+        log_error=log_error,
+    )
+    converter.failed_report_path = result.get("txt_path")
+    return result
 
 
 def _build_failed_report_text_lines(

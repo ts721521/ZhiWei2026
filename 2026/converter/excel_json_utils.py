@@ -15,7 +15,7 @@ def json_safe_value(value):
     if isinstance(value, (datetime, dt_date, dt_time)):
         try:
             return value.isoformat()
-        except Exception:
+        except (TypeError, ValueError, AttributeError):
             return str(value)
     return str(value)
 
