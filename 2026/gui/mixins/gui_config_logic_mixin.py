@@ -122,6 +122,9 @@ class ConfigLogicMixin:
             "enable_traceability_anchor_and_map": bool(
                 self.var_enable_traceability_anchor_and_map.get()
             ),
+            "enable_markdown_image_manifest": bool(
+                self.var_enable_markdown_image_manifest.get()
+            ),
             "enable_prompt_wrapper": bool(self.var_enable_prompt_wrapper.get()),
             "prompt_template_type": str(
                 self.var_prompt_template_type.get() or "new_solution"
@@ -259,6 +262,9 @@ class ConfigLogicMixin:
             "enable_fast_md_engine": bool(cfg.get("enable_fast_md_engine", False)),
             "enable_traceability_anchor_and_map": bool(
                 cfg.get("enable_traceability_anchor_and_map", True)
+            ),
+            "enable_markdown_image_manifest": bool(
+                cfg.get("enable_markdown_image_manifest", True)
             ),
             "enable_prompt_wrapper": bool(cfg.get("enable_prompt_wrapper", False)),
             "prompt_template_type": str(
@@ -562,6 +568,7 @@ class ConfigLogicMixin:
             self.var_enable_markdown_quality_report.set(1)
             self.var_enable_excel_json.set(0)
             self.var_enable_chromadb_export.set(0)
+            self.var_enable_markdown_image_manifest.set(1)
             self.var_enable_llm_delivery_hub.set(1)
             self.var_llm_delivery_root.set("")
             self.var_llm_delivery_flatten.set(0)

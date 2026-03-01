@@ -42,7 +42,7 @@ python office_converter.py --help   # 查看参数
 
 ### 2.3 配置与敏感文件（勿提交）
 
-- `config.json`：运行时配置，首次运行自动生成；已加入 `.gitignore`，仓库内仅保留 `config.example.json`。
+- `config.json`：运行时配置，首次运行自动生成；已加入 `.gitignore`，仓库内仅保留 `configs/templates/config.example.json`。
 - `2026/tasks/*.json`、`2026/config_profiles/*.json`：用户数据，已忽略，勿提交。
 
 ---
@@ -86,7 +86,7 @@ python office_converter.py --help   # 查看参数
 - **配置**：新功能尽量有对应 `config.json` 键与 GUI 控件，并在 `office_converter.py` 的默认配置/加载处补齐。
 - **文案**：界面新增文案放入 `ui_translations.py` 的 `zh` 字典，键名语义清晰。
 - **版本**：仅改 `office_converter.py` 的 `__version__`；打包与文档中的版本号均由此带出。
-- **安全**：不要提交 `config.json`、用户任务与配置 profile；路径与示例用占位符（如 `config.example.json`）。
+- **安全**：不要提交 `config.json`、用户任务与配置 profile；路径与示例用占位符（如 `configs/templates/config.example.json`）。
 
 ---
 

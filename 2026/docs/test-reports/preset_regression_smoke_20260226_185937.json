@@ -1,0 +1,113 @@
+{
+  "timestamp": "20260226_185937",
+  "results": [
+    {
+      "name": "config.presets.notebooklm_fast_md_only",
+      "preset": "D:\\GitHub\\ZhiWei2026\\2026\\config.presets.notebooklm_fast_md_only.json",
+      "target": "D:\\ZWPDFTSEST_PRESET_TEST_SMOKE_config.presets.notebooklm_fast_md_only_20260226_185937",
+      "cfg": "D:\\ZWPDFTSEST_PRESET_TEST_SMOKE_config.presets.notebooklm_fast_md_only_20260226_185937.json",
+      "ok": true,
+      "stats": {
+        "total": 8,
+        "success": 5,
+        "failed": 3,
+        "timeout": 0,
+        "skipped": 0,
+        "permission_denied": 0,
+        "file_locked": 0,
+        "file_corrupted": 0,
+        "com_error": 0
+      }
+    },
+    {
+      "name": "config.presets.notebooklm_incremental_weekly_sync",
+      "preset": "D:\\GitHub\\ZhiWei2026\\2026\\config.presets.notebooklm_incremental_weekly_sync.json",
+      "target": "D:\\ZWPDFTSEST_PRESET_TEST_SMOKE_config.presets.notebooklm_incremental_weekly_sync_20260226_185937",
+      "cfg": "D:\\ZWPDFTSEST_PRESET_TEST_SMOKE_config.presets.notebooklm_incremental_weekly_sync_20260226_185937.json",
+      "ok": true,
+      "stats": {
+        "total": 8,
+        "success": 8,
+        "failed": 0,
+        "timeout": 0,
+        "skipped": 0,
+        "permission_denied": 0,
+        "file_locked": 0,
+        "file_corrupted": 0,
+        "com_error": 0
+      }
+    },
+    {
+      "name": "config.presets.notebooklm_merged_md_only",
+      "preset": "D:\\GitHub\\ZhiWei2026\\2026\\config.presets.notebooklm_merged_md_only.json",
+      "target": "D:\\ZWPDFTSEST_PRESET_TEST_SMOKE_config.presets.notebooklm_merged_md_only_20260226_185937",
+      "cfg": "D:\\ZWPDFTSEST_PRESET_TEST_SMOKE_config.presets.notebooklm_merged_md_only_20260226_185937.json",
+      "ok": true,
+      "stats": {
+        "total": 8,
+        "success": 8,
+        "failed": 0,
+        "timeout": 0,
+        "skipped": 0,
+        "permission_denied": 0,
+        "file_locked": 0,
+        "file_corrupted": 0,
+        "com_error": 0
+      }
+    },
+    {
+      "name": "config.presets.notebooklm_merged_pdf_md",
+      "preset": "D:\\GitHub\\ZhiWei2026\\2026\\config.presets.notebooklm_merged_pdf_md.json",
+      "target": "D:\\ZWPDFTSEST_PRESET_TEST_SMOKE_config.presets.notebooklm_merged_pdf_md_20260226_185937",
+      "cfg": "D:\\ZWPDFTSEST_PRESET_TEST_SMOKE_config.presets.notebooklm_merged_pdf_md_20260226_185937.json",
+      "ok": true,
+      "stats": {
+        "total": 8,
+        "success": 8,
+        "failed": 0,
+        "timeout": 0,
+        "skipped": 0,
+        "permission_denied": 0,
+        "file_locked": 0,
+        "file_corrupted": 0,
+        "com_error": 0
+      }
+    },
+    {
+      "name": "config.presets.notebooklm_merged_pdf_only",
+      "preset": "D:\\GitHub\\ZhiWei2026\\2026\\config.presets.notebooklm_merged_pdf_only.json",
+      "target": "D:\\ZWPDFTSEST_PRESET_TEST_SMOKE_config.presets.notebooklm_merged_pdf_only_20260226_185937",
+      "cfg": "D:\\ZWPDFTSEST_PRESET_TEST_SMOKE_config.presets.notebooklm_merged_pdf_only_20260226_185937.json",
+      "ok": true,
+      "stats": {
+        "total": 8,
+        "success": 8,
+        "failed": 0,
+        "timeout": 0,
+        "skipped": 0,
+        "permission_denied": 0,
+        "file_locked": 0,
+        "file_corrupted": 0,
+        "com_error": 0
+      }
+    },
+    {
+      "name": "config.presets.notebooklm_traceability_audit",
+      "preset": "D:\\GitHub\\ZhiWei2026\\2026\\config.presets.notebooklm_traceability_audit.json",
+      "target": "D:\\ZWPDFTSEST_PRESET_TEST_SMOKE_config.presets.notebooklm_traceability_audit_20260226_185937",
+      "cfg": "D:\\ZWPDFTSEST_PRESET_TEST_SMOKE_config.presets.notebooklm_traceability_audit_20260226_185937.json",
+      "ok": true,
+      "stats": {
+        "total": 8,
+        "success": 8,
+        "failed": 0,
+        "timeout": 0,
+        "skipped": 0,
+        "permission_denied": 0,
+        "file_locked": 0,
+        "file_corrupted": 0,
+        "com_error": 0
+      }
+    }
+  ]
+}

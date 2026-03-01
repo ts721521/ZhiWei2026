@@ -65,6 +65,26 @@ class ConverterSafeExecSplitTests(unittest.TestCase):
                 rpc_server_busy_code=99,
             )
 
+        rpc_calls = {"n": 0}
+        rpc_sleeps = []
+
+        def rpc_unavailable_then_ok():
+            rpc_calls["n"] += 1
+            if rpc_calls["n"] < 2:
+                raise _ComErr(-2147023174)
+            return "ok"
+
+        out = safe_exec(
+            rpc_unavailable_then_ok,
+            retries=2,
+            sleep_fn=lambda s: rpc_sleeps.append(s),
+            randint_fn=lambda a, b: 3,
+            com_error_cls=_ComErr,
+            rpc_retry_codes=[-2147023174],
+        )
+        self.assertEqual(out, "ok")
+        self.assertEqual(rpc_sleeps, [3])
+
     def test_office_converter_safe_exec_delegates_to_module(self):
         dummy = OfficeConverter.__new__(OfficeConverter)
         dummy.is_running = True

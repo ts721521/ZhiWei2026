@@ -1,4 +1,4 @@
-﻿# -*- coding: utf-8 -*-
+# -*- coding: utf-8 -*-
 """
 Office batch conversion and file organizing tool - core logic
 
@@ -133,7 +133,7 @@ try:
 except ImportError:
     HAS_MARKITDOWN = False
 
-__version__ = "5.19.1"
+__version__ = "5.20.0"
 
 from converter.constants import (
     wdFormatPDF,
@@ -163,6 +163,7 @@ from converter.constants import (
     STRATEGY_SMART_TAG,
     STRATEGY_PRICE_ONLY,
     ERR_RPC_SERVER_BUSY,
+    ERR_RPC_SERVER_UNAVAILABLE,
 )
 
 
@@ -818,6 +819,7 @@ class OfficeConverter:
             randint_fn=random.randint,
             com_error_cls=pywintypes.com_error,
             rpc_server_busy_code=ERR_RPC_SERVER_BUSY,
+            rpc_retry_codes=(ERR_RPC_SERVER_BUSY, ERR_RPC_SERVER_UNAVAILABLE),
             **kwargs,
         )
 
@@ -1434,7 +1436,20 @@ class OfficeConverter:
             open_fn=open,
         )
 
-    def _run_fast_md_pipeline(self, files):
+    def _run_fast_md_pipeline(self, files, checkpoint=None):
+        on_file_done_for_checkpoint = None
+        if checkpoint is not None:
+            interval = self.config.get("parallel_checkpoint_interval", 10)
+            completed_count = [0]
+
+            def _on_done(path):
+                self._mark_file_done_in_checkpoint(checkpoint, path)
+                completed_count[0] += 1
+                if completed_count[0] % interval == 0:
+                    self._save_checkpoint(checkpoint)
+
+            on_file_done_for_checkpoint = _on_done
+
         return run_fast_md_pipeline_impl(
             files,
             config=self.config,
@@ -1447,6 +1462,9 @@ class OfficeConverter:
             compute_md5_fn=self._compute_md5,
             build_short_id_fn=self._build_short_id,
             convert_source_to_markdown_text_fn=self._convert_source_to_markdown_text,
+            progress_callback=getattr(self, "progress_callback", None),
+            emit_file_done_fn=self._emit_file_done,
+            on_file_done_for_checkpoint=on_file_done_for_checkpoint,
             now_fn=datetime.now,
             log_info_fn=logging.info,
             log_warning_fn=logging.warning,

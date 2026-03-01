@@ -144,7 +144,7 @@ class SourceFolderMixin:
         # Instructions
         tb.Label(
             frame,
-            text="鏂瑰紡1锛氭壂鎻忕埗鏂囦欢澶癸紙鎺ㄨ崘锛屼竴娆℃坊鍔犲涓級",
+            text="Method 1: scan a parent folder (recommended, add many at once)",
             font=("System", 9, "bold"),
             foreground="#007bff",
         ).pack(anchor="w", pady=(0, 5))
@@ -160,7 +160,7 @@ class SourceFolderMixin:
         ent_parent.pack(side=LEFT, fill=X, expand=YES)
 
         def pick_parent():
-            p = filedialog.askdirectory(title="閫夋嫨鐖舵枃浠跺す")
+            p = filedialog.askdirectory(title="Select parent folder")
             if p:
                 if sys.platform == "win32":
                     p = p.replace("/", "\\")
@@ -170,7 +170,9 @@ class SourceFolderMixin:
         def scan_subfolders():
             parent = ent_parent.get().strip()
             if not parent or not os.path.isdir(parent):
-                messagebox.showwarning("鎻愮ず", "璇烽€夋嫨鏈夋晥鐨勭埗鏂囦欢澶癸紒", parent=dlg)
+                messagebox.showwarning(
+                    "Notice", "Please select a valid parent folder.", parent=dlg
+                )
                 return
 
             # Clear existing
@@ -210,11 +212,11 @@ class SourceFolderMixin:
                 messagebox.showerror("Error", f"Scan failed: {e}", parent=dlg)
 
         tb.Button(
-            parent_frame, text="娴忚", command=pick_parent, bootstyle="info", width=8
+            parent_frame, text="Browse", command=pick_parent, bootstyle="info", width=8
         ).pack(side=LEFT, padx=(8, 4))
         tb.Button(
             parent_frame,
-            text="鎵弿瀛愭枃浠跺す",
+            text="Scan Subfolders",
             command=scan_subfolders,
             bootstyle="success",
             width=12,
@@ -223,7 +225,7 @@ class SourceFolderMixin:
         # Manual add section
         tb.Label(
             frame,
-            text="鏂瑰紡2锛氭墜鍔ㄩ€愪釜娣诲姞",
+            text="Method 2: add folders manually",
             font=("System", 9, "bold"),
             foreground="#666",
         ).pack(anchor="w", pady=(10, 5))
@@ -259,7 +261,7 @@ class SourceFolderMixin:
 
         btn_browse = tb.Button(
             btn_frame,
-            text="+ 娴忚",
+            text="+ Browse",
             command=lambda: self._browse_folder_to_dialog(folder_tree),
             bootstyle="info",
             width=10,
@@ -270,7 +272,7 @@ class SourceFolderMixin:
 
         btn_remove = tb.Button(
             btn_frame,
-            text="- 绉婚櫎",
+            text="- Remove",
             command=lambda: self._remove_folder_from_tree(folder_tree),
             bootstyle="danger-outline",
             width=10,
@@ -279,7 +281,7 @@ class SourceFolderMixin:
 
         btn_clear = tb.Button(
             btn_frame,
-            text="C 娓呯┖",
+            text="C Clear",
             command=lambda: self._clear_folder_tree(folder_tree),
             bootstyle="secondary-outline",
             width=10,
@@ -357,7 +359,7 @@ class SourceFolderMixin:
 
         btn_cancel = tb.Button(
             action_btn_frame,
-            text="鍙栨秷",
+            text="Cancel",
             command=self._close_multi_folder_dialog,
             bootstyle="secondary-outline",
             width=10,
@@ -405,7 +407,7 @@ class SourceFolderMixin:
         # Since askdirectory doesn't support multi-select natively,
         # we'll use a simple loop approach with a counter
         base_dir = filedialog.askdirectory(
-            title=self.tr("tip_add_source_folder") + " (閫夋嫨绗竴涓枃浠跺す)"
+            title=self.tr("tip_add_source_folder") + " (select first folder)"
         )
         if not base_dir:
             return
@@ -432,7 +434,7 @@ class SourceFolderMixin:
                 break
 
             next_dir = filedialog.askdirectory(
-                title=self.tr("tip_add_source_folder") + " (閫夋嫨涓嬩竴涓枃浠跺す)"
+                title=self.tr("tip_add_source_folder") + " (select next folder)"
             )
             if not next_dir:
                 break
@@ -467,11 +469,11 @@ class SourceFolderMixin:
         count = len(tree.get_children())
         if hasattr(self, "_multi_folder_count_var"):
             if count == 0:
-                self._multi_folder_count_var.set("宸查€夋嫨 0 涓枃浠跺す")
+                self._multi_folder_count_var.set("Selected 0 folders")
             elif count == 1:
-                self._multi_folder_count_var.set("宸查€夋嫨 1 涓枃浠跺す")
+                self._multi_folder_count_var.set("Selected 1 folder")
             else:
-                self._multi_folder_count_var.set(f"宸查€夋嫨 {count} 涓枃浠跺す")
+                self._multi_folder_count_var.set(f"Selected {count} folders")
 
     def _confirm_multi_folder_selection(self, tree):
         """Add selected folders to the main source folders list."""
@@ -525,7 +527,7 @@ class SourceFolderMixin:
         # Instructions
         tk.Label(
             frame,
-            text="鏂瑰紡1锛氭壂鎻忕埗鏂囦欢澶癸紙鎺ㄨ崘锛屼竴娆℃坊鍔犲涓級",
+            text="Method 1: scan a parent folder (recommended, add many at once)",
             font=("System", 9, "bold"),
             fg="blue",
         ).pack(anchor="w", pady=(0, 5))
@@ -541,7 +543,7 @@ class SourceFolderMixin:
         ent_parent.pack(side=LEFT, fill=X, expand=YES)
 
         def pick_parent():
-            p = filedialog.askdirectory(title="閫夋嫨鐖舵枃浠跺す")
+            p = filedialog.askdirectory(title="Select parent folder")
             if p:
                 if sys.platform == "win32":
                     p = p.replace("/", "\\")
@@ -551,7 +553,9 @@ class SourceFolderMixin:
         def scan_subfolders():
             parent = ent_parent.get().strip()
             if not parent or not os.path.isdir(parent):
-                messagebox.showwarning("鎻愮ず", "璇烽€夋嫨鏈夋晥鐨勭埗鏂囦欢澶癸紒", parent=dlg)
+                messagebox.showwarning(
+                    "Notice", "Please select a valid parent folder.", parent=dlg
+                )
                 return
 
             # Clear existing
@@ -584,12 +588,12 @@ class SourceFolderMixin:
             except Exception as e:
                 messagebox.showerror("Error", f"Scan failed: {e}", parent=dlg)
 
-        tk.Button(parent_frame, text="娴忚", command=pick_parent, width=8).pack(
+        tk.Button(parent_frame, text="Browse", command=pick_parent, width=8).pack(
             side=LEFT, padx=(8, 4)
         )
         tk.Button(
             parent_frame,
-            text="鎵弿瀛愭枃浠跺す",
+            text="Scan Subfolders",
             command=scan_subfolders,
             bg="green",
             fg="white",
@@ -598,7 +602,7 @@ class SourceFolderMixin:
 
         # Manual add section
         tk.Label(
-            frame, text="鏂瑰紡2锛氭墜鍔ㄩ€愪釜娣诲姞", font=("System", 9, "bold"), fg="gray"
+            frame, text="Method 2: add folders manually", font=("System", 9, "bold"), fg="gray"
         ).pack(anchor="w", pady=(8, 5))
 
         # Top section with split layout
@@ -627,7 +631,7 @@ class SourceFolderMixin:
 
         tk.Button(
             btn_frame,
-            text="+ 娴忚",
+            text="+ Browse",
             width=8,
             command=lambda: self._task_browse_folder_to_dialog(folder_listbox),
         ).pack(pady=2)
@@ -636,13 +640,13 @@ class SourceFolderMixin:
 
         tk.Button(
             btn_frame,
-            text="- 绉婚櫎",
+            text="- Remove",
             width=8,
             command=lambda: self._task_remove_from_listbox(folder_listbox),
         ).pack(pady=2)
         tk.Button(
             btn_frame,
-            text="C 娓呯┖",
+            text="C Clear",
             width=8,
             command=lambda: self._task_clear_listbox(folder_listbox),
         ).pack(pady=2)
@@ -678,11 +682,11 @@ class SourceFolderMixin:
         def update_task_count():
             count = folder_listbox.size()
             if count == 0:
-                task_count_var.set("宸查€夋嫨 0 涓枃浠跺す")
+                task_count_var.set("Selected 0 folders")
             elif count == 1:
-                task_count_var.set("宸查€夋嫨 1 涓枃浠跺す")
+                task_count_var.set("Selected 1 folder")
             else:
-                task_count_var.set(f"宸查€夋嫨 {count} 涓枃浠跺す")
+                task_count_var.set(f"Selected {count} folders")
 
         update_task_count()
 
@@ -692,7 +696,7 @@ class SourceFolderMixin:
 
         tk.Button(
             action_btn_frame,
-            text="娣诲姞",
+            text="Add",
             width=10,
             command=lambda: self._task_confirm_selection(
                 folder_listbox, target_listbox
@@ -700,7 +704,7 @@ class SourceFolderMixin:
         ).pack(side=LEFT)
         tk.Button(
             action_btn_frame,
-            text="鍙栨秷",
+            text="Cancel",
             width=10,
             command=lambda: self._close_task_multi_folder_dialog(dlg),
         ).pack(side=RIGHT)

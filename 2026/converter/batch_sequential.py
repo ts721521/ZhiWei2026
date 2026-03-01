@@ -5,6 +5,7 @@ import logging
 import os
 import time
 
+from converter.display_helpers import safe_console_print
 from converter.errors import ConversionErrorType
 
 
@@ -41,7 +42,7 @@ def run_batch(converter, file_list, is_retry=False, source_alias_map=None):
             converter.progress_callback(idx, total)
 
         label = "[retry]" if is_retry else "processing"
-        print(f"\r{progress_prefix} {label}: {fname}" + " " * 20, end="", flush=True)
+        safe_console_print(f"\r{progress_prefix} {label}: {fname}" + " " * 20, end="", flush=True)
 
         started_at = time.time()
         try:
@@ -56,7 +57,7 @@ def run_batch(converter, file_list, is_retry=False, source_alias_map=None):
             completed_count += 1
 
             if status.startswith("skip"):
-                print(f"\r{progress_prefix} {status}: {fname} ({elapsed:.2f}s)    ")
+                safe_console_print(f"\r{progress_prefix} {status}: {fname} ({elapsed:.2f}s)    ")
                 logging.info(f"{status}: {logical_source}")
                 record = {
                     "source_path": os.path.abspath(logical_source),
@@ -69,7 +70,7 @@ def run_batch(converter, file_list, is_retry=False, source_alias_map=None):
                 converter._emit_file_done(record)
             else:
                 converter.stats["success"] += 1
-                print(f"\r{progress_prefix} {status}: {fname} ({elapsed:.2f}s)    ")
+                safe_console_print(f"\r{progress_prefix} {status}: {fname} ({elapsed:.2f}s)    ")
                 logging.info(f"{status}: {logical_source} -> {final_path}")
                 is_pdf_output = str(final_path).lower().endswith(".pdf")
                 result_status = "success" if is_pdf_output else "success_non_pdf"
@@ -112,8 +113,7 @@ def run_batch(converter, file_list, is_retry=False, source_alias_map=None):
             is_timeout = error_detail["error_type"] == ConversionErrorType.TIMEOUT
             is_timeout = is_timeout or ("timeout" in err_msg.lower()) or ("瓒呮椂" in err_msg)
             if is_timeout:
-                converter.stats["timeout"] += 1
-                print(f"\r{progress_prefix} timeout: {fname} ({elapsed:.2f}s)    ")
+                safe_console_print(f"\r{progress_prefix} timeout: {fname} ({elapsed:.2f}s)    ")
                 record = {
                     "source_path": os.path.abspath(logical_source),
                     "status": "timeout",
@@ -123,6 +123,9 @@ def run_batch(converter, file_list, is_retry=False, source_alias_map=None):
                     "error": err_msg,
                     "error_type": error_detail["error_type"],
                     "error_category": error_detail["error_category"],
+                    "root_error_type": error_detail.get("root_error_type", ""),
+                    "root_error_message": error_detail.get("root_error_message", ""),
+                    "root_error_stage": error_detail.get("root_error_stage", ""),
                     "suggestion": error_detail["suggestion"],
                     "failure_stage": error_detail.get("failure_stage", ""),
                 }
@@ -130,7 +133,7 @@ def run_batch(converter, file_list, is_retry=False, source_alias_map=None):
                 converter._emit_file_done(record)
             else:
                 converter.stats["failed"] += 1
-                print(
+                safe_console_print(
                     f"\r{progress_prefix} failed({error_detail['error_type']}): {fname}    "
                 )
                 record = {
@@ -142,6 +145,9 @@ def run_batch(converter, file_list, is_retry=False, source_alias_map=None):
                     "error": err_msg,
                     "error_type": error_detail["error_type"],
                     "error_category": error_detail["error_category"],
+                    "root_error_type": error_detail.get("root_error_type", ""),
+                    "root_error_message": error_detail.get("root_error_message", ""),
+                    "root_error_stage": error_detail.get("root_error_stage", ""),
                     "suggestion": error_detail["suggestion"],
                     "is_retryable": error_detail["is_retryable"],
                     "requires_manual_action": error_detail["requires_manual_action"],

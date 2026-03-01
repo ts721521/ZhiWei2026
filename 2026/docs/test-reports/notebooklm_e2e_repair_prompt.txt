@@ -1,0 +1,9 @@
+E2E 未通过，请根据下列信息修复后重新运行 E2E。
+
+log_path: D:\GitHub\ZhiWei2026\2026\logs\conversion_log_20260301_215122.txt
+result_json: D:\GitHub\ZhiWei2026\2026\docs/test-reports/notebooklm_e2e_result.json
+error_category: stream_unexpected_end
+errors: ['Stream has ended unexpectedly']
+
+按 docs/plans/NotebookLM_知识库测试计划_5_投标_ZWPDFTSEST.md 第六节「结果→动作表」执行修复，然后运行：
+  python scripts/run_notebooklm_e2e.py

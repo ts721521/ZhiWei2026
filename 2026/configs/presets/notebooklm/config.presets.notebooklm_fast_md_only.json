@@ -1,0 +1,45 @@
+{
+  "_meta": {
+    "config_kind": "preset",
+    "preset_group": "notebooklm",
+    "preset_name": "fast_md_only",
+    "description": "极速仅 MD 模式，不走 Office/WPS COM，依赖 markitdown。",
+    "last_updated": "2026-02-28",
+    "notes": [
+      "需安装 markitdown 运行环境。",
+      "使用前请设置 source_folder/source_folders 和 target_folder。"
+    ]
+  },
+  "source_folder": "Z:\\Schneider\\5_鎶曟爣",
+  "source_folders": [
+    "Z:\\Schneider\\5_鎶曟爣"
+  ],
+  "target_folder": "D:\\ZWPDFTSEST",
+  "source_folder_win": "Z:\\Schneider\\5_鎶曟爣",
+  "source_folders_win": [
+    "Z:\\Schneider\\5_鎶曟爣"
+  ],
+  "target_folder_win": "D:\\ZWPDFTSEST",
+  "run_mode": "convert_only",
+  "enable_merge": false,
+  "output_enable_pdf": false,
+  "output_enable_md": true,
+  "output_enable_merged": false,
+  "output_enable_independent": true,
+  "enable_fast_md_engine": true,
+  "enable_traceability_anchor_and_map": true,
+  "enable_markdown_image_manifest": true,
+  "short_id_prefix": "ZW-",
+  "enable_merge_map": true,
+  "bookmark_with_short_id": true,
+  "enable_corpus_manifest": true,
+  "enable_llm_delivery_hub": true,
+  "llm_delivery_flatten": true,
+  "llm_delivery_include_pdf": false,
+  "enable_upload_readme": true,
+  "enable_upload_json_manifest": true,
+  "upload_dedup_merged": true,
+  "max_merge_size_mb": 80,
+  "markdown_max_size_mb": 80,
+  "auto_open_output_dir": false
+}

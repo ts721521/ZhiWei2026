@@ -29,6 +29,9 @@ class ConfigIOMixin:
         self._suspend_cfg_dirty = True
         if hasattr(self, "var_profile_active_path"):
             self.var_profile_active_path.set(self.config_path)
+        if not str(getattr(self, "_active_config_label", "")).strip():
+            self._active_config_label = os.path.basename(str(self.config_path or ""))
+            self._active_config_origin = str(self.config_path or "")
         if not os.path.exists(self.config_path):
             self._suspend_cfg_dirty = False
             return
@@ -81,7 +84,11 @@ class ConfigIOMixin:
             pass
 
         if hasattr(self, "var_app_mode"):
-            self.var_app_mode.set(cfg.get("app_mode", "classic"))
+            try:
+                current_mode = self.var_app_mode.get() or "classic"
+            except Exception:
+                current_mode = "classic"
+            self.var_app_mode.set(cfg.get("app_mode", current_mode))
 
         # Runtime parameters
 
@@ -182,6 +189,9 @@ class ConfigIOMixin:
         )
         self.var_enable_traceability_anchor_and_map.set(
             1 if cfg.get("enable_traceability_anchor_and_map", True) else 0
+        )
+        self.var_enable_markdown_image_manifest.set(
+            1 if cfg.get("enable_markdown_image_manifest", True) else 0
         )
         self.var_enable_prompt_wrapper.set(
             1 if cfg.get("enable_prompt_wrapper", False) else 0
@@ -320,6 +330,11 @@ class ConfigIOMixin:
             self._refresh_load_profile_tree()
         if hasattr(self, "_update_task_tab_for_app_mode"):
             self._update_task_tab_for_app_mode()
+        if hasattr(self, "_refresh_task_list_ui"):
+            try:
+                self._refresh_task_list_ui()
+            except Exception:
+                pass
 
     def _reload_config_from_file(self, show_msg=True, confirm_dirty=True):
         if confirm_dirty and self.cfg_dirty:
@@ -339,6 +354,8 @@ class ConfigIOMixin:
         try:
             with open(self.config_path, "r", encoding="utf-8") as f:
                 json.load(f)
+            self._active_config_label = os.path.basename(str(self.config_path or ""))
+            self._active_config_origin = str(self.config_path or "")
             self._load_config_to_ui()
             if show_msg:
                 messagebox.showinfo(self.tr("btn_load_cfg"), self.tr("msg_load_ok"))

@@ -411,6 +411,11 @@ class ConfigTabUIMixin:
             text=self.tr("chk_mshelp_output_pdf"),
             variable=self.var_enable_mshelp_output_pdf,
         ).pack(anchor="w")
+        tb.Checkbutton(
+            lf_cfg_ai_mshelp,
+            text="Markdown image manifest (MD<->PDF map)",
+            variable=self.var_enable_markdown_image_manifest,
+        ).pack(anchor="w", pady=(6, 0))
         (
             frm_cfg_ai_actions,
             self.btn_save_cfg_ai,
@@ -726,6 +731,7 @@ class ConfigTabUIMixin:
             self.var_enable_chromadb_export,
             self.var_enable_fast_md_engine,
             self.var_enable_traceability_anchor_and_map,
+            self.var_enable_markdown_image_manifest,
             self.var_enable_prompt_wrapper,
             self.var_prompt_template_type,
             self.var_short_id_prefix,

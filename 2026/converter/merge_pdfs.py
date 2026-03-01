@@ -1,4 +1,4 @@
-﻿# -*- coding: utf-8 -*-
+# -*- coding: utf-8 -*-
 """PDF merge workflow extracted from office_converter.py."""
 
 import logging
@@ -100,6 +100,7 @@ def merge_pdfs(
                 ws_merge.append([output_filename, os.path.basename(sub_file)])
 
         output_path = os.path.join(converter.merge_output_dir, output_filename)
+        merger = None
 
         try:
             merger = pdf_writer_cls()
@@ -118,13 +119,15 @@ def merge_pdfs(
                 )
 
             if index_pdf_path and os.path.exists(index_pdf_path):
-                idx_reader = pdf_reader_cls(index_pdf_path)
-                index_page_count = len(idx_reader.pages)
-
-                for page in idx_reader.pages:
-                    merger.add_page(page)
-
-                current_page_index += index_page_count
+                try:
+                    idx_reader = pdf_reader_cls(index_pdf_path)
+                    index_page_count = len(idx_reader.pages)
+                    for page in idx_reader.pages:
+                        merger.add_page(page)
+                    current_page_index += index_page_count
+                except (OSError, RuntimeError, TypeError, ValueError, AttributeError) as exc:
+                    logging.error(f"merge index PDF read failed {index_pdf_path}: {exc}")
+                    index_page_count = 0
             else:
                 index_page_count = 0
 
@@ -249,7 +252,6 @@ def merge_pdfs(
                     idx_page["/Annots"].append(link_annotation)
 
             merger.write(output_path)
-            merger.close()
 
             if not os.path.exists(output_path):
                 raise RuntimeError(f"merged output file not generated: {output_path}")
@@ -289,6 +291,12 @@ def merge_pdfs(
             print(f" [FAILED] {exc}")
             logging.error(f"merge task failed {output_filename}: {exc}")
             traceback.print_exc()
+        finally:
+            if merger is not None:
+                try:
+                    merger.close()
+                except (OSError, RuntimeError, TypeError, ValueError, AttributeError):
+                    pass
 
     if word_app:
         try:

@@ -29,6 +29,7 @@ class DefaultConfigSchemaTests(unittest.TestCase):
         self.assertIn("enable_checkpoint", cfg)
         self.assertIn("checkpoint_auto_resume", cfg)
         self.assertIn("enable_fast_md_engine", cfg)
+        self.assertIn("enable_markdown_image_manifest", cfg)
         self.assertIn("enable_traceability_anchor_and_map", cfg)
         self.assertIn("enable_prompt_wrapper", cfg)
         self.assertIn("prompt_template_type", cfg)

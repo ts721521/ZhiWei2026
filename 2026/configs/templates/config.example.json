@@ -1,4 +1,15 @@
 {
+  "_meta": {
+    "config_kind": "template",
+    "template_group": "config.example.json",
+    "template_name": "config.example",
+    "description": "基线模板配置，用于手动创建运行配置的起点。",
+    "last_updated": "2026-02-28",
+    "notes": [
+      "复制此模板并填写本地 source/target 路径。",
+      "根据场景调整运行模式与输出开关。"
+    ]
+  },
   "source_folder": "C:\\YourSourcePath",
   "target_folder": "D:\\YourOutputPath",
   "log_folder": "./logs",
@@ -16,7 +27,11 @@
   "output_enable_merged": true,
   "output_enable_independent": false,
   "max_merge_size_mb": 80,
-  "excluded_folders": ["temp", "backup", "archive"],
+  "excluded_folders": [
+    "temp",
+    "backup",
+    "archive"
+  ],
   "enable_merge_map": true,
   "bookmark_with_short_id": true,
   "source_folders": [],

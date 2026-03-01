@@ -22,6 +22,6 @@ def scan_pdf_content(
             for kw in price_keywords:
                 if kw in text:
                     return True
-    except (OSError, RuntimeError, TypeError, ValueError, AttributeError):
+    except (OSError, RuntimeError, TypeError, ValueError, AttributeError, Exception):
         pass
     return False

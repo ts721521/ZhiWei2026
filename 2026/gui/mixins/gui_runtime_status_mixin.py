@@ -39,6 +39,9 @@ class RuntimeStatusMixin:
                 "btn_task_resume",
                 "btn_task_refresh",
                 "btn_task_load_to_ui",
+                "btn_task_save_to_task",
+                "btn_task_batch_run",
+                "btn_task_schedule",
             ):
                 if hasattr(self, btn_name):
                     getattr(self, btn_name).configure(state="disabled")
@@ -86,6 +89,9 @@ class RuntimeStatusMixin:
                 "btn_task_run",
                 "btn_task_refresh",
                 "btn_task_load_to_ui",
+                "btn_task_save_to_task",
+                "btn_task_batch_run",
+                "btn_task_schedule",
             ):
                 if hasattr(self, btn_name):
                     getattr(self, btn_name).configure(state="normal")

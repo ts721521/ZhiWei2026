@@ -1,0 +1,46 @@
+{
+  "_meta": {
+    "config_kind": "preset",
+    "preset_group": "notebooklm",
+    "preset_name": "merged_pdf_md",
+    "description": "NotebookLM 合并 PDF + 合并 Markdown，兼顾检索质量与版式保真。",
+    "last_updated": "2026-02-28",
+    "notes": [
+      "使用前请设置 source_folder/source_folders 和 target_folder。",
+      "需要同时出 PDF 与 MD 时推荐使用。"
+    ]
+  },
+  "source_folder": "Z:\\Schneider\\5_鎶曟爣",
+  "source_folders": [
+    "Z:\\Schneider\\5_鎶曟爣"
+  ],
+  "target_folder": "D:\\ZWPDFTSEST",
+  "source_folder_win": "Z:\\Schneider\\5_鎶曟爣",
+  "source_folders_win": [
+    "Z:\\Schneider\\5_鎶曟爣"
+  ],
+  "target_folder_win": "D:\\ZWPDFTSEST",
+  "run_mode": "convert_then_merge",
+  "enable_merge": true,
+  "output_enable_pdf": true,
+  "output_enable_md": true,
+  "output_enable_merged": true,
+  "output_enable_independent": false,
+  "enable_fast_md_engine": false,
+  "enable_traceability_anchor_and_map": true,
+  "enable_markdown_image_manifest": true,
+  "short_id_prefix": "ZW-",
+  "enable_merge_map": true,
+  "bookmark_with_short_id": true,
+  "enable_corpus_manifest": true,
+  "enable_llm_delivery_hub": true,
+  "llm_delivery_flatten": true,
+  "llm_delivery_include_pdf": true,
+  "enable_upload_readme": true,
+  "enable_upload_json_manifest": true,
+  "upload_dedup_merged": true,
+  "max_merge_size_mb": 100,
+  "markdown_max_size_mb": 100,
+  "merge_filename_pattern": "Merged_{category}_{timestamp}_{idx}",
+  "auto_open_output_dir": false
+}

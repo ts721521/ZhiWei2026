@@ -10,6 +10,7 @@ def write_merge_map(output_path, records, *, csv_module, json_module, open_fn=op
         "merge_batch_id",
         "merged_pdf_name",
         "merged_pdf_path",
+        "merged_pdf_md5",
         "source_index",
         "source_filename",
         "source_abspath",

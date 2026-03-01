@@ -54,16 +54,19 @@ def export_pdf_markdown(
             0,
         )
 
-    reader = pdf_reader_cls(pdf_path)
-    page_count = len(reader.pages)
-    raw_page_texts = []
-    for page in reader.pages:
-        text = ""
-        try:
-            text = page.extract_text() or ""
-        except (AttributeError, RuntimeError, TypeError, ValueError):
+    try:
+        reader = pdf_reader_cls(pdf_path)
+        page_count = len(reader.pages)
+        raw_page_texts = []
+        for page in reader.pages:
             text = ""
-        raw_page_texts.append(text)
+            try:
+                text = page.extract_text() or ""
+            except (AttributeError, RuntimeError, TypeError, ValueError):
+                text = ""
+            raw_page_texts.append(text)
+    except (OSError, RuntimeError, TypeError, ValueError, AttributeError, Exception):
+        return None, None
 
     strip_header_footer = bool(config.get("markdown_strip_header_footer", True))
     structured_headings = bool(config.get("markdown_structured_headings", True))

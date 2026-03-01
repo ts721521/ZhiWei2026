@@ -4,9 +4,10 @@ from gui.mixins.gui_task_workflow_mixin import TaskWorkflowMixin
 
 
 class _DummyTaskWorkflow(TaskWorkflowMixin):
-    def __init__(self, config_path, resolved):
+    def __init__(self, config_path, resolved, active_label=""):
         self.config_path = config_path
         self._resolved = resolved
+        self._active_config_label = active_label
 
     def _resolve_task_bound_profile(self, task):
         return dict(self._resolved)
@@ -59,6 +60,17 @@ class TaskBindingSummaryTests(unittest.TestCase):
         }
         summary = wf._summarize_task_config_binding(task, runtime_preview={})
         self.assertEqual("使用任务快照", summary["relation_label"])
+
+    def test_active_binding_uses_loaded_config_label(self):
+        wf = _DummyTaskWorkflow(
+            config_path=r"C:\work\config.json",
+            resolved={"config_path": "", "profile_name": "", "profile_file": "", "match_mode": "unknown"},
+            active_label="[scenario] notebooklm_test",
+        )
+        summary = wf._summarize_task_config_binding(
+            {"config_binding_mode": "active"}, runtime_preview={}
+        )
+        self.assertEqual("[scenario] notebooklm_test", summary["display_name"])
 
 
 if __name__ == "__main__":

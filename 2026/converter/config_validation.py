@@ -101,6 +101,8 @@ def validate_runtime_config_or_raise(cfg):
     _validate_int_range(cfg, "pdf_wait_seconds", 1, 36000, errors)
     _validate_int_range(cfg, "ppt_timeout_seconds", 1, 36000, errors)
     _validate_int_range(cfg, "ppt_pdf_wait_seconds", 1, 36000, errors)
+    _validate_int_range(cfg, "max_merge_size_mb", 1, 4096, errors)
+    _validate_int_range(cfg, "markdown_max_size_mb", 1, 4096, errors)
     _validate_int_range(cfg, "parallel_workers", 1, 128, errors)
     _validate_int_range(cfg, "parallel_checkpoint_interval", 1, 1000000, errors)
     if "parallel_max_pending" in cfg:
@@ -128,4 +130,3 @@ def validate_runtime_config_or_raise(cfg):
 
     if errors:
         raise ValueError("; ".join(errors))
-

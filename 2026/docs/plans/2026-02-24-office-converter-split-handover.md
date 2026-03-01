@@ -1,4 +1,4 @@
-﻿# office_converter 拆分交接文档（2026-02-24）
+# office_converter 拆分交接文档（2026-02-24）
 
 ## 1. 停止标准与当前状态
 
@@ -2374,3 +2374,85 @@ python -m unittest discover -s tests -p "test_*.py" -v
 
 - 拆分收口状态维持不变；
 - 本节用于记录“文档已更新并推送”的里程碑。
+
+---
+
+## 63. 2026-02-26 Google Drive 上传单元测试
+
+### 63.1 本轮改动
+
+- 新增 `tests/test_gdrive_upload_module.py`：gdrive_upload 模块单元测试 13 个用例（无依赖/缺密钥/非目录/空目录、模拟 Drive API 上传成功、list_remote 无依赖、update_manifest_gdrive_section、常量与 _format_drive_api_error、_default_token_path）。
+- 修改 `gdrive_upload.py`：`datetime.utcnow()` 弃用改为 `datetime.now(timezone.utc)`。
+
+### 63.2 全量回归结果
+
+执行命令：
+
+```bash
+python -m unittest discover -s tests -p "test_*.py" -v
+```
+
+结果（2026-02-26）：
+
+- `Ran 394 tests in 10.884s`
+- `OK`
+
+### 63.3 当前状态
+
+- Google Drive 上传功能具备单元测试覆盖（不调用真实 API，依赖 mock）；交接文档与 TEST_REPORT_SUMMARY 已同步更新。
+
+---
+
+## 64. 2026-02-26 转换未成功原因排查计划实现
+
+### 64.1 本轮改动
+
+- **run_workflow 日志增强**（[converter/run_workflow.py](converter/run_workflow.py)）：在扫描与三道过滤后增加汇总日志，便于排查「很多文件未转换」时定位是扫描/过滤还是转换失败：
+  - 扫描后：`scan candidate file count`（原有）；
+  - 应用 source_priority 后：`after source_priority: files=..., skipped=...`；
+  - 应用 incremental 后：`after incremental: files=..., added=..., modified=..., unchanged=..., renamed=..., deleted=...`；
+  - 应用 global_md5_dedup 后：`after global_md5_dedup: files=..., skipped=...`。
+- **诊断脚本**（[scripts/diagnose_convert_scope.py](scripts/diagnose_convert_scope.py)）：仅执行扫描与三道过滤、不进行实际转换；输出每步候选数与跳过数，便于在不改 config、不跑完整转换的情况下确认「当前配置下扫描与过滤后还剩多少文件」。用法（在 2026 目录下）：`python scripts/diagnose_convert_scope.py [config_path]`。
+
+### 64.2 全量回归结果
+
+执行命令：
+
+```bash
+python -m unittest discover -s tests -p "test_*.py" -v
+```
+
+结果（2026-02-26）：
+
+- `Ran 394 tests in 5.698s`
+- `OK`
+
+### 64.3 当前状态
+
+- 转换范围诊断能力已落地：运行日志可看到「扫描 → 同名优先 → 增量 → 去重」每步数量；需单独诊断时可用 `scripts/diagnose_convert_scope.py`。
+
+## 65. 2026-02-27 GUI��أ�MarkdownͼƬӳ�� manifest ���أ�
+
+### 65.1 ���ָĶ�
+
+- GUI�������п��أ�`Markdown image manifest (MD<->PDF map)`����Ӧ������ `enable_markdown_image_manifest`��
+- ������·��ͨ��
+  - `gui_config_io_mixin.py` ��ȡ���õ� UI��
+  - `gui_config_compose_mixin.py` / `gui_config_save_mixin.py` д�����á�
+  - `gui_config_logic_mixin.py` / `gui_config_dirty_mixin.py` �����������״̬�Ƚϡ�
+  - `gui_config_tab_mixin.py` ���������������Ǽ�����
+- ������·��ͨ��
+  - `gui_execution_mixin.py` �ֶ�����ʱд�� runtime cfg��
+  - `gui_task_workflow_mixin.py` ���񸲸����������û���֧�ָ��
+
+### 65.2 ���ֲ��Ը���
+
+ִ�����
+```bash
+python -m unittest discover -s tests -p "test_*.py" -v
+```
+
+�����2026-02-27����
+
+- `Ran 401 tests in 6.578s`
+- `OK`

@@ -1,12 +1,33 @@
-﻿# Changelog
+# Changelog
 
 All notable changes to this project are documented in this file.
 
+## [v5.20.0] - 2026-02-28
+### Added
+- **保存到任务**：任务 Tab 新增「保存到任务」按钮，一键将当前界面配置绑定写回所选任务（等价于编辑任务并选择「绑定当前配置」），无需再打开编辑弹窗。
+- **批量运行**：任务列表支持多选（Ctrl/Shift+点击），新增「批量运行」按钮，按选择顺序将任务入队并依次执行；停止时清空队列。
+- **定时运行**：新增「定时运行」按钮与计划逻辑，可为任务设置每日运行时间（HH:MM），计划持久化在 `tasks/schedules.json`，应用启动后每 60 秒检查并在到点时自动运行该任务（进程内调度，需程序保持打开）。
+
+### Changed
+- 任务列表 Treeview 的 `selectmode` 由 `browse` 改为 `extended`，以支持多选。
+- 执行逻辑：抽出 `_run_single_task(task_id, resume)`，供单次运行、批量队列与定时调度共用；批量时在 worker 结束后调用 `_maybe_run_next_queued_task` 启动下一任务。
+
+### Documentation
+- AGENTS.md 新增「版本与变更记录」强制规则：交付新功能或重要修复须更新 `office_converter.py` 的 `__version__`、`CHANGELOG.md` 及 AGENTS.md 的变更摘要。
+
+---
 ## [Post v5.19.1] - 2026-02-24
 ### Added
 - **任务列表配置范围过滤**：新增“仅当前配置”开关，任务列表可只显示与当前活动配置/配置档绑定的任务。
 - **任务筛选一致性**：状态筛选候选项改为基于当前可见任务集合生成，避免出现筛选项与列表不一致。
 - **默认配置字段对齐**：`create_default_config()` 明确包含 `ui.task_current_config_only = true`。
+
+### Fixed
+- **合并 Map CSV 写入失败**：E2E 运行中发现 `merge_pdfs` 写入的 `map_records` 包含字段 `merged_pdf_md5`，但 `index_runtime.write_merge_map` 的 CSV fieldnames 未包含该列，导致 `DictWriter` 报错 "dict contains fields not in fieldnames"。已在 `converter/index_runtime.py` 的 `write_merge_map` 的 fieldnames 中增加 `merged_pdf_md5`，与 Excel MergeIndex 表及 `merge_pdfs` 写入逻辑一致。
+- **Word 转 PDF（WPS/混合环境）**：当 `Documents.Open` 返回的对象无 `ExportAsFixedFormat` 或 `SaveAs`（如 WPS 返回的 "Open" 接口）时，先尝试 `doc.SaveAs(..., FileFormat=wdFormatPDF)`，再尝试 `app.ActiveDocument.ExportAsFixedFormat` / `app.ActiveDocument.SaveAs`，减少部分 .doc/.docx 转换失败。
+- **Excel 转 PDF Open 失败**：MS Excel 路径下 `Workbooks.Open` 带完整参数失败（如 COM -2147352567）时，回退为仅路径的 `Workbooks.Open(file_source)` 重试，提高部分 .xls/.xlsx 可转换率。
+- **合并阶段单 PDF 损坏导致整轮失败**：合并时若某个 PDF 读取失败（如 PyPDF 报 "Stream has ended unexpectedly"、无效文件头等），不再导致整次 run 崩溃；`merge_pdfs` 中对该 PDF 打日志并跳过，继续合并其余文件；索引 PDF 读取失败时同样跳过并继续。
+- **Markdown 导出阶段**：`pdf_markdown_export` 与 `pdf_content_scan` 中 PDF 读取若抛出异常（含 PyPDF 流错误），捕获后返回 None/跳过，避免单文件损坏导致整轮 E2E 失败。
 
 ### Changed
 - **任务模式配置持久化**：`ui.task_current_config_only` 已接入读取、保存、配置合成与脏状态比较逻辑。

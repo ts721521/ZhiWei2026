@@ -33,6 +33,12 @@ class _FakeApp:
         self.quit_called = True
 
 
+class _FakeAppQuitFail(_FakeApp):
+    def Quit(self):
+        self.quit_called = True
+        raise RuntimeError("quit failed")
+
+
 class _FakePythonCom:
     def __init__(self):
         self.uninit_count = 0
@@ -116,6 +122,47 @@ class ConverterConvertThreadSplitTests(unittest.TestCase):
             self.assertEqual(seen["args"], ("a.docx", "a.pdf", ".docx", {"k": "v"}))
         finally:
             oc.convert_logic_in_thread_impl = original
+
+    def test_convert_thread_ignores_quit_failure(self):
+        from converter.convert_thread import convert_logic_in_thread
+
+        doc = _FakeDoc()
+        app = _FakeAppQuitFail(doc)
+        pycom = _FakePythonCom()
+
+        convert_logic_in_thread(
+            "a.docx",
+            "a.pdf",
+            ".docx",
+            {},
+            is_mac_fn=lambda: False,
+            convert_on_mac_fn=lambda *_a, **_k: False,
+            has_win32=True,
+            allowed_extensions={"word": [".docx"], "excel": [], "powerpoint": []},
+            get_local_app_fn=lambda _k: app,
+            safe_exec_fn=lambda fn, *a, **k: fn(*a, **k),
+            engine_type="wps",
+            engine_wps="wps",
+            wdFormatPDF=17,
+            xlTypePDF=0,
+            ppSaveAsPDF=0,
+            ppFixedFormatTypePDF=0,
+            xlPDF_SaveAs=0,
+            xlRepairFile=0,
+            content_strategy="standard",
+            strategy_standard="standard",
+            strategy_price_only="price_only",
+            scan_excel_content_in_thread_fn=lambda _d: False,
+            setup_excel_pages_fn=lambda _d: None,
+            should_reuse_office_app_fn=lambda: False,
+            pythoncom_module=pycom,
+            os_module=__import__("os"),
+        )
+
+        self.assertEqual(doc.exported, ("a.pdf", 17))
+        self.assertTrue(doc.closed)
+        self.assertTrue(app.quit_called)
+        self.assertEqual(pycom.uninit_count, 1)
 
 
 if __name__ == "__main__":

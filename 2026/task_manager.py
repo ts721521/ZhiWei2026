@@ -196,6 +196,7 @@ class TaskStore:
         self.root_dir = os.path.abspath(root_dir)
         self.tasks_dir = os.path.join(self.root_dir, "tasks")
         self.index_path = os.path.join(self.tasks_dir, "tasks_index.json")
+        self.schedules_path = os.path.join(self.tasks_dir, "schedules.json")
         _ensure_dir(self.tasks_dir)
 
     def _default_index(self):
@@ -397,6 +398,54 @@ class TaskStore:
         index["tasks"] = summaries
         self.save_index(index)
         return payload
+
+    def _default_schedules(self):
+        return {"version": 1, "schedules": []}
+
+    def load_schedules(self):
+        data = _read_json(self.schedules_path, self._default_schedules())
+        if not isinstance(data.get("schedules"), list):
+            data["schedules"] = []
+        return data
+
+    def save_schedules(self, data):
+        payload = data if isinstance(data, dict) else self._default_schedules()
+        payload.setdefault("version", 1)
+        payload.setdefault("schedules", [])
+        _write_json(self.schedules_path, payload)
+        return payload
+
+    def get_schedule(self, task_id):
+        data = self.load_schedules()
+        for s in data.get("schedules", []):
+            if isinstance(s, dict) and str(s.get("task_id", "")).strip() == str(task_id).strip():
+                return dict(s)
+        return None
+
+    def set_schedule(self, task_id, enabled, daily_at="09:00", last_triggered=None):
+        """daily_at: "HH:MM" (24h). last_triggered: iso string or None."""
+        task_id = str(task_id or "").strip()
+        data = self.load_schedules()
+        schedules = [s for s in data.get("schedules", []) if not (isinstance(s, dict) and str(s.get("task_id", "")).strip() == task_id)]
+        if enabled:
+            schedules.append({
+                "task_id": task_id,
+                "enabled": True,
+                "daily_at": str(daily_at or "09:00").strip()[:5],
+                "last_triggered": last_triggered or "",
+            })
+        data["schedules"] = schedules
+        self.save_schedules(data)
+        return self.get_schedule(task_id)
+
+    def update_schedule_last_triggered(self, task_id, iso_str):
+        data = self.load_schedules()
+        for s in data.get("schedules", []):
+            if isinstance(s, dict) and str(s.get("task_id", "")).strip() == str(task_id).strip():
+                s["last_triggered"] = iso_str or ""
+                self.save_schedules(data)
+                return
+        self.save_schedules(data)
 
     def migrate_legacy_tasks(self):
         migrated = 0

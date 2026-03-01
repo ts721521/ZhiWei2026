@@ -62,6 +62,13 @@ class TaskWorkflowMixin:
             return None
         return str(sel[0])
 
+    def _get_selected_task_ids(self):
+        """Return list of selected task IDs in tree order (for batch run)."""
+        if not hasattr(self, "tree_tasks"):
+            return []
+        sel = self.tree_tasks.selection()
+        return [str(iid) for iid in sel]
+
     def _short_path(self, path, max_len=36):
         p = str(path or "").strip()
         if len(p) <= max_len:
@@ -426,12 +433,15 @@ class TaskWorkflowMixin:
         if binding_mode == TASK_BINDING_ACTIVE:
             config_path = active_config_path
             rec = self._find_profile_record_by_path(config_path)
+            active_label = str(getattr(self, "_active_config_label", "")).strip()
             if isinstance(rec, dict):
                 profile_name = str(rec.get("name", "")).strip()
                 profile_file = str(rec.get("file", "")).strip()
                 match_mode = "active_config"
             if profile_file:
                 display_name = profile_file
+            elif active_label:
+                display_name = active_label
             elif config_path:
                 display_name = os.path.basename(config_path)
             elif profile_name:
@@ -693,6 +703,7 @@ class TaskWorkflowMixin:
                 "output_enable_independent",
                 "enable_fast_md_engine",
                 "enable_traceability_anchor_and_map",
+                "enable_markdown_image_manifest",
                 "enable_prompt_wrapper",
                 "prompt_template_type",
                 "short_id_prefix",
@@ -740,8 +751,16 @@ class TaskWorkflowMixin:
             self.btn_task_run.configure(state="disabled")
             if hasattr(self, "btn_task_resume"):
                 self.btn_task_resume.configure(state="disabled")
+            if hasattr(self, "btn_task_batch_run"):
+                self.btn_task_batch_run.configure(state="disabled")
+            if hasattr(self, "btn_task_schedule"):
+                self.btn_task_schedule.configure(state="disabled")
         else:
             self.btn_task_run.configure(state="normal")
+            if hasattr(self, "btn_task_batch_run"):
+                self.btn_task_batch_run.configure(state="normal")
+            if hasattr(self, "btn_task_schedule"):
+                self.btn_task_schedule.configure(state="normal")
             # resume state left as set by _on_task_select
 
     def _on_app_mode_change_for_task_tab(self):
@@ -795,6 +814,9 @@ class TaskWorkflowMixin:
             "enable_fast_md_engine": bool(self.var_enable_fast_md_engine.get()),
             "enable_traceability_anchor_and_map": bool(
                 self.var_enable_traceability_anchor_and_map.get()
+            ),
+            "enable_markdown_image_manifest": bool(
+                self.var_enable_markdown_image_manifest.get()
             ),
             "enable_prompt_wrapper": bool(self.var_enable_prompt_wrapper.get()),
             "prompt_template_type": str(
@@ -1741,6 +1763,35 @@ class TaskWorkflowMixin:
             parent=self,
         )
 
+    def _on_click_task_save_to_task(self):
+        """Save current UI config binding to the selected task (one-click 'update task with active config')."""
+        task_id = self._get_selected_task_id()
+        if not task_id:
+            messagebox.showinfo(
+                self.tr("grp_task_runtime"), self.tr("msg_task_select_required")
+            )
+            return
+        task = self.task_store.get_task(task_id)
+        if not task:
+            return
+        try:
+            task = dict(task)
+            meta = self._build_task_config_binding_meta()
+            task["config_binding_mode"] = meta.get("config_binding_mode", TASK_BINDING_ACTIVE)
+            task["config_snapshot_path"] = meta.get("config_snapshot_path", "")
+            task["config_snapshot_profile_name"] = meta.get("config_snapshot_profile_name", "")
+            task["config_snapshot_profile_file"] = meta.get("config_snapshot_profile_file", "")
+            self.task_store.save_task(task)
+        except (AttributeError, TypeError, ValueError, OSError, RuntimeError) as e:
+            messagebox.showerror(self.tr("btn_task_save_to_task"), str(e))
+            return
+        messagebox.showinfo(
+            self.tr("btn_task_save_to_task"),
+            self.tr("msg_task_save_to_task_done"),
+            parent=self,
+        )
+        self._refresh_task_list_ui()
+
     def _apply_task_runtime_to_ui(self, cfg, preserve_current_run_tab=False):
         self._suspend_cfg_dirty = True
         try:
@@ -1771,6 +1822,9 @@ class TaskWorkflowMixin:
             )
             self.var_enable_traceability_anchor_and_map.set(
                 1 if cfg.get("enable_traceability_anchor_and_map", True) else 0
+            )
+            self.var_enable_markdown_image_manifest.set(
+                1 if cfg.get("enable_markdown_image_manifest", True) else 0
             )
             self.var_enable_prompt_wrapper.set(
                 1 if cfg.get("enable_prompt_wrapper", False) else 0

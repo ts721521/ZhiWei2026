@@ -16,7 +16,25 @@ def record_detailed_error(
     detailed_error_records,
     stats,
 ):
-    error_info = classify_conversion_error_fn(exception, str(source_path))
+    root_error_type = str(getattr(exception, "root_error_type", "") or "")
+    root_error_message = str(getattr(exception, "root_error_message", "") or "")
+    root_error_stage = str(getattr(exception, "root_error_stage", "") or "")
+    root_error_traceback = str(getattr(exception, "root_error_traceback", "") or "")
+
+    if not root_error_type and exception is not None:
+        cause = getattr(exception, "__cause__", None) or getattr(exception, "__context__", None)
+        if cause is not None:
+            root_error_type = type(cause).__name__
+            root_error_message = str(cause)
+
+    classify_signal = str(exception) if exception else ""
+    if root_error_type or root_error_message or root_error_stage:
+        classify_signal = (
+            f"{classify_signal} | root_type={root_error_type} | "
+            f"root_msg={root_error_message} | root_stage={root_error_stage}"
+        )
+    error_info = classify_conversion_error_fn(classify_signal, str(source_path))
+
     record = {
         "source_path": abspath_fn(source_path),
         "file_name": basename_fn(source_path),
@@ -27,6 +45,10 @@ def record_detailed_error(
         "is_retryable": error_info["is_retryable"],
         "requires_manual_action": error_info["requires_manual_action"],
         "raw_error": str(exception)[:500] if exception else "",
+        "root_error_type": root_error_type[:120],
+        "root_error_message": root_error_message[:500],
+        "root_error_stage": root_error_stage[:80],
+        "root_error_traceback": root_error_traceback[:4000],
         "timestamp": now_fn().isoformat(),
         "context": context or {},
     }

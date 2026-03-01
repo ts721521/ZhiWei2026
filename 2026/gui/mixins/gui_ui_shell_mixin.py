@@ -124,6 +124,8 @@ class UIShellMixin:
         )
         self.main_notebook.bind("<<NotebookTabChanged>>", self._on_tab_changed)
         self.lift()
+        if hasattr(self, "_start_schedule_thread"):
+            self._start_schedule_thread()
 
     def _force_refresh_all_canvases(self):
         try:
@@ -531,7 +533,7 @@ class UIShellMixin:
         tree_row.pack(fill=BOTH, expand=YES)
         cols = ("name", "source", "target", "config", "binding", "status", "last_run")
         self.tree_tasks = ttk.Treeview(
-            tree_row, columns=cols, show="headings", height=12, selectmode="browse"
+            tree_row, columns=cols, show="headings", height=12, selectmode="extended"
         )
         col_meta = (
             ("name", "col_task_name", "Name"),
@@ -607,6 +609,24 @@ class UIShellMixin:
         )
         self.btn_task_load_to_ui.pack(pady=2, fill=X)
 
+        self.btn_task_save_to_task = tb.Button(
+            btn_col,
+            text=self.tr("btn_task_save_to_task"),
+            command=self._on_click_task_save_to_task,
+            bootstyle="secondary-outline",
+            width=12,
+        )
+        self.btn_task_save_to_task.pack(pady=2, fill=X)
+
+        self.btn_task_schedule = tb.Button(
+            btn_col,
+            text=self.tr("btn_task_schedule"),
+            command=self._open_task_schedule_dialog,
+            bootstyle="secondary-outline",
+            width=12,
+        )
+        self.btn_task_schedule.pack(pady=2, fill=X)
+
         self.btn_task_run = tb.Button(
             btn_col,
             text=self.tr("btn_task_run"),
@@ -615,6 +635,15 @@ class UIShellMixin:
             width=12,
         )
         self.btn_task_run.pack(pady=2, fill=X)
+
+        self.btn_task_batch_run = tb.Button(
+            btn_col,
+            text=self.tr("btn_task_batch_run"),
+            command=self._on_click_task_batch_run,
+            bootstyle="info-outline",
+            width=12,
+        )
+        self.btn_task_batch_run.pack(pady=2, fill=X)
 
         self.btn_task_resume = tb.Button(
             btn_col,

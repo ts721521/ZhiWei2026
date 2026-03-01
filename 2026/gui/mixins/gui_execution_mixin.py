@@ -65,6 +65,10 @@ class ExecutionFlowMixin:
                 self.tr("grp_task_runtime"), self.tr("msg_task_select_required")
             )
             return
+        self._run_single_task(task_id, resume)
+
+    def _run_single_task(self, task_id, resume=False):
+        """Run one task by id; used by single Run and by batch queue. On finish, may start next from _task_run_queue."""
         task = self.task_store.get_task(task_id)
         if not task:
             return
@@ -177,16 +181,46 @@ class ExecutionFlowMixin:
                     ),
                 )
             finally:
+                completed_id = self.current_task_id
                 self.current_converter = None
                 self.current_task_id = None
                 self.current_run_context = "manual"
                 self.stop_requested = False
                 self.after(0, lambda: self._set_running_ui_state(False))
                 self.after(0, self._refresh_task_list_ui)
+                self.after(0, lambda cid=completed_id: self._maybe_run_next_queued_task(cid))
 
         self.worker_thread = threading.Thread(target=worker, daemon=True)
         self.worker_thread.start()
         self._set_running_ui_state(True)
+
+    def _maybe_run_next_queued_task(self, completed_id):
+        """After a single task run finishes, if batch queue exists and completed_id was head, run next."""
+        queue = getattr(self, "_task_run_queue", None)
+        if not queue or queue[0] != completed_id:
+            return
+        queue.pop(0)
+        if queue:
+            next_id = queue[0]
+            self.after(100, lambda: self._run_single_task(next_id, False))
+
+    def _on_click_task_batch_run(self):
+        """Queue selected tasks and run them one by one."""
+        if self.worker_thread and self.worker_thread.is_alive():
+            messagebox.showinfo(
+                self.tr("btn_start"), self.tr("msg_task_already_running")
+            )
+            return
+        ids = self._get_selected_task_ids()
+        if len(ids) < 2:
+            messagebox.showinfo(
+                self.tr("btn_task_batch_run"),
+                self.tr("msg_task_batch_select_at_least_two"),
+                parent=self,
+            )
+            return
+        self._task_run_queue = list(ids)
+        self._run_single_task(self._task_run_queue[0], False)
 
     def _on_click_start(self):
         if self.worker_thread and self.worker_thread.is_alive():
@@ -410,6 +444,24 @@ class ExecutionFlowMixin:
                     cfg["enable_chromadb_export"] = bool(
                         self.var_enable_chromadb_export.get()
                     )
+                    cfg["enable_fast_md_engine"] = bool(
+                        self.var_enable_fast_md_engine.get()
+                    )
+                    cfg["enable_traceability_anchor_and_map"] = bool(
+                        self.var_enable_traceability_anchor_and_map.get()
+                    )
+                    cfg["enable_markdown_image_manifest"] = bool(
+                        self.var_enable_markdown_image_manifest.get()
+                    )
+                    cfg["enable_prompt_wrapper"] = bool(
+                        self.var_enable_prompt_wrapper.get()
+                    )
+                    cfg["prompt_template_type"] = (
+                        self.var_prompt_template_type.get().strip() or "new_solution"
+                    )
+                    cfg["short_id_prefix"] = (
+                        self.var_short_id_prefix.get().strip().upper() or "ZW-"
+                    )
                     cfg["mshelpviewer_folder_name"] = (
                         self.var_mshelpviewer_folder_name.get().strip()
                         or "MSHelpViewer"
@@ -547,6 +599,8 @@ class ExecutionFlowMixin:
             return
         if messagebox.askyesno(self.tr("btn_stop"), self.tr("msg_confirm_stop")):
             self.stop_requested = True
+            if hasattr(self, "_task_run_queue"):
+                self._task_run_queue.clear()
             self.current_converter.is_running = False
             print("[GUI] stop requested; waiting for current step to finish...")
             self.var_status.set(self.tr("status_stop_wait"))

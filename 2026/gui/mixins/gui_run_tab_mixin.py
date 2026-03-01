@@ -647,6 +647,13 @@ class RunTabUIMixin:
             variable=self.var_enable_traceability_anchor_and_map,
         )
         self.chk_enable_traceability_anchor_and_map.pack(anchor="w")
+        self.var_enable_markdown_image_manifest = tk.IntVar(value=1)
+        self.chk_enable_markdown_image_manifest = tb.Checkbutton(
+            frm_ai_export,
+            text="Markdown image manifest (MD<->PDF map)",
+            variable=self.var_enable_markdown_image_manifest,
+        )
+        self.chk_enable_markdown_image_manifest.pack(anchor="w")
         self.var_enable_prompt_wrapper = tk.IntVar(value=0)
         self.chk_enable_prompt_wrapper = tb.Checkbutton(
             frm_ai_export,

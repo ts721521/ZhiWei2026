@@ -44,4 +44,5 @@ STRATEGY_SMART_TAG = "smart_tag"  # filename/content keyword hit -> Price_
 STRATEGY_PRICE_ONLY = "price_only"  # process only keyword-matching files
 
 ERR_RPC_SERVER_BUSY = -2147417846
+ERR_RPC_SERVER_UNAVAILABLE = -2147023174
 DEFAULT_SHORT_ID_LEN = 8

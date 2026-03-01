@@ -88,6 +88,9 @@ class ConfigComposeMixin:
         cfg["enable_traceability_anchor_and_map"] = bool(
             self.var_enable_traceability_anchor_and_map.get()
         )
+        cfg["enable_markdown_image_manifest"] = bool(
+            self.var_enable_markdown_image_manifest.get()
+        )
         cfg["enable_prompt_wrapper"] = bool(self.var_enable_prompt_wrapper.get())
         cfg["prompt_template_type"] = (
             self.var_prompt_template_type.get().strip() or "new_solution"

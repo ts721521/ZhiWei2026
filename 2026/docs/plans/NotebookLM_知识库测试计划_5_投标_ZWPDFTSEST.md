@@ -120,3 +120,55 @@
 
 - 本计划可放在 `docs/plans/` 下，与「NotebookLM 溯源」「LLM 交付」等现有文档并列。
 - 执行完一轮后，建议在 `docs/test-reports/` 或交接文档中记录：执行时间、配置快照、_LLM_UPLOAD 统计结果、NotebookLM 验证结论（若已做），以及后续可优化点（如合并粒度、单文件上限策略等）。
+
+---
+
+## 六、AI 自主执行与修复决策
+
+本节约定：AI（Cursor Agent）如何无交互跑完 E2E、如何判定通过/失败、失败时如何按决策表修复并重跑直至通过或需人工介入。详见 [docs/plans/NotebookLM_E2E_计划_第一性审阅与修改版.md](NotebookLM_E2E_计划_第一性审阅与修改版.md)。  
+各程序/脚本的职责分工见 [docs/程序与脚本清单.md](../程序与脚本清单.md)（包括被测主程序 `OfficeConverter` 与 E2E 驱动脚本 `scripts/run_notebooklm_e2e.py` 的关系）。
+
+### 6.1 AI 执行策略
+
+执行 NotebookLM E2E 时**须循环**：在 **2026** 目录下运行：
+
+```text
+python scripts/run_notebooklm_e2e.py
+```
+
+可选参数：`--config ...`、`--output ...`、`--repair-prompt ...`、`--source ...`、`--target ...`；环境变量 `ZW_E2E_SOURCE`、`ZW_E2E_TARGET` 可覆盖源/目标路径。
+
+- 若**退出码为 0**：通过，结束或写 TEST_REPORT。
+- 若**退出码非 0**：根据 `docs/test-reports/notebooklm_e2e_repair_prompt.txt` 与其中 `log_path` 指向的 log、按本节「结果→动作表」修复配置或代码 → **再次运行同一命令**。
+- 直至**退出码 0**，或遇到**需人工介入**的 `error_category`（见下表），或**同一 category 连续 2 次修复后仍失败**。**不得在未达到上述结束条件时结束。**
+
+### 6.2 可执行规格
+
+- **工作目录**：以 **2026** 为当前工作目录。
+- **config**：默认 `configs/scenarios/notebooklm/config.notebooklm_test.json`（相对 2026）；若不存在则由脚本按第四节推荐配置生成（含 `auto_open_output_dir: false`；大目录时保留 enable_checkpoint、checkpoint_auto_resume、office_restart_every_n_files、sandbox_min_free_gb）。
+- **通过（退出码 0）**：无异常；log 无 Traceback/关键错误；`<target>/_LLM_UPLOAD` 存在且非空或存在 manifest；`llm_upload_manifest.json` 存在且合法。
+- **失败（退出码 1）**：异常或 log 含 Traceback/关键错误；或 _LLM_UPLOAD 应为非空但为空。
+- **成功但需优化（退出码 2）**：满足通过条件但 _LLM_UPLOAD 文件数>50 或单文件>200MB；视为通过可结束，或按决策表调整后再跑。
+
+### 6.3 结果→动作表（与脚本 error_category 一致）
+
+| error_category        | AI 动作 |
+|-----------------------|--------|
+| path_not_found        | 创建缺失目录或修正 config 中 source/target，再跑 E2E |
+| permission_denied     | 检查目标目录权限或换可写路径；若无法解决则停止并提示人工介入 |
+| office_not_installed  | 检查 Office/WPS 安装与 COM；若无法解决则停止并提示人工介入 |
+| office_com            | 检查 Office/WPS/COM 或切 engine，再跑 |
+| config                | 检查 config 键与值，对照文档修正，再跑 |
+| llm_hub_empty         | 检查 enable_llm_delivery_hub、run_mode、output_enable_* 及 corpus_manifest 调用，修正后再跑 |
+| file_too_large_or_many| 记录到 TEST_REPORT，调整 max_merge_size_mb 或合并策略后再跑，或标记需优化后结束 |
+
+当同一 category 连续 2 次修复后仍失败，Agent 应停止并提示人工介入。
+
+### 6.4 修复提示文件
+
+失败或退出码 2 时，脚本会写入 **`docs/test-reports/notebooklm_e2e_repair_prompt.txt`**（或 `--repair-prompt` 指定路径），内容含 `log_path`、`error_category`、`result_json` 路径及本节决策表引用。Agent 读该文件与 log 后按表执行修复并重跑。
+
+### 6.5 长时间运行与「所有情况都测到」
+
+- 单次 E2E 可能运行很久（目录内文档多时）；脚本不设总超时。转换器支持 checkpoint 断点续跑：若运行中途中断，用**同一 config** 再跑同一命令会只处理未完成文件。
+- 单次运行只会得到一个结果（0/1/2）。要覆盖多种结果与 error_category，需多轮运行（例如全量跑→得 0 或 2；用错误路径再跑→得 1 path_not_found；或从 2 调配置再跑→得 0）。详见审阅文档「长时间运行与所有情况都测到」小节。

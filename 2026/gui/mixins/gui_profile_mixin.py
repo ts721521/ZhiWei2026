@@ -151,6 +151,60 @@ class ProfileManagementMixin:
             )
         return records
 
+    def _load_builtin_config_records(self):
+        records = []
+        root_dirs = [
+            ("preset", os.path.join(self.script_dir, "configs", "presets")),
+            ("scenario", os.path.join(self.script_dir, "configs", "scenarios")),
+        ]
+        for kind, root in root_dirs:
+            if not os.path.isdir(root):
+                continue
+            for base, _dirs, files in os.walk(root):
+                for name in sorted(files):
+                    if not str(name).lower().endswith(".json"):
+                        continue
+                    abs_path = os.path.join(base, name)
+                    rel_path = os.path.relpath(abs_path, self.script_dir).replace(
+                        "\\", "/"
+                    )
+                    stem = os.path.splitext(name)[0]
+                    note = self._builtin_config_note_from_file(abs_path)
+                    records.append(
+                        {
+                            "id": f"builtin:{kind}:{rel_path}",
+                            "name": f"[{kind}] {stem}",
+                            "file": rel_path,
+                            "note": note,
+                            "updated_at": self._profile_file_mtime(abs_path),
+                            "abs_path": abs_path,
+                            "is_builtin": True,
+                        }
+                    )
+        return records
+
+    def _builtin_config_note_from_file(self, abs_path, max_len=200):
+        """Read _meta.description and _meta.notes from a config JSON for display."""
+        try:
+            with open(abs_path, "r", encoding="utf-8") as f:
+                cfg = json.load(f)
+            _meta = cfg.get("_meta") or {}
+            description = str(_meta.get("description", "") or "").strip()
+            notes = _meta.get("notes")
+            if isinstance(notes, list) and notes:
+                first_note = str(notes[0] or "").strip()
+                if first_note:
+                    note = f"{description} | {first_note}" if description else first_note
+                else:
+                    note = description
+            else:
+                note = description
+            if not note:
+                return "Built-in config"
+            return note[:max_len] if len(note) > max_len else note
+        except (OSError, TypeError, ValueError, json.JSONDecodeError):
+            return "Built-in config"
+
     def _save_profile_records(self, records):
         os.makedirs(self._profiles_dir(), exist_ok=True)
         index_path = self._profiles_index_path()
@@ -475,10 +529,24 @@ class ProfileManagementMixin:
                 profile_cfg = json.load(f)
             if not isinstance(profile_cfg, dict):
                 raise ValueError("profile config must be an object")
-            self.config_path = profile_path
-            if hasattr(self, "var_config_path"):
-                self.var_config_path.set(self.config_path)
-            self.var_profile_active_path.set(self.config_path)
+            display_name = (
+                str(rec.get("name", "")).strip()
+                or str(rec.get("file", "")).strip()
+                or os.path.basename(profile_path)
+            )
+            self._active_config_label = display_name
+            self._active_config_origin = profile_path
+            is_builtin = bool(rec.get("is_builtin", False))
+            if is_builtin:
+                # Built-in presets/scenarios should not hijack active config path.
+                # Instead, load by replacing current active config content.
+                with open(self.config_path, "w", encoding="utf-8") as f:
+                    json.dump(profile_cfg, f, indent=4, ensure_ascii=False)
+            else:
+                self.config_path = profile_path
+                if hasattr(self, "var_config_path"):
+                    self.var_config_path.set(self.config_path)
+                self.var_profile_active_path.set(self.config_path)
             self._load_config_to_ui()
             if (
                 self.profile_manager_win is not None
@@ -489,7 +557,7 @@ class ProfileManagementMixin:
                 self.load_profile_dialog is not None
                 and self.load_profile_dialog.winfo_exists()
             ):
-                self._refresh_load_profile_tree(select_file=rec.get("file", ""))
+                self._refresh_load_profile_tree(select_abs_path=profile_path)
             msg = self.tr("msg_profile_load_ok").format(rec.get("name", ""))
             if show_msg:
                 messagebox.showinfo(self.tr("btn_load_cfg"), msg)
@@ -853,17 +921,22 @@ class ProfileManagementMixin:
             return None
         return self._load_profile_tree_rows.get(selection[0])
 
-    def _refresh_load_profile_tree(self, select_file=None):
+    def _refresh_load_profile_tree(self, select_file=None, select_abs_path=None):
         if self.load_profile_tree is None or not self.load_profile_tree.winfo_exists():
             return
-        records = self._load_profile_records()
+        records = self._load_profile_records() + self._load_builtin_config_records()
         self._load_profile_tree_rows = {}
         self.load_profile_tree.delete(*self.load_profile_tree.get_children())
         target_file = str(select_file or "").strip()
+        target_abs = os.path.abspath(str(select_abs_path or "").strip())
         active_path = os.path.abspath(self.config_path)
         target_iid = None
         for rec in records:
-            abs_path = os.path.abspath(self._profile_abs_path(rec.get("file", "")))
+            rec_abs = str(rec.get("abs_path", "")).strip()
+            if rec_abs:
+                abs_path = os.path.abspath(rec_abs)
+            else:
+                abs_path = os.path.abspath(self._profile_abs_path(rec.get("file", "")))
             iid = self.load_profile_tree.insert(
                 "",
                 "end",
@@ -877,7 +950,9 @@ class ProfileManagementMixin:
             row = dict(rec)
             row["abs_path"] = abs_path
             self._load_profile_tree_rows[iid] = row
-            if target_file and rec.get("file", "") == target_file:
+            if target_abs and abs_path == target_abs:
+                target_iid = iid
+            elif target_file and rec.get("file", "") == target_file:
                 target_iid = iid
             elif not target_file and abs_path == active_path:
                 target_iid = iid

@@ -63,6 +63,7 @@ def initialize_output_tracking_state(converter):
     converter.generated_merge_markdown_outputs = []
     converter.generated_map_outputs = []
     converter.generated_markdown_outputs = []
+    converter.generated_markdown_manifest_outputs = []
     converter.generated_markdown_quality_outputs = []
     converter.generated_excel_json_outputs = []
     converter.generated_records_json_outputs = []

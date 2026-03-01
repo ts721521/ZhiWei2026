@@ -50,6 +50,26 @@ class ConverterMarkdownSourceReaderSplitTests(unittest.TestCase):
                 markitdown_cls=None,
             ),
         )
+        with self.assertRaises(ValueError):
+            convert_source_to_markdown_text(
+                "demo.pptx",
+                has_markitdown=False,
+                markitdown_cls=None,
+            )
+
+    def test_markitdown_convert_error_is_normalized_to_value_error(self):
+        from converter.markdown_source_reader import convert_source_to_markdown_text
+
+        class _MDClsBad:
+            def convert(self, _path):
+                raise RuntimeError("boom")
+
+        with self.assertRaises(ValueError):
+            convert_source_to_markdown_text(
+                "demo.pptx",
+                has_markitdown=True,
+                markitdown_cls=_MDClsBad,
+            )
 
     def test_office_converter_method_delegates_to_module(self):
         import office_converter as oc

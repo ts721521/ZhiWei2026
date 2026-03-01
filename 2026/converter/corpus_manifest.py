@@ -285,6 +285,8 @@ def write_corpus_manifest(converter, merge_outputs=None):
             _append("merge_map_file", path)
     for path in converter.generated_markdown_outputs:
         _append("markdown_export", path)
+    for path in getattr(converter, "generated_markdown_manifest_outputs", []) or []:
+        _append("markdown_image_manifest", path)
     for path in getattr(converter, "generated_fast_md_outputs", []) or []:
         _append("knowledge_bundle_markdown", path)
     for path in converter.generated_markdown_quality_outputs:
@@ -360,6 +362,9 @@ def write_corpus_manifest(converter, merge_outputs=None):
             "merged_markdown_count": len(converter.generated_merge_markdown_outputs),
             "merge_map_count": len(converter.generated_map_outputs),
             "markdown_count": len(converter.generated_markdown_outputs),
+            "markdown_image_manifest_count": len(
+                getattr(converter, "generated_markdown_manifest_outputs", []) or []
+            ),
             "knowledge_bundle_count": len(getattr(converter, "generated_fast_md_outputs", []) or []),
             "markdown_quality_report_count": len(converter.generated_markdown_quality_outputs),
             "excel_structured_json_count": len(converter.generated_excel_json_outputs),

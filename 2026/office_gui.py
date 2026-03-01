@@ -243,12 +243,38 @@ from gui.mixins import (
     RuntimeStatusMixin,
     SourceFolderMixin,
     TaskWorkflowMixin,
+    TaskScheduleMixin,
     TooltipMixin,
     TooltipSettingsMixin,
     UIShellMixin,
 )
 
 LOG_QUEUE = queue.Queue()
+
+
+def _write_gui_startup_log(stage: str, message: str = "", exc: Exception | None = None):
+    """Write startup diagnostics so user-side launch failures are traceable."""
+    try:
+        app_root = get_app_path()
+        log_dir = os.path.join(app_root, "logs")
+        os.makedirs(log_dir, exist_ok=True)
+        log_path = os.path.join(log_dir, "gui_startup.log")
+        ts = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+        lines = [
+            f"[{ts}] stage={stage}",
+            f"python={sys.executable}",
+            f"cwd={os.getcwd()}",
+            f"has_ttkbootstrap={HAS_TTKBOOTSTRAP}",
+        ]
+        if message:
+            lines.append(f"message={message}")
+        if exc is not None:
+            lines.append(f"exception={type(exc).__name__}: {exc}")
+            lines.append(traceback.format_exc())
+        with open(log_path, "a", encoding="utf-8") as f:
+            f.write("\n".join(lines) + "\n\n")
+    except Exception:
+        pass
 
 
 class TkLogHandler:
@@ -451,7 +477,7 @@ class GUIOfficeConverter(OfficeConverter):
 # ========= 涓荤獥鍙?========
 
 
-class OfficeGUI(TaskWorkflowMixin, RunTabUIMixin, RunModeStateMixin, SourceFolderMixin, ConfigTabUIMixin, ConfigDirtyStateMixin, ConfigIOMixin, ConfigComposeMixin, ConfigSaveMixin, TooltipSettingsMixin, ConfigLogicMixin, RuntimeStatusMixin, ExecutionFlowMixin, ProfileManagementMixin, UIShellMixin, LocatorMixin, GDriveMixin, MiscUIMixin, TooltipMixin, tb.Window):
+class OfficeGUI(TaskWorkflowMixin, TaskScheduleMixin, RunTabUIMixin, RunModeStateMixin, SourceFolderMixin, ConfigTabUIMixin, ConfigDirtyStateMixin, ConfigIOMixin, ConfigComposeMixin, ConfigSaveMixin, TooltipSettingsMixin, ConfigLogicMixin, RuntimeStatusMixin, ExecutionFlowMixin, ProfileManagementMixin, UIShellMixin, LocatorMixin, GDriveMixin, MiscUIMixin, TooltipMixin, tb.Window):
     TOOLTIP_DEFAULTS = {
         "tooltip_delay_ms": 300,
         "tooltip_bg": "#FFF7D6",
@@ -464,6 +490,16 @@ class OfficeGUI(TaskWorkflowMixin, RunTabUIMixin, RunModeStateMixin, SourceFolde
         super().__init__(themename="cosmo")
         if not HAS_TTKBOOTSTRAP:
             print("[GUI] ttkbootstrap not found, using tkinter compatibility mode.")
+            try:
+                messagebox.showwarning(
+                    "UI Theme Fallback",
+                    "ttkbootstrap not found. UI is running in compatibility mode (gray theme).\n\n"
+                    f"Python: {sys.executable}\n\n"
+                    "Install in this interpreter:\n"
+                    "python -m pip install ttkbootstrap",
+                )
+            except Exception:
+                pass
         self.current_lang = "zh"  # 仅中文界面，保留变量供 tr 等兼容
         self.title(f"{self.tr('title')} v{__version__}")
 
@@ -558,6 +594,7 @@ class OfficeGUI(TaskWorkflowMixin, RunTabUIMixin, RunModeStateMixin, SourceFolde
 
 if __name__ == "__main__":
     try:
+        _write_gui_startup_log("launch", "office_gui main entry")
         app = OfficeGUI()
         app.update_idletasks()
         app.lift()
@@ -565,12 +602,14 @@ if __name__ == "__main__":
         app.after(150, lambda: app.attributes("-topmost", False))
         app.mainloop()
     except Exception as e:
+        _write_gui_startup_log("crash", "office_gui startup exception", exc=e)
         traceback.print_exc()
         try:
             messagebox.showerror(
                 "启动失败",
                 "程序启动异常，请关闭其他知喂/OfficeGUI 进程后重试。\n\n错误信息：\n"
-                + str(e),
+                + str(e)
+                + "\n\n诊断日志：logs/gui_startup.log",
             )
         except Exception:
             pass

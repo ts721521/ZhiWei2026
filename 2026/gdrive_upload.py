@@ -6,7 +6,7 @@ Google Drive 上传：OAuth 桌面流程 + 将 _LLM_UPLOAD 目录上传到 Drive
 import os
 import json
 import logging
-from datetime import datetime
+from datetime import datetime, timezone
 
 # 可选依赖：未安装时本模块对外返回明确错误，不抛 ImportError 给上层
 try:
@@ -191,14 +191,14 @@ def upload_llm_folder_to_drive(local_llm_root, credentials, parent_folder_id=Non
     except Exception as e:
         msg = _format_drive_api_error(e) if HttpError and isinstance(e, HttpError) else str(e)
         return (
-            {"folder_id": run_folder_id, "uploaded_at": datetime.utcnow().isoformat() + "Z", "file_count": uploaded},
+            {"folder_id": run_folder_id, "uploaded_at": datetime.now(timezone.utc).isoformat().replace("+00:00", "Z"), "file_count": uploaded},
             "部分上传后出错: " + msg,
         )
 
     return (
         {
             "folder_id": run_folder_id,
-            "uploaded_at": datetime.utcnow().isoformat() + "Z",
+            "uploaded_at": datetime.now(timezone.utc).isoformat().replace("+00:00", "Z"),
             "file_count": uploaded,
         },
         None,

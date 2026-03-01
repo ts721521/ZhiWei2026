@@ -31,7 +31,7 @@
 
 - **工作目录未约定**：命令写为 `python scripts/run_notebooklm_e2e.py`，若用户 cwd 是仓库根而脚本在 `2026/scripts/`，则需 `python 2026/scripts/run_notebooklm_e2e.py`；config 默认路径也会随 cwd 变化。需明确「从 2026 目录运行」或「从仓库根运行且脚本路径为 2026/scripts/...」。  
 - **「明确需人工介入」未定义**：规则要求「直至退出码 0 或明确需人工介入」，但未定义何种情况算需人工介入。Agent 可能对无法修复的情况（如无 Office、权限不足）无限重试。应在规则中列举或引用需人工介入的 `error_category`（如 permission_denied、office_not_installed），或写明「若同一 error_category 连续 N 次仍失败则停止并提示人工介入」。  
-- **config 生成依据模糊**：「由脚本按文档四、推荐配置小结生成」——文档是表格式推荐值，不是完整 JSON schema。脚本需与 `config.example.json` 或 `converter/default_config` 对齐的键列表。【已核实，见下文「核实结果」E2E 最小 config 键表】  
+- **config 生成依据模糊**：「由脚本按文档四、推荐配置小结生成」——文档是表格式推荐值，不是完整 JSON schema。脚本需与 `configs/templates/config.example.json` 或 `converter/default_config` 对齐的键列表。【已核实，见下文「核实结果」E2E 最小 config 键表】  
 - **退出码 2 与「不得在未通过时结束」的张力**：退出码 2 表示「成功但需优化」（如文件数>50、单文件>200MB）。若规则是「不得在未通过时结束」，则 2 应视为「可通过但建议再跑」还是「未通过必须再跑」？需明确：例如「退出码 2 视为通过，可结束并记录；若希望符合 NotebookLM 50 来源限制则调整配置后再跑」。
 
 ### 可优化
@@ -128,7 +128,7 @@
 
 - **工作目录**：以 **2026** 为当前工作目录（即 `d:\GitHub\ZhiWei2026\2026` 或项目内 2026 目录）。  
 - **命令**：`python scripts/run_notebooklm_e2e.py`（可选 `--config ...` `--output ...` `--repair-prompt ...`）。  
-- **config**：默认 `config.notebooklm_test.json`（相对 2026 目录）；若不存在则由脚本生成。生成时以 `converter.default_config` 的默认 dict（或 config.example.json）为基，保证 `config_validation.validate_runtime_config_or_raise` 所需键齐全，再覆盖测试计划「四、推荐配置小结」表项及 **auto_open_output_dir: false**。**大目录/长时间运行**：建议保留或显式设置 **enable_checkpoint: true**、**checkpoint_auto_resume: true**、**office_restart_every_n_files**（如 25）、**sandbox_min_free_gb**（按本机设置），以便断点续跑并降低长时间运行风险（见上文「长时间运行与所有情况都测到」）。  
+- **config**：默认 `configs/scenarios/notebooklm/config.notebooklm_test.json`（相对 2026 目录）；若不存在则由脚本生成。生成时以 `converter.default_config` 的默认 dict（或 configs/templates/config.example.json）为基，保证 `config_validation.validate_runtime_config_or_raise` 所需键齐全，再覆盖测试计划「四、推荐配置小结」表项及 **auto_open_output_dir: false**。**大目录/长时间运行**：建议保留或显式设置 **enable_checkpoint: true**、**checkpoint_auto_resume: true**、**office_restart_every_n_files**（如 25）、**sandbox_min_free_gb**（按本机设置），以便断点续跑并降低长时间运行风险（见上文「长时间运行与所有情况都测到」）。  
 - **运行方式**：脚本内部 `OfficeConverter(config_path, interactive=False).run()`，不调用 `cli_wizard()` 或调用亦可（interactive=False 时 wizard 不阻塞）。**已核实**：run 调用链在 interactive=False 下无 input()/弹窗；E2E 生成的 config 须设 `"auto_open_output_dir": false`（或脚本设 ZW_TEST_MODE=1）避免结束后打开资源管理器。  
 - **日志**：run 后 `converter.log_path` 为本次 log，脚本在结果中返回。
 
@@ -172,7 +172,7 @@
 
 ### E2E 脚本职责（`scripts/run_notebooklm_e2e.py`）
 
-- **参数**：`--config`（默认 `config.notebooklm_test.json`）、`--output`（结果 JSON 路径）、`--repair-prompt`（修复提示文件路径，默认 `docs/test-reports/notebooklm_e2e_repair_prompt.txt`）。  
+- **参数**：`--config`（默认 `configs/scenarios/notebooklm/config.notebooklm_test.json`）、`--output`（结果 JSON 路径）、`--repair-prompt`（修复提示文件路径，默认 `docs/test-reports/notebooklm_e2e_repair_prompt.txt`）。  
 - **逻辑**：若 config 不存在则**以 default_config 或 config.example 为基**生成并写入（含校验所需键 + 测试计划表项 + auto_open_output_dir: false）；实例化 `OfficeConverter(config_path, interactive=False)` 并调用 `run()`；根据 run 结果与 log 检查 _LLM_UPLOAD、manifest、文件数与单文件大小；设定 `error_category`（枚举与结果→动作表一致）；写结果 JSON；若退出码 ≠0 则写修复提示文件；返回退出码 0/1/2。  
 - **error_category 确定规则**：由脚本根据异常类型、log 关键字、产物状态设定，具体枚举及规则见脚本实现并与本文「结果→动作表」保持一致。
 

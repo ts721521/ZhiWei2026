@@ -1,0 +1,49 @@
+{
+  "_meta": {
+    "config_kind": "preset",
+    "preset_group": "notebooklm",
+    "preset_name": "incremental_weekly_sync",
+    "description": "增量周同步预设，只处理新增/变更，减少全量重跑。",
+    "last_updated": "2026-02-28",
+    "notes": [
+      "需在环境中配置稳定的 incremental_registry_path。",
+      "使用前请设置 source_folder/source_folders 和 target_folder。"
+    ]
+  },
+  "source_folder": "Z:\\Schneider\\5_鎶曟爣",
+  "source_folders": [
+    "Z:\\Schneider\\5_鎶曟爣"
+  ],
+  "target_folder": "D:\\ZWPDFTSEST",
+  "source_folder_win": "Z:\\Schneider\\5_鎶曟爣",
+  "source_folders_win": [
+    "Z:\\Schneider\\5_鎶曟爣"
+  ],
+  "target_folder_win": "D:\\ZWPDFTSEST",
+  "run_mode": "convert_then_merge",
+  "enable_merge": true,
+  "output_enable_pdf": true,
+  "output_enable_md": true,
+  "output_enable_merged": true,
+  "output_enable_independent": false,
+  "enable_fast_md_engine": false,
+  "enable_incremental_mode": true,
+  "incremental_verify_hash": true,
+  "incremental_reprocess_renamed": true,
+  "incremental_registry_path": "D:\\ZWPDFTSEST\\_meta\\incremental_registry.json",
+  "enable_traceability_anchor_and_map": true,
+  "enable_markdown_image_manifest": true,
+  "short_id_prefix": "ZW-",
+  "enable_merge_map": true,
+  "bookmark_with_short_id": true,
+  "enable_corpus_manifest": true,
+  "enable_llm_delivery_hub": true,
+  "llm_delivery_flatten": true,
+  "llm_delivery_include_pdf": true,
+  "enable_upload_readme": true,
+  "enable_upload_json_manifest": true,
+  "upload_dedup_merged": true,
+  "max_merge_size_mb": 100,
+  "markdown_max_size_mb": 100,
+  "auto_open_output_dir": false
+}

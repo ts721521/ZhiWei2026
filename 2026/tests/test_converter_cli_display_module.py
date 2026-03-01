@@ -36,13 +36,27 @@ class ConverterCliDisplaySplitTests(unittest.TestCase):
         self.assertEqual("init_paths", calls[-1])
 
     def test_display_helpers_core_behaviors(self):
-        from converter.display_helpers import print_step_title, print_welcome
+        from converter.display_helpers import print_step_title, print_welcome, safe_console_print
 
         lines = []
         print_welcome(app_version="x", config_path="cfg.json", print_fn=lambda m: lines.append(m))
         print_step_title("STEP", print_fn=lambda m: lines.append(m))
+        safe_console_print("ok", print_fn=lambda m, **_k: lines.append(m))
         self.assertTrue(any("Config file:" in str(v) for v in lines))
         self.assertTrue(any("STEP" == str(v) for v in lines))
+
+        captured = []
+        state = {"n": 0}
+
+        def flaky_print(msg, **_kwargs):
+            state["n"] += 1
+            if state["n"] == 1:
+                raise OSError(22, "Invalid argument")
+            captured.append(msg)
+
+        safe_console_print("中文🙂", print_fn=flaky_print)
+        self.assertEqual(2, state["n"])
+        self.assertTrue(captured)
 
     def test_office_converter_methods_delegate(self):
         import office_converter as oc

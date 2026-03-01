@@ -4,7 +4,7 @@
 
 **AI 读完本文件后**：先执行「初始化清单」（第 2 节）。清单会先检测已有目录并沿用，无则默认当前项目创建，失败则请用户指定。
 
-**本项目为 AI 主导**（若实际为人主导或混合协作，请删除本段）：**人提需求，AI 开发**（写死）。用户只提需求、不参与代码；本文档中「必须记录」「必须同步更新」等规则不变。AI 须明确：用户提需求，AI 做好的一切都要有记录；且由 AI 自行维护 AGENTS.md 与交接/测试汇总（项目演进时当轮同步更新本文件），不省略任何应记录项。
+**本项目为 AI 主导**（若实际为人主导或混合协作，请删除本段）：**人提需求，AI 开发**。用户只提需求、不参与代码；本文档中「必须记录」「必须同步更新」等规则不变。AI 须明确：用户提需求，AI 做好的一切都要有记录；且由 AI 自行维护 AGENTS.md 与交接/测试汇总（项目演进时当轮同步更新本文件），不省略任何应记录项。
 
 ---
 
@@ -115,6 +115,12 @@ python -m unittest discover -s tests -p "test_*.py" -v
 ## 8. 可选：自动校验与 CI
 
 若项目已具备或计划引入：文档同步校验脚本、pre-commit 或 CI 执行校验与全量测试。无则可不提供。
+
+**可选：Cursor / Codex 规则或 Skill**  
+- **Cursor**：若希望 Agent 在编辑时代入「改代码必更交接/测试汇总」的提醒，可复用本仓库 `docs/cursor-rules-templates/` 下的 `doc-sync-reminder.mdc.template`，复制到该项目的 `.cursor/rules/doc-sync-reminder.mdc` 并按项目填写（与 AGENTS.md 本节约定一致）。  
+- **Codex**：可将同目录下 `codex-skill-doc-sync/` 复制到该项目的 `.agents/skills/doc-sync-reminder/`，在 SKILL.md 中按项目填写路径与命令，开发时通过 `/skills` 或任务匹配调用。  
+- **其他环境**：可仅依赖 AGENTS.md 本节（§4、§5）；或复制 `doc-sync-reminder-content.md` 到项目并让 AI 按该文件执行。  
+详见 `docs/cursor-rules-templates/README.md`。
 
 ---
 

@@ -1,4 +1,4 @@
-﻿import os
+import os
 import tempfile
 import unittest
 from unittest import mock
@@ -231,7 +231,10 @@ class ConverterRunWorkflowSplitTests(unittest.TestCase):
             def _emit_file_plan(self, _files):
                 pass
 
-            def _run_fast_md_pipeline(self, files):
+            def _init_checkpoint(self, files):
+                return None, files
+
+            def _run_fast_md_pipeline(self, files, checkpoint=None):
                 self.fast_called += 1
                 out = os.path.join(root, "_MD_Corpus", "_Knowledge_Bundle.md")
                 os.makedirs(os.path.dirname(out), exist_ok=True)

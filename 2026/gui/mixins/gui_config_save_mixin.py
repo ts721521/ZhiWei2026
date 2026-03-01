@@ -69,6 +69,9 @@ class ConfigSaveMixin:
             )
             cfg["enable_excel_json"] = bool(self.var_enable_excel_json.get())
             cfg["enable_chromadb_export"] = bool(self.var_enable_chromadb_export.get())
+            cfg["enable_markdown_image_manifest"] = bool(
+                self.var_enable_markdown_image_manifest.get()
+            )
             cfg["mshelpviewer_folder_name"] = (
                 self.var_mshelpviewer_folder_name.get().strip() or "MSHelpViewer"
             )

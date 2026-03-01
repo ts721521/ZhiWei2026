@@ -77,6 +77,7 @@ class ConfigDirtyStateMixin:
                 "enable_chromadb_export",
                 "enable_fast_md_engine",
                 "enable_traceability_anchor_and_map",
+                "enable_markdown_image_manifest",
                 "enable_prompt_wrapper",
                 "prompt_template_type",
                 "short_id_prefix",
@@ -235,6 +236,9 @@ class ConfigDirtyStateMixin:
             )
             self.var_enable_traceability_anchor_and_map.set(
                 1 if snapshot.get("enable_traceability_anchor_and_map", True) else 0
+            )
+            self.var_enable_markdown_image_manifest.set(
+                1 if snapshot.get("enable_markdown_image_manifest", True) else 0
             )
             self.var_enable_prompt_wrapper.set(
                 1 if snapshot.get("enable_prompt_wrapper", False) else 0

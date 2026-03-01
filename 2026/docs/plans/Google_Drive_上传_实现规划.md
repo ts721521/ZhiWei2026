@@ -37,7 +37,7 @@
 | **存放位置** | 建议将 `client_secrets.json` 放在**项目外**（如用户目录、仅本机可读的目录），config 里只存**路径**，不存文件内容。 |
 | **Token 默认路径** | token 缓存建议默认放在用户目录（如 `%APPDATA%/知喂/.gdrive_token.json` 或 `~/.config/知喂/gdrive_token.json`），避免放在仓库目录下。 |
 | **不记录敏感内容** | 日志、错误提示、调试输出中**不得**打印 client_secrets 或 token 的完整内容；仅可提示“未配置密钥路径”或“token 已过期”等。 |
-| **配置示例** | `config.example.json` 中**不要**出现真实路径或占位路径指向敏感文件；文档中说明“请将密钥文件放在安全位置并填写路径”。 |
+| **配置示例** | `configs/templates/config.example.json` 中**不要**出现真实路径或占位路径指向敏感文件；文档中说明“请将密钥文件放在安全位置并填写路径”。 |
 
 实现时：读取密钥/ token 仅用于 OAuth 与 API 调用，用毕不缓存到内存以外；若需写入 token 文件，权限设为仅当前用户可读（如 Windows 仅当前用户、Linux `chmod 600`）。
 

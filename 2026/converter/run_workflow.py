@@ -1,4 +1,4 @@
-﻿# -*- coding: utf-8 -*-
+# -*- coding: utf-8 -*-
 """Top-level run workflow extracted from office_converter.py."""
 
 import logging
@@ -8,6 +8,9 @@ import sys
 import time
 
 from converter.constants import (
+    ENGINE_ASK,
+    ENGINE_MS,
+    ENGINE_WPS,
     MODE_COLLECT_ONLY,
     MODE_CONVERT_ONLY,
     MODE_CONVERT_THEN_MERGE,
@@ -17,6 +20,23 @@ from converter.constants import (
 
 
 def run(converter, resume_file_list=None, app_version=""):
+    # Non-interactive callers may skip cli_wizard(); initialize runtime
+    # process policy and engine selection from config here.
+    if converter.run_mode in (MODE_CONVERT_ONLY, MODE_CONVERT_THEN_MERGE):
+        if getattr(converter, "engine_type", "") not in (ENGINE_WPS, ENGINE_MS):
+            default_engine = str(converter.config.get("default_engine", ENGINE_ASK) or ENGINE_ASK).lower()
+            if default_engine == ENGINE_WPS:
+                converter.engine_type = ENGINE_WPS
+            elif default_engine == ENGINE_MS:
+                converter.engine_type = ENGINE_MS
+            elif converter.interactive:
+                converter.select_engine_mode()
+            else:
+                # Keep non-interactive runs deterministic instead of hanging on prompts.
+                converter.engine_type = ENGINE_WPS
+        if hasattr(converter, "check_and_handle_running_processes"):
+            converter.check_and_handle_running_processes()
+
     converter.setup_logging()
     converter.print_runtime_summary()
     converter._reset_perf_metrics()
@@ -30,6 +50,7 @@ def run(converter, resume_file_list=None, app_version=""):
     converter.generated_merge_markdown_outputs = []
     converter.generated_map_outputs = []
     converter.generated_markdown_outputs = []
+    converter.generated_markdown_manifest_outputs = []
     converter.generated_markdown_quality_outputs = []
     converter.generated_excel_json_outputs = []
     converter.generated_records_json_outputs = []
@@ -104,11 +125,25 @@ def run(converter, resume_file_list=None, app_version=""):
                 logging.info("scan candidate file count: %s", len(files))
 
                 files, source_priority_skips = converter._apply_source_priority_filter(files)
+                logging.info(
+                    "after source_priority: files=%s, skipped=%s",
+                    len(files),
+                    len(source_priority_skips),
+                )
                 if source_priority_skips:
                     converter.stats["skipped"] += len(source_priority_skips)
                     batch_results.extend(source_priority_skips)
 
                 files, incremental_ctx = converter._apply_incremental_filter(files)
+                logging.info(
+                    "after incremental: files=%s, added=%s, modified=%s, unchanged=%s, renamed=%s, deleted=%s",
+                    len(files),
+                    incremental_ctx.get("added_count", 0),
+                    incremental_ctx.get("modified_count", 0),
+                    incremental_ctx.get("unchanged_count", 0),
+                    incremental_ctx.get("renamed_count", 0),
+                    incremental_ctx.get("deleted_count", 0),
+                )
                 if incremental_ctx.get("enabled"):
                     converter.stats["skipped"] += incremental_ctx.get("unchanged_count", 0)
                     renamed_pairs = incremental_ctx.get("renamed_pairs", []) or []
@@ -126,6 +161,11 @@ def run(converter, resume_file_list=None, app_version=""):
                             )
 
                 files, dedup_skips = converter._apply_global_md5_dedup(files)
+                logging.info(
+                    "after global_md5_dedup: files=%s, skipped=%s",
+                    len(files),
+                    len(dedup_skips),
+                )
                 if dedup_skips:
                     converter.stats["skipped"] += len(dedup_skips)
                     batch_results.extend(dedup_skips)
@@ -138,12 +178,17 @@ def run(converter, resume_file_list=None, app_version=""):
                 logging.info("start processing %s files", len(files))
                 batch_start = time.perf_counter()
                 if converter.config.get("enable_fast_md_engine", False):
-                    fast_out = converter._run_fast_md_pipeline(files) or {}
+                    checkpoint, pending_files = converter._init_checkpoint(files)
+                    fast_out = converter._run_fast_md_pipeline(
+                        pending_files, checkpoint=checkpoint
+                    ) or {}
                     batch_results.extend(fast_out.get("batch_results", []))
                     bundle_path = fast_out.get("bundle_path")
                     converter.generated_fast_md_outputs = []
                     if bundle_path:
                         converter.generated_fast_md_outputs.append(bundle_path)
+                    if checkpoint and checkpoint.get("status") == "completed":
+                        converter._clear_checkpoint()
                 else:
                     if converter.config.get("enable_parallel_conversion", False):
                         print(
@@ -233,7 +278,6 @@ def run(converter, resume_file_list=None, app_version=""):
             converter.run_mode == MODE_CONVERT_THEN_MERGE
             and converter.config.get("enable_merge", True)
             and bool(converter.config.get("output_enable_merged", True))
-            and not converter.config.get("enable_fast_md_engine", False)
         ):
             merge_start = time.perf_counter()
             merge_outputs = []
@@ -277,41 +321,41 @@ def run(converter, resume_file_list=None, app_version=""):
     postprocess_start = time.perf_counter()
     try:
         converter._write_excel_structured_json_exports()
-    except (OSError, RuntimeError, ValueError) as exc:
+    except Exception as exc:  # pylint: disable=broad-except
         logging.error(f"failed to write Excel JSON: {exc}")
 
     try:
         converter._write_records_json_exports()
-    except (OSError, RuntimeError, ValueError) as exc:
+    except Exception as exc:  # pylint: disable=broad-except
         logging.error(f"failed to write Records JSON: {exc}")
 
     try:
         writer = getattr(converter, "_write_trace_map", None)
         if callable(writer):
             writer()
-    except (OSError, RuntimeError, ValueError) as exc:
+    except Exception as exc:  # pylint: disable=broad-except
         logging.error(f"failed to write trace_map: {exc}")
 
     try:
         converter._write_chromadb_export()
-    except (OSError, RuntimeError, ValueError) as exc:
+    except Exception as exc:  # pylint: disable=broad-except
         logging.error(f"failed to write ChromaDB export: {exc}")
 
     try:
         writer = getattr(converter, "_write_prompt_ready", None)
         if callable(writer):
             writer()
-    except (OSError, RuntimeError, ValueError) as exc:
+    except Exception as exc:  # pylint: disable=broad-except
         logging.error(f"failed to write Prompt_Ready: {exc}")
 
     try:
         converter._write_markdown_quality_report()
-    except (OSError, RuntimeError, ValueError) as exc:
+    except Exception as exc:  # pylint: disable=broad-except
         logging.error(f"failed to write Markdown quality report: {exc}")
 
     try:
         converter._write_corpus_manifest(merge_outputs=merge_outputs)
-    except (OSError, RuntimeError, ValueError) as exc:
+    except Exception as exc:  # pylint: disable=broad-except
         logging.error(f"failed to write corpus manifest: {exc}")
 
     if converter.detailed_error_records:
@@ -325,7 +369,7 @@ def run(converter, resume_file_list=None, app_version=""):
                 )
                 print(failed_summary)
                 logging.info(failed_summary)
-        except (OSError, RuntimeError, ValueError) as exc:
+        except Exception as exc:  # pylint: disable=broad-except
             logging.error(f"failed to export failed files report: {exc}")
 
     converter._add_perf_seconds("postprocess_seconds", time.perf_counter() - postprocess_start)

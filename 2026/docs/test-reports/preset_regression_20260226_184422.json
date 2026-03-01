@@ -1,0 +1,187 @@
+{
+  "timestamp": "20260226_184422",
+  "sample_count": 24,
+  "sample_ext_counter": {
+    ".docx": 5,
+    ".xlsx": 5,
+    ".pptx": 5,
+    ".pdf": 5,
+    ".doc": 4
+  },
+  "results": [
+    {
+      "preset": "D:\\GitHub\\ZhiWei2026\\2026\\config.presets.notebooklm_fast_md_only.json",
+      "name": "config.presets.notebooklm_fast_md_only",
+      "target": "D:\\ZWPDFTSEST_PRESET_TEST_config.presets.notebooklm_fast_md_only_20260226_184422",
+      "cfg_out": "D:\\ZWPDFTSEST_PRESET_TEST_config.presets.notebooklm_fast_md_only_20260226_184422.json",
+      "ok": false,
+      "error": "Could not convert stream to Markdown. No converter attempted a conversion, suggesting that the filetype is simply not supported.",
+      "traceback": "Traceback (most recent call last):\n  File \"<stdin>\", line 49, in <module>\n  File \"D:\\GitHub\\ZhiWei2026\\2026\\office_converter.py\", line 1675, in run\n    return run_workflow_impl(self, resume_file_list=resume_file_list, app_version=__version__)\n           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^\n  File \"D:\\GitHub\\ZhiWei2026\\2026\\converter\\run_workflow.py\", line 180, in run\n    fast_out = converter._run_fast_md_pipeline(files) or {}\n               ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^\n  File \"D:\\GitHub\\ZhiWei2026\\2026\\office_converter.py\", line 1440, in _run_fast_md_pipeline\n    return run_fast_md_pipeline_impl(\n           ^^^^^^^^^^^^^^^^^^^^^^^^^^\n  File \"D:\\GitHub\\ZhiWei2026\\2026\\converter\\fast_md_engine.py\", line 79, in run_fast_md_pipeline\n    body = convert_source_to_markdown_text_fn(src_abs) or \"\"\n           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^\n  File \"D:\\GitHub\\ZhiWei2026\\2026\\office_converter.py\", line 1432, in _convert_source_to_markdown_text\n    return convert_source_to_markdown_text_impl(\n           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^\n  File \"D:\\GitHub\\ZhiWei2026\\2026\\converter\\markdown_source_reader.py\", line 59, in convert_source_to_markdown_text\n    result = md.convert(source_path)\n             ^^^^^^^^^^^^^^^^^^^^^^^\n  File \"C:\\Users\\admin\\AppData\\Local\\Programs\\Python\\Python312\\Lib\\site-packages\\markitdown\\_markitdown.py\", line 283, in convert\n    return self.convert_local(source, stream_info=stream_info, **kwargs)\n           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^\n  File \"C:\\Users\\admin\\AppData\\Local\\Programs\\Python\\Python312\\Lib\\site-packages\\markitdown\\_markitdown.py\", line 337, in convert_local\n    return self._convert(file_stream=fh, stream_info_guesses=guesses, **kwargs)\n           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^\n  File \"C:\\Users\\admin\\AppData\\Local\\Programs\\Python\\Python312\\Lib\\site-packages\\markitdown\\_markitdown.py\", line 629, in _convert\n    raise UnsupportedFormatException(\nmarkitdown._exceptions.UnsupportedFormatException: Could not convert stream to Markdown. No converter attempted a conversion, suggesting that the filetype is simply not supported.\n"
+    },
+    {
+      "preset": "D:\\GitHub\\ZhiWei2026\\2026\\config.presets.notebooklm_incremental_weekly_sync.json",
+      "name": "config.presets.notebooklm_incremental_weekly_sync",
+      "target": "D:\\ZWPDFTSEST_PRESET_TEST_config.presets.notebooklm_incremental_weekly_sync_20260226_184422",
+      "cfg_out": "D:\\ZWPDFTSEST_PRESET_TEST_config.presets.notebooklm_incremental_weekly_sync_20260226_184422.json",
+      "ok": true,
+      "stats": {
+        "total": 24,
+        "success": 24,
+        "failed": 0,
+        "timeout": 0,
+        "skipped": 0,
+        "permission_denied": 0,
+        "file_locked": 0,
+        "file_corrupted": 0,
+        "com_error": 0
+      },
+      "all_md": 26,
+      "all_pdf": 32,
+      "merged_md": 1,
+      "merged_pdf": 4,
+      "has_trace_map": true,
+      "has_corpus": true,
+      "has_md_corpus": false,
+      "has_llm_upload": true,
+      "expect": {
+        "run_mode": "convert_then_merge",
+        "fast_md": false,
+        "pdf": true,
+        "md": true,
+        "merged": true
+      }
+    },
+    {
+      "preset": "D:\\GitHub\\ZhiWei2026\\2026\\config.presets.notebooklm_merged_md_only.json",
+      "name": "config.presets.notebooklm_merged_md_only",
+      "target": "D:\\ZWPDFTSEST_PRESET_TEST_config.presets.notebooklm_merged_md_only_20260226_184422",
+      "cfg_out": "D:\\ZWPDFTSEST_PRESET_TEST_config.presets.notebooklm_merged_md_only_20260226_184422.json",
+      "ok": true,
+      "stats": {
+        "total": 24,
+        "success": 24,
+        "failed": 0,
+        "timeout": 0,
+        "skipped": 0,
+        "permission_denied": 0,
+        "file_locked": 0,
+        "file_corrupted": 0,
+        "com_error": 0
+      },
+      "all_md": 26,
+      "all_pdf": 0,
+      "merged_md": 1,
+      "merged_pdf": 0,
+      "has_trace_map": true,
+      "has_corpus": true,
+      "has_md_corpus": false,
+      "has_llm_upload": true,
+      "expect": {
+        "run_mode": "convert_then_merge",
+        "fast_md": false,
+        "pdf": false,
+        "md": true,
+        "merged": true
+      }
+    },
+    {
+      "preset": "D:\\GitHub\\ZhiWei2026\\2026\\config.presets.notebooklm_merged_pdf_md.json",
+      "name": "config.presets.notebooklm_merged_pdf_md",
+      "target": "D:\\ZWPDFTSEST_PRESET_TEST_config.presets.notebooklm_merged_pdf_md_20260226_184422",
+      "cfg_out": "D:\\ZWPDFTSEST_PRESET_TEST_config.presets.notebooklm_merged_pdf_md_20260226_184422.json",
+      "ok": true,
+      "stats": {
+        "total": 24,
+        "success": 24,
+        "failed": 0,
+        "timeout": 0,
+        "skipped": 0,
+        "permission_denied": 0,
+        "file_locked": 0,
+        "file_corrupted": 0,
+        "com_error": 0
+      },
+      "all_md": 26,
+      "all_pdf": 32,
+      "merged_md": 1,
+      "merged_pdf": 4,
+      "has_trace_map": true,
+      "has_corpus": true,
+      "has_md_corpus": false,
+      "has_llm_upload": true,
+      "expect": {
+        "run_mode": "convert_then_merge",
+        "fast_md": false,
+        "pdf": true,
+        "md": true,
+        "merged": true
+      }
+    },
+    {
+      "preset": "D:\\GitHub\\ZhiWei2026\\2026\\config.presets.notebooklm_merged_pdf_only.json",
+      "name": "config.presets.notebooklm_merged_pdf_only",
+      "target": "D:\\ZWPDFTSEST_PRESET_TEST_config.presets.notebooklm_merged_pdf_only_20260226_184422",
+      "cfg_out": "D:\\ZWPDFTSEST_PRESET_TEST_config.presets.notebooklm_merged_pdf_only_20260226_184422.json",
+      "ok": true,
+      "stats": {
+        "total": 24,
+        "success": 24,
+        "failed": 0,
+        "timeout": 0,
+        "skipped": 0,
+        "permission_denied": 0,
+        "file_locked": 0,
+        "file_corrupted": 0,
+        "com_error": 0
+      },
+      "all_md": 0,
+      "all_pdf": 32,
+      "merged_md": 0,
+      "merged_pdf": 4,
+      "has_trace_map": true,
+      "has_corpus": true,
+      "has_md_corpus": false,
+      "has_llm_upload": true,
+      "expect": {
+        "run_mode": "convert_then_merge",
+        "fast_md": false,
+        "pdf": true,
+        "md": false,
+        "merged": true
+      }
+    },
+    {
+      "preset": "D:\\GitHub\\ZhiWei2026\\2026\\config.presets.notebooklm_traceability_audit.json",
+      "name": "config.presets.notebooklm_traceability_audit",
+      "target": "D:\\ZWPDFTSEST_PRESET_TEST_config.presets.notebooklm_traceability_audit_20260226_184422",
+      "cfg_out": "D:\\ZWPDFTSEST_PRESET_TEST_config.presets.notebooklm_traceability_audit_20260226_184422.json",
+      "ok": true,
+      "stats": {
+        "total": 24,
+        "success": 24,
+        "failed": 0,
+        "timeout": 0,
+        "skipped": 0,
+        "permission_denied": 0,
+        "file_locked": 0,
+        "file_corrupted": 0,
+        "com_error": 0
+      },
+      "all_md": 48,
+      "all_pdf": 48,
+      "merged_md": 0,
+      "merged_pdf": 0,
+      "has_trace_map": true,
+      "has_corpus": true,
+      "has_md_corpus": false,
+      "has_llm_upload": true,
+      "expect": {
+        "run_mode": "convert_only",
+        "fast_md": false,
+        "pdf": true,
+        "md": true,
+        "merged": false
+      }
+    }
+  ]
+}

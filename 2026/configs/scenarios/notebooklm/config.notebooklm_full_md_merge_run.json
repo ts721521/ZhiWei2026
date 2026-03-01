@@ -1,0 +1,49 @@
+{
+  "_meta": {
+    "config_kind": "scenario",
+    "scenario_group": "notebooklm",
+    "scenario_name": "notebooklm_full_md_merge_run",
+    "description": "全量 MD 合并非交互运行场景，供上传 NotebookLM；必须合并以应对文件数量与单文件 200M 限制，本配置单文件上限 80M。",
+    "last_updated": "2026-02-28",
+    "notes": [
+      "NotebookLM 有上传文件数量与单文件大小限制（如 200M），建议单文件不超过 80M，故必须启用合并。",
+      "用于全流程自动化，本地执行时请调整 source/target 路径。"
+    ]
+  },
+  "source_folder": "Z:\\Schneider\\5_鎶曟爣",
+  "source_folders": [
+    "Z:\\Schneider\\5_鎶曟爣"
+  ],
+  "target_folder": "D:\\ZWPDFTSEST",
+  "source_folder_win": "Z:\\Schneider\\5_鎶曟爣",
+  "source_folders_win": [
+    "Z:\\Schneider\\5_鎶曟爣"
+  ],
+  "target_folder_win": "D:\\ZWPDFTSEST",
+  "run_mode": "convert_then_merge",
+  "enable_merge": true,
+  "output_enable_pdf": false,
+  "output_enable_md": true,
+  "output_enable_merged": true,
+  "output_enable_independent": false,
+  "enable_fast_md_engine": true,
+  "enable_traceability_anchor_and_map": true,
+  "enable_markdown_image_manifest": true,
+  "short_id_prefix": "ZW-",
+  "enable_merge_map": true,
+  "bookmark_with_short_id": true,
+  "enable_corpus_manifest": true,
+  "enable_llm_delivery_hub": true,
+  "llm_delivery_flatten": true,
+  "llm_delivery_include_pdf": false,
+  "enable_upload_readme": true,
+  "enable_upload_json_manifest": true,
+  "upload_dedup_merged": true,
+  "max_merge_size_mb": 80,
+  "markdown_max_size_mb": 80,
+  "merge_filename_pattern": "Merged_{category}_{timestamp}_{idx}",
+  "auto_open_output_dir": false,
+  "enable_incremental_mode": false,
+  "enable_checkpoint": true,
+  "checkpoint_auto_resume": true
+}

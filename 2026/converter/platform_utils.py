@@ -8,8 +8,10 @@ import sys
 def get_app_path():
     if getattr(sys, "frozen", False):
         return os.path.dirname(sys.executable)
-    else:
-        return os.path.dirname(os.path.abspath(__file__))
+    # Source layout:
+    #   <project_root>/converter/platform_utils.py
+    # Runtime config and GUI expect <project_root> as app path.
+    return os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 
 
 def is_mac():

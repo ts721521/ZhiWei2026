@@ -10,6 +10,14 @@ from converter.constants import (
 )
 
 
+def _safe_int(value, fallback):
+    try:
+        parsed = int(value)
+        return parsed if parsed > 0 else fallback
+    except (TypeError, ValueError):
+        return fallback
+
+
 def apply_config_defaults(
     cfg,
     run_mode_default,
@@ -45,6 +53,9 @@ def apply_config_defaults(
     cfg.setdefault("chromadb_chunk_overlap", 200)
     cfg.setdefault("chromadb_write_jsonl_fallback", True)
     cfg.setdefault("timeout_seconds", 60)
+    timeout_default = _safe_int(cfg.get("timeout_seconds", 60), 60)
+    cfg.setdefault("word_timeout_seconds", max(timeout_default, 90))
+    cfg.setdefault("excel_timeout_seconds", max(timeout_default, 90))
     cfg.setdefault("enable_sandbox", True)
     cfg.setdefault("default_engine", ENGINE_ASK)
     cfg.setdefault("kill_process_mode", KILL_MODE_ASK)
@@ -52,13 +63,24 @@ def apply_config_defaults(
     cfg.setdefault("enable_failed_file_trace_log", True)
     cfg.setdefault("office_reuse_app", True)
     cfg.setdefault("office_restart_every_n_files", 25)
+    cfg.setdefault("office_com_retry_times", 1)
+    cfg.setdefault("office_retry_delay_seconds", 0.8)
+    cfg.setdefault("office_retry_timeout_scale", 1.5)
+    cfg.setdefault("office_retry_pdf_wait_scale", 1.5)
+    cfg.setdefault("office_retry_timeout_cap_seconds", 600)
+    cfg.setdefault("office_retry_pdf_wait_cap_seconds", 180)
     cfg.setdefault("pdf_wait_seconds", 15)
+    pdf_wait_default = _safe_int(cfg.get("pdf_wait_seconds", 15), 15)
+    cfg.setdefault("word_pdf_wait_seconds", max(pdf_wait_default, 20))
+    cfg.setdefault("excel_pdf_wait_seconds", max(pdf_wait_default, 20))
     cfg.setdefault("ppt_timeout_seconds", cfg.get("timeout_seconds", 60))
     cfg.setdefault("ppt_pdf_wait_seconds", cfg.get("pdf_wait_seconds", 15))
     cfg.setdefault("enable_merge", True)
     cfg.setdefault("max_merge_size_mb", 80)
+    cfg.setdefault("markdown_max_size_mb", cfg.get("max_merge_size_mb", 80))
     cfg.setdefault("output_enable_pdf", True)
     cfg.setdefault("output_enable_md", True)
+    cfg.setdefault("enable_markdown_image_manifest", True)
     cfg.setdefault("output_enable_merged", True)
     cfg.setdefault("output_enable_independent", False)
     cfg.setdefault("enable_fast_md_engine", False)

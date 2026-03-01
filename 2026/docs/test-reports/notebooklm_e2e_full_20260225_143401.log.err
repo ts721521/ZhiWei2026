@@ -1,0 +1,135 @@
+Sandbox free space check: path=D:\ZWPDFTSEST, free=728.69 GB, threshold=10.00 GB, policy=block
+scanning files...
+scan candidate file count: 6458
+start processing 6458 files
+Exception in thread Thread-1 (convert_logic_in_thread):
+Traceback (most recent call last):
+  File "D:\GitHub\ZhiWei2026\2026\converter\safe_exec.py", line 39, in safe_exec
+    return func(*args, **kwargs)
+           ^^^^^^^^^^^^^^^^^^^^^
+  File "<COMObject <unknown>>", line 5, in Open
+pywintypes.com_error: (-2147352567, '发生意外。', (0, None, None, None, 0, -2147467259), None)
+
+During handling of the above exception, another exception occurred:
+
+Traceback (most recent call last):
+  File "C:\Users\admin\AppData\Local\Programs\Python\Python312\Lib\threading.py", line 1075, in _bootstrap_inner
+    self.run()
+  File "C:\Users\admin\AppData\Local\Programs\Python\Python312\Lib\threading.py", line 1012, in run
+    self._target(*self._args, **self._kwargs)
+  File "D:\GitHub\ZhiWei2026\2026\office_converter.py", line 847, in convert_logic_in_thread
+    return convert_logic_in_thread_for_converter_impl(
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "D:\GitHub\ZhiWei2026\2026\converter\convert_thread_runtime.py", line 27, in convert_logic_in_thread_for_converter
+    return convert_logic_in_thread_fn(
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "D:\GitHub\ZhiWei2026\2026\converter\convert_thread.py", line 122, in convert_logic_in_thread
+    doc = safe_exec_fn(
+          ^^^^^^^^^^^^^
+  File "D:\GitHub\ZhiWei2026\2026\office_converter.py", line 812, in _safe_exec
+    return safe_exec(
+           ^^^^^^^^^^
+  File "D:\GitHub\ZhiWei2026\2026\converter\safe_exec.py", line 49, in safe_exec
+    raise RuntimeError(f"COM error ({error_code}): {e}")
+RuntimeError: COM error (-2147352567): (-2147352567, '发生意外。', (0, None, None, None, 0, -2147467259), None)
+failed: Z:\Schneider\5_投标\2022\2022-3-明水\明水-软件硬件配置和服务建议--上海福克斯波罗有限公司.xlsx | reason: conversion command sent but PDF not generated (15s) | type: unknown
+Exception in thread Thread-2 (convert_logic_in_thread):
+Traceback (most recent call last):
+  File "D:\GitHub\ZhiWei2026\2026\converter\safe_exec.py", line 39, in safe_exec
+    return func(*args, **kwargs)
+           ^^^^^^^^^^^^^^^^^^^^^
+  File "<COMObject <unknown>>", line 5, in Open
+pywintypes.com_error: (-2147352567, '发生意外。', (0, None, None, None, 0, -2147467259), None)
+
+During handling of the above exception, another exception occurred:
+
+Traceback (most recent call last):
+  File "C:\Users\admin\AppData\Local\Programs\Python\Python312\Lib\threading.py", line 1075, in _bootstrap_inner
+    self.run()
+  File "C:\Users\admin\AppData\Local\Programs\Python\Python312\Lib\threading.py", line 1012, in run
+    self._target(*self._args, **self._kwargs)
+  File "D:\GitHub\ZhiWei2026\2026\office_converter.py", line 847, in convert_logic_in_thread
+    return convert_logic_in_thread_for_converter_impl(
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "D:\GitHub\ZhiWei2026\2026\converter\convert_thread_runtime.py", line 27, in convert_logic_in_thread_for_converter
+    return convert_logic_in_thread_fn(
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "D:\GitHub\ZhiWei2026\2026\converter\convert_thread.py", line 122, in convert_logic_in_thread
+    doc = safe_exec_fn(
+          ^^^^^^^^^^^^^
+  File "D:\GitHub\ZhiWei2026\2026\office_converter.py", line 812, in _safe_exec
+    return safe_exec(
+           ^^^^^^^^^^
+  File "D:\GitHub\ZhiWei2026\2026\converter\safe_exec.py", line 49, in safe_exec
+    raise RuntimeError(f"COM error ({error_code}): {e}")
+RuntimeError: COM error (-2147352567): (-2147352567, '发生意外。', (0, None, None, None, 0, -2147467259), None)
+failed: Z:\Schneider\5_投标\2022\2022-3-明水\明水-软件硬件配置和服务建议-Rev0.xlsx | reason: conversion command sent but PDF not generated (15s) | type: unknown
+Exception in thread Thread-3 (convert_logic_in_thread):
+Traceback (most recent call last):
+  File "D:\GitHub\ZhiWei2026\2026\converter\safe_exec.py", line 39, in safe_exec
+    return func(*args, **kwargs)
+           ^^^^^^^^^^^^^^^^^^^^^
+  File "<COMObject <unknown>>", line 5, in Open
+pywintypes.com_error: (-2147352567, '发生意外。', (0, None, None, None, 0, -2147467259), None)
+
+During handling of the above exception, another exception occurred:
+
+Traceback (most recent call last):
+  File "C:\Users\admin\AppData\Local\Programs\Python\Python312\Lib\threading.py", line 1075, in _bootstrap_inner
+    self.run()
+  File "C:\Users\admin\AppData\Local\Programs\Python\Python312\Lib\threading.py", line 1012, in run
+    self._target(*self._args, **self._kwargs)
+  File "D:\GitHub\ZhiWei2026\2026\office_converter.py", line 847, in convert_logic_in_thread
+    return convert_logic_in_thread_for_converter_impl(
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "D:\GitHub\ZhiWei2026\2026\converter\convert_thread_runtime.py", line 27, in convert_logic_in_thread_for_converter
+    return convert_logic_in_thread_fn(
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "D:\GitHub\ZhiWei2026\2026\converter\convert_thread.py", line 122, in convert_logic_in_thread
+    doc = safe_exec_fn(
+          ^^^^^^^^^^^^^
+  File "D:\GitHub\ZhiWei2026\2026\office_converter.py", line 812, in _safe_exec
+    return safe_exec(
+           ^^^^^^^^^^
+  File "D:\GitHub\ZhiWei2026\2026\converter\safe_exec.py", line 49, in safe_exec
+    raise RuntimeError(f"COM error ({error_code}): {e}")
+RuntimeError: COM error (-2147352567): (-2147352567, '发生意外。', (0, None, None, None, 0, -2147467259), None)
+failed: Z:\Schneider\5_投标\2022\2022-3-明水\明水-软件硬件配置和服务建议-rev0_LPC_3月-15-230239-2022_CaseConflict.xlsx | reason: conversion command sent but PDF not generated (15s) | type: unknown
+Markdown export success: D:\ZWPDFTSEST\_AI\Markdown\2022\2022-3-明水\晋煤明水化工数字化交付技术协议（施耐德） 2021-1-13.md
+overwrite: Z:\Schneider\5_投标\2022\2022-3-明水\晋煤明水化工数字化交付技术协议（施耐德） 2021-1-13.docx -> D:\ZWPDFTSEST\Word_晋煤明水化工数字化交付技术协议（施耐德） 2021-1-13.pdf
+Exception in thread Thread-5 (convert_logic_in_thread):
+Traceback (most recent call last):
+  File "C:\Users\admin\AppData\Local\Programs\Python\Python312\Lib\threading.py", line 1075, in _bootstrap_inner
+    self.run()
+  File "C:\Users\admin\AppData\Local\Programs\Python\Python312\Lib\threading.py", line 1012, in run
+    self._target(*self._args, **self._kwargs)
+  File "D:\GitHub\ZhiWei2026\2026\office_converter.py", line 847, in convert_logic_in_thread
+    return convert_logic_in_thread_for_converter_impl(
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "D:\GitHub\ZhiWei2026\2026\converter\convert_thread_runtime.py", line 27, in convert_logic_in_thread_for_converter
+    return convert_logic_in_thread_fn(
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "D:\GitHub\ZhiWei2026\2026\converter\convert_thread.py", line 69, in convert_logic_in_thread
+    app.Documents.Open,
+    ^^^^^^^^^^^^^
+  File "C:\Users\admin\AppData\Local\Programs\Python\Python312\Lib\site-packages\win32com\client\dynamic.py", line 631, in __getattr__
+    raise AttributeError(f"{self._username_}.{attr}")
+AttributeError: Word.Application.Documents
+failed: Z:\Schneider\5_投标\2022\2022-3-明水\晋煤明水化工数字化交付技术协议（施耐德） 2021-11-4-增补.docx | reason: conversion command sent but PDF not generated (15s) | type: unknown
+Markdown export success: D:\ZWPDFTSEST\_AI\Markdown\2022\2022-3-明水\晋煤明水化工数字化交付技术协议（施耐德） 2022-0302-增补-Rev1.md
+overwrite: Z:\Schneider\5_投标\2022\2022-3-明水\晋煤明水化工数字化交付技术协议（施耐德） 2022-0302-增补-Rev1.docx -> D:\ZWPDFTSEST\Word_晋煤明水化工数字化交付技术协议（施耐德） 2022-0302-增补-Rev1.pdf
+Markdown export success: D:\ZWPDFTSEST\_AI\Markdown\2022\2022-3-明水\晋煤明水化工数字化交付技术协议（施耐德） 2022-0302-增补-Rev2.md
+overwrite: Z:\Schneider\5_投标\2022\2022-3-明水\晋煤明水化工数字化交付技术协议（施耐德） 2022-0302-增补-Rev2.docx -> D:\ZWPDFTSEST\Word_晋煤明水化工数字化交付技术协议（施耐德） 2022-0302-增补-Rev2.pdf
+Markdown export success: D:\ZWPDFTSEST\_AI\Markdown\2022\2022-3-明水\晋煤明水化工数字化交付技术协议（施耐德） 2022-0302-增补.md
+overwrite: Z:\Schneider\5_投标\2022\2022-3-明水\晋煤明水化工数字化交付技术协议（施耐德） 2022-0302-增补.docx -> D:\ZWPDFTSEST\Word_晋煤明水化工数字化交付技术协议（施耐德） 2022-0302-增补.pdf
+Markdown export success: D:\ZWPDFTSEST\_AI\Markdown\2022\2022-3-明水\晋煤明水化工数字化交付技术协议（施耐德） 2022-0310-增补-IFC_LPC_3月-15-224800-2022_Conflict.md
+success: Z:\Schneider\5_投标\2022\2022-3-明水\晋煤明水化工数字化交付技术协议（施耐德） 2022-0310-增补-IFC_LPC_3月-15-224800-2022_Conflict.docx -> D:\ZWPDFTSEST\Word_晋煤明水化工数字化交付技术协议（施耐德） 2022-0310-增补-IFC_LPC_3月-15-224800-2022_Conflict.pdf
+Markdown export success: D:\ZWPDFTSEST\_AI\Markdown\2022\2022-3-明水\晋煤明水化工数字化交付技术协议（施耐德） 2022-0312_委外协议.md
+overwrite: Z:\Schneider\5_投标\2022\2022-3-明水\晋煤明水化工数字化交付技术协议（施耐德） 2022-0312_委外协议.docx -> D:\ZWPDFTSEST\Word_晋煤明水化工数字化交付技术协议（施耐德） 2022-0312_委外协议.pdf
+Markdown export success: D:\ZWPDFTSEST\_AI\Markdown\2022\2022-3-明水\晋煤明水化工数字化交付技术协议（施耐德） 2022-0314_委外协议.md
+overwrite: Z:\Schneider\5_投标\2022\2022-3-明水\晋煤明水化工数字化交付技术协议（施耐德） 2022-0314_委外协议.docx -> D:\ZWPDFTSEST\Word_晋煤明水化工数字化交付技术协议（施耐德） 2022-0314_委外协议.pdf
+Markdown export success: D:\ZWPDFTSEST\_AI\Markdown\2022\2022-3-明水\项目文档交付内容规定.md
+overwrite: Z:\Schneider\5_投标\2022\2022-3-明水\项目文档交付内容规定.pdf -> D:\ZWPDFTSEST\PDF_项目文档交付内容规定.pdf
+invalid pdf header: b'\x00\x00\x00\x00\x00'
+EOF marker not found
+[E2E] Run failed: Stream has ended unexpectedly
