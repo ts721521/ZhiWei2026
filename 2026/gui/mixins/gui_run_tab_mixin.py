@@ -98,6 +98,17 @@ from office_converter import (
 
 
 class RunTabUIMixin:
+    def _go_to_task_center(self):
+        """切换到任务中心 Tab，便于用户选任务后运行。"""
+        if getattr(self, "main_notebook", None) is None or getattr(
+            self, "tab_run_tasks", None
+        ) is None:
+            return
+        try:
+            self.main_notebook.select(self.tab_run_tasks)
+        except (tk.TclError, AttributeError, RuntimeError):
+            pass
+
     def _build_run_tab_content(self):
         parent = self._scroll_shared
         # 运行参数页整体提示：仅用于编辑/预览，实际执行必须从任务中心启动。
@@ -108,6 +119,14 @@ class RunTabUIMixin:
             justify=LEFT,
         )
         hint_lbl.pack(fill=X, pady=(2, 6))
+        hint_btn_row = tb.Frame(parent)
+        hint_btn_row.pack(fill=X, pady=(0, 8))
+        tb.Button(
+            hint_btn_row,
+            text=self.tr("btn_go_task_center"),
+            command=self._go_to_task_center,
+            bootstyle="primary-outline",
+        ).pack(side=LEFT)
         # Section 1: run mode
         lf_mode = tb.Labelframe(parent, text=self.tr("sec_mode"), padding=6)
         lf_mode.pack(fill=X, pady=3)

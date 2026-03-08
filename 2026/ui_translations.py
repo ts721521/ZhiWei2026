@@ -322,7 +322,7 @@ TRANSLATIONS = {
         "btn_start": "Start",
         "btn_stop": "Stop",
         "run_tab_hint_task_only": "This tab only edits run parameters. To execute, select a task in the Task Center and click Run.",
-        # Right Panel
+        "btn_go_task_center": "Go to Task Center to Run",
         "lbl_status": "STATUS",
         "lbl_logs": "Logs",
         "btn_toggle_logs": "Show/Hide Logs",
@@ -621,7 +621,7 @@ TRANSLATIONS = {
         "grp_output_controls": "输出控制",
         "grp_locator_tools": "定位工具",
         "grp_output_files": "成果文件",
-        "grp_task_runtime": "任务管理",
+        "grp_task_runtime": "任务中心",
         "grp_upload_manifest": "上传清单",
         "grp_upload_dedup": "上传去重策略",
         "grp_gdrive_upload": "Google Drive 上传",
@@ -913,6 +913,7 @@ TRANSLATIONS = {
         "btn_start": "开始运行",
         "btn_stop": "停止任务",
         "run_tab_hint_task_only": "本页仅用于编辑任务运行参数，要执行请在任务中心选择任务并点击运行。",
+        "btn_go_task_center": "去任务中心运行",
         # Right Panel
         "lbl_status": "当前状态",
         "lbl_logs": "运行日志",
