@@ -24,7 +24,7 @@
 | 文件 | 作用 |
 |------|------|
 | `office_converter.py` | 核心：转换 / 合并 / 梳理 / MSHelp / 增量 / LLM 归集；`OfficeConverter` 类，`run()` 主流程，版本号 `__version__` |
-| `office_gui.py` | GUI：Tk + ttkbootstrap，单层 7 Tab（模式与路径、转换选项、合并梳理、MSHelp、快速定位、成果文件、高级设置）；经典模式 + 任务模式 |
+| `office_gui.py` | GUI：Tk + ttkbootstrap，单层 7 Tab（模式与路径、转换选项、合并梳理、MSHelp、快速定位、成果文件、高级设置）；**自 2026-03 起仅支持任务模式运行，所有转换/合并必须从任务中心启动** |
 | `ui_translations.py` | 界面文案（当前仅中文），`TRANSLATIONS["zh"]`，`tr(key)` 取文案 |
 | `task_manager.py` | 任务存储与 checkpoint，`tasks/` 目录与 `tasks_index.json` |
 | `build_exe.py` | 一键打包：先清空 dist/build，再 PyInstaller，产出 `ZhiWei_v<版本>.exe` |

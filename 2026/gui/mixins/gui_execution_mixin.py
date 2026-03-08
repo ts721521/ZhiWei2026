@@ -192,6 +192,25 @@ class ExecutionFlowMixin:
 
         self.worker_thread = threading.Thread(target=worker, daemon=True)
         self.worker_thread.start()
+
+
+class TaskOnlyStartMixin:
+    """Override Start 按钮行为：统一走任务运行入口。"""
+
+    def _on_click_start(self):
+        if getattr(self, "worker_thread", None) and self.worker_thread.is_alive():
+            messagebox.showinfo(
+                self.tr("btn_start"), self.tr("msg_task_already_running")
+            )
+            return
+        task_id = getattr(self, "_get_selected_task_id", lambda: None)()
+        if not task_id:
+            messagebox.showinfo(
+                self.tr("btn_start"), self.tr("msg_task_select_required")
+            )
+            return
+        # 始终通过任务运行路径启动
+        self._on_click_task_run(resume=False)
         self._set_running_ui_state(True)
 
     def _maybe_run_next_queued_task(self, completed_id):

@@ -1,4 +1,4 @@
-﻿# -*- coding: utf-8 -*-
+# -*- coding: utf-8 -*-
 """Run tab UI methods extracted from OfficeGUI to reduce file size and complexity."""
 
 from datetime import datetime
@@ -100,6 +100,14 @@ from office_converter import (
 class RunTabUIMixin:
     def _build_run_tab_content(self):
         parent = self._scroll_shared
+        # 运行参数页整体提示：仅用于编辑/预览，实际执行必须从任务中心启动。
+        hint_lbl = tb.Label(
+            parent,
+            text=self.tr("run_tab_hint_task_only"),
+            wraplength=900,
+            justify=LEFT,
+        )
+        hint_lbl.pack(fill=X, pady=(2, 6))
         # Section 1: run mode
         lf_mode = tb.Labelframe(parent, text=self.tr("sec_mode"), padding=6)
         lf_mode.pack(fill=X, pady=3)

@@ -1,0 +1,16 @@
+{
+  "success": true,
+  "task_name": "zhishi",
+  "task_id": "task_20260227_191554_323009",
+  "runtime_config_path": "D:\\GitHub\\ZhiWei2026\\2026\\docs\\test-reports\\e2e_zhishi_runtime.json",
+  "source_folder": "Z:\\Schneider\\5_投标\\2021",
+  "target_folder": "D:\\ZWPDFTSEST",
+  "log_path": "D:\\GitHub\\ZhiWei2026\\2026\\logs\\conversion_log_20260305_083308.txt",
+  "llm_upload_dir": "D:\\ZWPDFTSEST\\_LLM_UPLOAD",
+  "file_count": 2,
+  "max_file_size_mb": 0.0,
+  "manifest_valid": true,
+  "errors": [],
+  "message": "E2E passed.",
+  "timestamp": "2026-03-05T08:33:18"
+}

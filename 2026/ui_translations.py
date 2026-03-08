@@ -321,6 +321,7 @@ TRANSLATIONS = {
         "msg_task_schedule_saved": "Schedule saved.",
         "btn_start": "Start",
         "btn_stop": "Stop",
+        "run_tab_hint_task_only": "This tab only edits run parameters. To execute, select a task in the Task Center and click Run.",
         # Right Panel
         "lbl_status": "STATUS",
         "lbl_logs": "Logs",
@@ -911,6 +912,7 @@ TRANSLATIONS = {
         "msg_task_schedule_saved": "定时已保存。",
         "btn_start": "开始运行",
         "btn_stop": "停止任务",
+        "run_tab_hint_task_only": "本页仅用于编辑任务运行参数，要执行请在任务中心选择任务并点击运行。",
         # Right Panel
         "lbl_status": "当前状态",
         "lbl_logs": "运行日志",

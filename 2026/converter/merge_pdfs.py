@@ -52,6 +52,18 @@ def merge_pdfs(
         print("  [Option] Enable Excel list output (one row per source file)")
     print("=" * 60)
 
+    # Ensure merge output directory exists before writing any merged files.
+    # This prevents FileNotFoundError when pypdf writes to converter.merge_output_dir.
+    try:
+        os.makedirs(converter.merge_output_dir, exist_ok=True)
+    except (OSError, RuntimeError, TypeError, ValueError) as exc:
+        logging.error(
+            "Failed to create merge output dir %s: %s",
+            converter.merge_output_dir,
+            exc,
+        )
+        return []
+
     wb_merge = None
     ws_merge = None
     merge_excel_path = None

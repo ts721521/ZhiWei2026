@@ -26,6 +26,9 @@
   "output_enable_md": true,
   "output_enable_merged": true,
   "output_enable_independent": false,
+  "merge_mode": "category_split",
+  "merge_convert_submode": "merge_only",
+  "merge_source": "target",
   "enable_fast_md_engine": false,
   "enable_traceability_anchor_and_map": true,
   "enable_markdown_image_manifest": true,
@@ -39,8 +42,8 @@
   "enable_upload_readme": true,
   "enable_upload_json_manifest": true,
   "upload_dedup_merged": true,
-  "max_merge_size_mb": 120,
-  "markdown_max_size_mb": 120,
+  "max_merge_size_mb": 80,
+  "markdown_max_size_mb": 80,
   "merge_filename_pattern": "Merged_{category}_{timestamp}_{idx}",
   "auto_open_output_dir": false
 }

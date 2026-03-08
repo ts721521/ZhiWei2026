@@ -244,6 +244,7 @@ from gui.mixins import (
     SourceFolderMixin,
     TaskWorkflowMixin,
     TaskScheduleMixin,
+    TaskOnlyStartMixin,
     TooltipMixin,
     TooltipSettingsMixin,
     UIShellMixin,
@@ -477,7 +478,7 @@ class GUIOfficeConverter(OfficeConverter):
 # ========= 涓荤獥鍙?========
 
 
-class OfficeGUI(TaskWorkflowMixin, TaskScheduleMixin, RunTabUIMixin, RunModeStateMixin, SourceFolderMixin, ConfigTabUIMixin, ConfigDirtyStateMixin, ConfigIOMixin, ConfigComposeMixin, ConfigSaveMixin, TooltipSettingsMixin, ConfigLogicMixin, RuntimeStatusMixin, ExecutionFlowMixin, ProfileManagementMixin, UIShellMixin, LocatorMixin, GDriveMixin, MiscUIMixin, TooltipMixin, tb.Window):
+class OfficeGUI(TaskWorkflowMixin, TaskScheduleMixin, RunTabUIMixin, RunModeStateMixin, SourceFolderMixin, ConfigTabUIMixin, ConfigDirtyStateMixin, ConfigIOMixin, ConfigComposeMixin, ConfigSaveMixin, TooltipSettingsMixin, ConfigLogicMixin, RuntimeStatusMixin, TaskOnlyStartMixin, ExecutionFlowMixin, ProfileManagementMixin, UIShellMixin, LocatorMixin, GDriveMixin, MiscUIMixin, TooltipMixin, tb.Window):
     TOOLTIP_DEFAULTS = {
         "tooltip_delay_ms": 300,
         "tooltip_bg": "#FFF7D6",
@@ -521,17 +522,20 @@ class OfficeGUI(TaskWorkflowMixin, TaskScheduleMixin, RunTabUIMixin, RunModeStat
 
         self.script_dir = get_app_path()
         self.config_path = config_path or os.path.join(self.script_dir, "config.json")
-        # Initialize app mode early so callbacks/tests can read it before delayed UI build.
-        self.var_app_mode = tk.StringVar(value="classic")
+        # Initialize app mode early; since 2026-03 we only support task mode.
+        self.var_app_mode = tk.StringVar(value="task")
         try:
             if os.path.isfile(self.config_path):
                 with open(self.config_path, "r", encoding="utf-8") as f:
                     raw_cfg = json.load(f)
-                mode = str(raw_cfg.get("app_mode", "classic")).strip().lower()
-                if mode in {"classic", "task"}:
-                    self.var_app_mode.set(mode)
+                mode = str(raw_cfg.get("app_mode", "task")).strip().lower()
+                # Classic mode is no longer supported as a runtime entrypoint; always coerce to task.
+                if mode != "task":
+                    mode = "task"
+                self.var_app_mode.set(mode)
         except Exception:
-            pass
+            # On any config error, fall back to task mode.
+            self.var_app_mode.set("task")
         self.var_profile_active_path = tk.StringVar(value=self.config_path)
         self.profile_manager_win = None
         self.profile_tree = None

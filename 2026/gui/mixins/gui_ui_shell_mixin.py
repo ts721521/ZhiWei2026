@@ -467,6 +467,10 @@ class UIShellMixin:
         parent = self._scroll_tasks
         lf_tasks = tb.Labelframe(parent, text=self.tr("grp_task_runtime"), padding=8)
         lf_tasks.pack(fill=BOTH, expand=YES, pady=3)
+        # 使用 grid 保证右侧按钮列始终保留最小宽度，不被列表挤掉
+        lf_tasks.rowconfigure(0, weight=1)
+        lf_tasks.columnconfigure(0, weight=1)
+        lf_tasks.columnconfigure(1, weight=0, minsize=140)
 
         if not hasattr(self, "var_task_filter_text"):
             self.var_task_filter_text = tk.StringVar(value="")
@@ -478,7 +482,6 @@ class UIShellMixin:
             self.var_task_scope_current_config_only = tk.IntVar(value=1)
 
         list_col = tb.Frame(lf_tasks)
-        list_col.pack(side=LEFT, fill=BOTH, expand=YES)
 
         filter_row = tb.Frame(list_col)
         filter_row.pack(fill=X, pady=(0, 6))
@@ -561,8 +564,11 @@ class UIShellMixin:
         self.tree_tasks.configure(yscrollcommand=scr.set)
         self.tree_tasks.bind("<<TreeviewSelect>>", lambda _e: self._on_task_select())
 
+        # 列表区域放入 grid 第 0 列
+        list_col.grid(row=0, column=0, sticky="nsew", padx=(0, 8))
+
         btn_col = tb.Frame(lf_tasks)
-        btn_col.pack(side=LEFT, fill=Y, padx=(8, 0))
+        btn_col.grid(row=0, column=1, sticky="nsew", padx=(0, 0))
 
         self.btn_task_create = tb.Button(
             btn_col,
@@ -677,7 +683,7 @@ class UIShellMixin:
             parent, text=self.tr("lbl_task_config_section"), font=("System", 9, "bold")
         ).pack(anchor=W, pady=(6, 2))
         self.txt_task_detail = ScrolledText(
-            parent, height=40, wrap=tk.WORD, font=("Consolas", 9)
+            parent, height=16, wrap=tk.WORD, font=("Consolas", 9)
         )
         self.txt_task_detail.pack(fill=BOTH, expand=YES, pady=(0, 4))
         try:
@@ -714,18 +720,21 @@ class UIShellMixin:
     def _build_footer(self, parent):
         """Build footer actions and status widgets."""
         parent.columnconfigure(1, weight=1)  # Spacer between status and buttons
+        parent.columnconfigure(2, minsize=260)
+        parent.columnconfigure(3, minsize=120)
+        parent.columnconfigure(4, minsize=80)
 
         # Status Label (Left)
         if not hasattr(self, "var_status"):
             self.var_status = tk.StringVar(value=self.tr("status_ready"))
 
         tb.Label(parent, textvariable=self.var_status, bootstyle="secondary").grid(
-            row=0, column=0, padx=10, sticky="w"
+            row=0, column=0, padx=(10, 8), sticky="w"
         )
 
         # 涓儴鎸夐挳缁勶細淇濆瓨 / 鍔犺浇 / 鏃ュ織鍒囨崲锛堝叏灞€鍙锛?
         mid_btn_frame = tb.Frame(parent)
-        mid_btn_frame.grid(row=0, column=2, padx=5)
+        mid_btn_frame.grid(row=0, column=2, padx=5, sticky="w")
 
         self.btn_save_cfg = tb.Button(
             mid_btn_frame,

@@ -4,10 +4,11 @@
         "preset_group": "notebooklm",
         "preset_name": "word_pdf_md_trace",
         "description": "PPT转PDF、Word转MD+PDF、Excel转MD，Word的PDF合并，图片在合并PDF中的位置可追溯便于LLM理解。",
-        "last_updated": "2026-02-28",
+        "last_updated": "2026-03-02",
         "notes": [
             "使用前请设置 source_folder/source_folders 和 target_folder。",
-            "保留 enable_merge_map、bookmark_with_short_id、enable_markdown_image_manifest 以便溯源与图片定位。"
+            "保留 enable_merge_map、bookmark_with_short_id、enable_markdown_image_manifest 以便溯源与图片定位。",
+            "merge_mode、merge_convert_submode、merge_source 已显式写入，确保「先转换再合并」会执行合并步骤。"
         ]
     },
     "source_folder": "Z:\\Schneider\\5_投标",
@@ -26,6 +27,9 @@
     "output_enable_md": true,
     "output_enable_merged": true,
     "output_enable_independent": false,
+    "merge_mode": "category_split",
+    "merge_convert_submode": "merge_only",
+    "merge_source": "target",
     "enable_fast_md_engine": false,
     "enable_traceability_anchor_and_map": true,
     "enable_markdown_image_manifest": true,

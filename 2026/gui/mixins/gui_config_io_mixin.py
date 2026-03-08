@@ -1,4 +1,4 @@
-﻿# -*- coding: utf-8 -*-
+# -*- coding: utf-8 -*-
 """Config file load/save methods extracted from config logic mixin."""
 
 import json
@@ -84,11 +84,12 @@ class ConfigIOMixin:
             pass
 
         if hasattr(self, "var_app_mode"):
+            # 自 2026-03 起，仅保留任务模式作为运行入口；配置中的 app_mode 统一归一为 task。
             try:
-                current_mode = self.var_app_mode.get() or "classic"
+                _ = self.var_app_mode.get()  # ensure variable exists
             except Exception:
-                current_mode = "classic"
-            self.var_app_mode.set(cfg.get("app_mode", current_mode))
+                pass
+            self.var_app_mode.set("task")
 
         # Runtime parameters
 

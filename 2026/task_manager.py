@@ -122,6 +122,10 @@ def build_task_runtime_config(
     runtime_snapshot = task.get("runtime_config_snapshot")
     snapshot = task.get("project_config_snapshot")
 
+    # 简化后的绑定规则：
+    # - PROFILE：优先绑定配置档；如缺失，退回到项目配置快照或任务运行快照；
+    # - SNAPSHOT：仅使用任务保存时的项目配置快照或运行快照；
+    # - ACTIVE（默认）：首选当前活动 project_config，若无则尝试任务运行快照。
     if binding_mode == TASK_BINDING_PROFILE:
         profile_path = str(task.get("config_snapshot_path", "")).strip()
         profile_cfg = _read_json(profile_path, {}) if profile_path else {}
@@ -131,14 +135,22 @@ def build_task_runtime_config(
         elif isinstance(snapshot, dict) and snapshot:
             base_cfg = snapshot
             cfg_source = "task.project_config_snapshot(fallback)"
-        elif prefer_runtime_snapshot and isinstance(runtime_snapshot, dict) and runtime_snapshot:
+        elif (
+            prefer_runtime_snapshot
+            and isinstance(runtime_snapshot, dict)
+            and runtime_snapshot
+        ):
             base_cfg = runtime_snapshot
             cfg_source = "task.runtime_config_snapshot(fallback)"
     elif binding_mode == TASK_BINDING_SNAPSHOT:
         if isinstance(snapshot, dict) and snapshot:
             base_cfg = snapshot
             cfg_source = "task.project_config_snapshot"
-        elif prefer_runtime_snapshot and isinstance(runtime_snapshot, dict) and runtime_snapshot:
+        elif (
+            prefer_runtime_snapshot
+            and isinstance(runtime_snapshot, dict)
+            and runtime_snapshot
+        ):
             base_cfg = runtime_snapshot
             cfg_source = "task.runtime_config_snapshot"
     elif (
@@ -180,6 +192,7 @@ def build_task_runtime_config(
         merged["output_enable_md"] = bool(merged.get("enable_markdown", True))
     merged["enable_markdown"] = bool(merged.get("output_enable_md", True))
 
+    # NotebookLM 场景下的统一规则：convert_then_merge 一律在 target 目录上做合并。
     if merged.get("run_mode") == "convert_then_merge":
         merged["merge_source"] = "target"
 

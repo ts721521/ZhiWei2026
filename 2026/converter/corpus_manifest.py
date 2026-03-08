@@ -1,4 +1,4 @@
-﻿# -*- coding: utf-8 -*-
+# -*- coding: utf-8 -*-
 """Corpus manifest and LLM delivery hub helpers extracted from office_converter.py."""
 
 import json
@@ -28,10 +28,14 @@ def maybe_build_llm_delivery_hub(converter, target_folder, artifacts):
         llm_root = converter.config.get("llm_delivery_root") or os.path.join(
             target_folder, "_LLM_UPLOAD"
         )
+    # 清空旧的 _LLM_UPLOAD 目录，确保每次运行只包含本次产物
+    # 这是为 NotebookLM 准备语料的核心原则：输出必须是新鲜的合并结果
     try:
+        if os.path.exists(llm_root):
+            shutil.rmtree(llm_root)
         os.makedirs(llm_root, exist_ok=True)
     except (OSError, RuntimeError, TypeError, ValueError) as exc:
-        logging.error(f"failed to create LLM hub root {llm_root}: {exc}")
+        logging.error(f"failed to recreate LLM hub root {llm_root}: {exc}")
         return None
 
     include_pdf = converter.config.get("llm_delivery_include_pdf", False)

@@ -1,0 +1,72 @@
+{
+  "_meta": {
+    "config_kind": "preset",
+    "preset_group": "notebooklm",
+    "preset_name": "word_pdf_md_trace",
+    "description": "PPT转PDF、Word转MD+PDF、Excel转MD，Word的PDF合并，图片在合并PDF中的位置可追溯便于LLM理解。",
+    "last_updated": "2026-02-28",
+    "notes": [
+      "使用前请设置 source_folder/source_folders 和 target_folder。",
+      "保留 enable_merge_map、bookmark_with_short_id、enable_markdown_image_manifest 以便溯源与图片定位。"
+    ]
+  },
+  "source_folder": "Z:\\Schneider\\5_投标\\2021",
+  "source_folders": [
+    "Z:\\Schneider\\5_投标\\2021"
+  ],
+  "target_folder": "D:/ToLLM",
+  "source_folder_win": "Z:\\Schneider\\5_投标",
+  "source_folders_win": [
+    "Z:\\Schneider\\5_投标"
+  ],
+  "target_folder_win": "D:\\ZWPDFTSEST",
+  "run_mode": "convert_then_merge",
+  "enable_merge": true,
+  "output_enable_pdf": true,
+  "output_enable_md": true,
+  "output_enable_merged": true,
+  "output_enable_independent": true,
+  "enable_fast_md_engine": false,
+  "enable_traceability_anchor_and_map": true,
+  "enable_markdown_image_manifest": true,
+  "short_id_prefix": "ZW-",
+  "enable_merge_map": true,
+  "bookmark_with_short_id": true,
+  "enable_corpus_manifest": true,
+  "enable_llm_delivery_hub": true,
+  "llm_delivery_flatten": true,
+  "llm_delivery_include_pdf": true,
+  "enable_upload_readme": true,
+  "enable_upload_json_manifest": true,
+  "upload_dedup_merged": true,
+  "max_merge_size_mb": 80,
+  "markdown_max_size_mb": 80,
+  "merge_filename_pattern": "Merged_{category}_{timestamp}_{idx}",
+  "auto_open_output_dir": false,
+  "kill_process_mode": "auto",
+  "default_engine": "wps",
+  "enable_checkpoint": true,
+  "checkpoint_auto_resume": true,
+  "office_restart_every_n_files": 25,
+  "sandbox_min_free_gb": 10,
+  "ui": {
+    "tooltip_delay_ms": 300,
+    "tooltip_bg": "#FFF7D6",
+    "tooltip_fg": "#202124",
+    "tooltip_font_family": "System",
+    "tooltip_font_size": 9,
+    "tooltip_auto_theme": true,
+    "confirm_revert_dirty": true,
+    "task_current_config_only": true,
+    "window_geometry": "1360x920+865+186",
+    "window_state": "normal"
+  },
+  "merge_mode": "category_split",
+  "enable_incremental_mode": true,
+  "incremental_registry_path": "D:\\ToLLM\\_AI\\registry\\task_task_20260227_191554_323009_incremental_registry.json",
+  "enable_markdown": true,
+  "merge_source": "target",
+  "_task_config_source": "task.profile_config",
+  "_task_config_binding_mode": "profile",
+  "_task_id": "task_20260227_191554_323009"
+}

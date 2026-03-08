@@ -738,7 +738,16 @@ class TaskWorkflowMixin:
         """In classic mode hide task tab entirely; in task mode show it and enable Run/Resume (design 7.1)."""
         if not hasattr(self, "var_app_mode"):
             return
-        is_classic = self.var_app_mode.get() == "classic"
+        # 统一任务模式：强制 app_mode 为 task，始终展示任务标签并启用任务相关按钮。
+        if getattr(self, "var_app_mode", None) is not None:
+            current = str(self.var_app_mode.get() or "").strip().lower()
+            if current != "task":
+                try:
+                    self.var_app_mode.set("task")
+                except (AttributeError, TypeError, ValueError, tk.TclError, RuntimeError):
+                    # 保守降级：不影响后续 UI 更新
+                    return
+        is_classic = False
         if hasattr(self, "main_notebook") and hasattr(self, "tab_run_tasks"):
             self._set_run_tab_state(
                 self.tab_run_tasks, "hidden" if is_classic else "normal"

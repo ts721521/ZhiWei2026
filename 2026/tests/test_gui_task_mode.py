@@ -98,12 +98,12 @@ class TestAppModeConfig(unittest.TestCase):
 
 @unittest.skipIf(sys.platform != "win32", "GUI 实例化测试仅在 Windows 下运行")
 class TestGuiTaskTabVisibility(unittest.TestCase):
-    """GUI 实例化后任务 Tab 显隐（需 Windows + 可显示窗口）."""
+    """GUI 实例化后任务 Tab 显隐（仅任务模式可运行）."""
 
     def setUp(self):
         self.tmp = tempfile.mkdtemp(prefix="gui_test_")
         self.config_path = os.path.join(self.tmp, "config.json")
-        # 使用 office_converter 的默认配置并写入 app_mode
+        # 使用 office_converter 的默认配置并写入 app_mode（运行时会被强制归一为 task）
         from office_converter import create_default_config
         ok = create_default_config(self.config_path)
         self.assertTrue(ok, "default config should be created")
@@ -123,40 +123,10 @@ class TestGuiTaskTabVisibility(unittest.TestCase):
             pass
 
     @patch("office_gui.messagebox.showinfo")
-    def test_classic_mode_hides_task_tab(self, mock_showinfo):
-        import office_gui
-        self.app = office_gui.OfficeGUI(config_path=self.config_path)
-        _drain_events(self.app)
-        self.assertEqual(self.app.var_app_mode.get(), "classic")
-        self.assertFalse(
-            _task_tab_visible(self.app),
-            "传统模式下任务 Tab 应被隐藏",
-        )
-        _close_app(self.app)
-        self.app = None
-
-    @unittest.skipIf(not _has_ttkbootstrap(), "任务 Tab 恢复显示需 ttkbootstrap；Windows 下推荐安装以完整验证")
-    @patch("office_gui.messagebox.showinfo")
-    def test_switch_to_task_mode_shows_task_tab(self, mock_showinfo):
-        import office_gui
-        self.app = office_gui.OfficeGUI(config_path=self.config_path)
-        _drain_events(self.app)
-        self.app.var_app_mode.set("task")
-        self.app._update_task_tab_for_app_mode()
-        _drain_events(self.app)
-        self.assertTrue(
-            _task_tab_visible(self.app),
-            "切换到任务模式后任务 Tab 应显示",
-        )
-        _close_app(self.app)
-        self.app = None
-
-    @unittest.skipIf(not _has_ttkbootstrap(), "任务 Tab 恢复显示需 ttkbootstrap；Windows 下推荐安装以完整验证")
-    @patch("office_gui.messagebox.showinfo")
-    def test_task_mode_config_shows_task_tab(self, mock_showinfo):
+    def test_task_mode_always_shows_task_tab(self, mock_showinfo):
         with open(self.config_path, "r", encoding="utf-8") as f:
             cfg = json.load(f)
-        cfg["app_mode"] = "task"
+        cfg["app_mode"] = "classic"
         with open(self.config_path, "w", encoding="utf-8") as f:
             json.dump(cfg, f, indent=4, ensure_ascii=False)
         import office_gui
@@ -165,7 +135,7 @@ class TestGuiTaskTabVisibility(unittest.TestCase):
         self.assertEqual(self.app.var_app_mode.get(), "task")
         self.assertTrue(
             _task_tab_visible(self.app),
-            "配置为 task 时启动后任务 Tab 应显示",
+            "统一任务模式下任务 Tab 应始终显示",
         )
         _close_app(self.app)
         self.app = None
@@ -208,7 +178,7 @@ class TestWizardExists(unittest.TestCase):
             )
 
     def test_start_button_branches_on_app_mode(self):
-        """开始按钮按 app_mode 分支（文档 6.3 / 7.1）。"""
+        """开始按钮始终通过任务路径运行（统一任务模式）。"""
         source = ""
         paths = [
             os.path.join(_ROOT, "office_gui.py"),
@@ -218,12 +188,8 @@ class TestWizardExists(unittest.TestCase):
             with open(p, encoding="utf-8") as f:
                 source += "\n" + f.read()
         self.assertIn("_on_click_start", source)
-        self.assertIn("var_app_mode", source)
-        self.assertIn('"task"', source, "应有 task 模式分支")
-        self.assertTrue(
-            "var_app_mode" in source and "task" in source and "_on_click_start" in source,
-            "开始按钮应根据 app_mode 分支到任务或传统逻辑",
-        )
+        # 只要存在 _on_click_start 且任务运行入口存在即可；不再要求按 classic/task 分支
+        self.assertIn("_on_click_task_run", source)
 
 
 @unittest.skipIf(sys.platform != "win32", "仅 Windows 运行")

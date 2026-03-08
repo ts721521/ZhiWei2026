@@ -106,14 +106,7 @@ class ConfigTabUIMixin:
         self.lbl_cfg_dirty_state.pack(anchor="w", pady=(0, 2))
         dirty_row = tb.Frame(parent)
         dirty_row.pack(fill=X, pady=(0, 4))
-        self.frm_cfg_dirty_summary = tb.Frame(dirty_row)
-        self.frm_cfg_dirty_summary.pack(side=LEFT, fill=X, expand=YES)
-        self.lbl_cfg_dirty_sections = tb.Label(
-            self.frm_cfg_dirty_summary,
-            text=self.tr("lbl_cfg_dirty_none"),
-            bootstyle="secondary",
-        )
-        self.lbl_cfg_dirty_sections.pack(side=LEFT)
+        # 先放右侧按钮，再放左侧摘要，避免窄窗口时按钮被遮挡
         self.btn_save_cfg_dirty = tb.Button(
             dirty_row,
             text=self.tr("btn_save_cfg_dirty"),
@@ -122,8 +115,16 @@ class ConfigTabUIMixin:
             width=18,
             state="disabled",
         )
-        self.btn_save_cfg_dirty.pack(side=RIGHT, padx=(0, 6))
+        self.btn_save_cfg_dirty.pack(side=RIGHT, padx=(6, 0))
         self._attach_tooltip(self.btn_save_cfg_dirty, "tip_save_config_dirty")
+        self.frm_cfg_dirty_summary = tb.Frame(dirty_row)
+        self.frm_cfg_dirty_summary.pack(side=LEFT, fill=X, expand=YES)
+        self.lbl_cfg_dirty_sections = tb.Label(
+            self.frm_cfg_dirty_summary,
+            text=self.tr("lbl_cfg_dirty_none"),
+            bootstyle="secondary",
+        )
+        self.lbl_cfg_dirty_sections.pack(side=LEFT)
         self._set_config_dirty(False)
 
         # tab_cfg_* 宸插湪 _build_ui 涓涓哄埆鍚嶏紙鎸囧悜瀵瑰簲鐨勫姛鑳?tab 婊氬姩椤甸潰锛?

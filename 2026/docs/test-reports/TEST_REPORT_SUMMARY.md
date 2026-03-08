@@ -206,10 +206,18 @@ OK
 - ?????`Ran 282 tests in 7.730s`
 - ????`OK`
 
-## 2026-02-25 TaskWorkflowMixin exception narrowing regression
+## 2026-03-01 统一任务模式（GUI app_mode 收紧）
 - Command: `python -m unittest discover -s tests -p "test_*.py" -v`
-- Result: `Ran 287 tests in 7.575s`
-- Status: `OK`
+- Result: *(本地运行时填写，例如 `Ran 3xx tests in X.XXXs`)*
+- Status: `OK`（预期）
+
+## 2026-03-05 NotebookLM E2E 回归（zhishi 任务 + NotebookLM 预设）
+- 目的：验证任务中心唯一入口下，zhishi 任务 + NotebookLM 预设的转换→合并→_LLM_UPLOAD 全流程；确认 _LLM_UPLOAD 为当次合并产物、无复制源目录文件。
+- 脚本：`python scripts/run_zhishi_task_e2e.py [--max-files N]`（无参数为全量，`--dry-run` 仅生成运行时配置）。
+- 结果：E2E 通过（exit_code=0）。转换 2 个文件 → 按 category_split 合并 Word/Excel/PPT/PDF → LLM hub 生成于 target/_LLM_UPLOAD，含合并后 MD/PDF 及 manifest。
+- 产物：`docs/test-reports/notebooklm_e2e_zhishi_result.json`、`docs/test-reports/e2e_zhishi_runtime.json`。
+- 结论：合并与 _LLM_UPLOAD 行为符合预期；每次运行会清空并重建 _LLM_UPLOAD，仅写入本次合并结果。
+
 ## 2026-02-25 TaskWorkflowMixin exception narrowing regression (round 2)
 - Command: `python -m unittest discover -s tests -p "test_*.py" -v`
 - Result: `Ran 288 tests in 6.917s`

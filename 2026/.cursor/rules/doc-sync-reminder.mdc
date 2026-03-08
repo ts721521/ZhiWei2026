@@ -1,0 +1,21 @@
+---
+description: 修改核心代码时必须同步更新交接文档与测试汇总，避免遗漏
+alwaysApply: true
+---
+
+# 文档同步提醒（与 AGENTS.md §3 一致）
+
+当**修改或新增**以下任意路径时，**必须**同步更新对应文档，否则视为未完成交付：
+
+**触发路径：**
+- `office_converter.py`、`office_gui.py`、`task_manager.py`
+- `converter/**`、`gui/**`、`tests/**`
+
+**必须同步更新的文档：**
+- `docs/plans/2026-02-24-office-converter-split-handover.md` — 当前状态与拆分现状
+- `docs/test-reports/TEST_REPORT_SUMMARY.md` — 最新全量回归结果（执行命令、用例数、OK/FAILED、本轮变更摘要）
+
+**若涉及架构/目录迁移**（模块搬迁、导入规则变化、兼容层新增或移除）**还必须更新：**
+- `AGENTS.md`
+
+完成代码改动后，须先执行 `python -m unittest discover -s tests -p "test_*.py" -v`，再将结果与变更摘要写入上述两个文档。提交前可运行 `python scripts/check_doc_sync.py --staged` 自检。
