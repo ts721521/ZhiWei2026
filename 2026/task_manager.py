@@ -326,7 +326,9 @@ class TaskStore:
             lower = name.lower()
             if not lower.endswith(".json"):
                 continue
-            if lower == "tasks_index.json" or lower.endswith("_checkpoint.json"):
+            if not lower.startswith("task_"):
+                continue
+            if lower.endswith("_checkpoint.json"):
                 continue
             out.append(name[:-5])
         return out
