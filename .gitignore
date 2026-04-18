@@ -64,6 +64,8 @@ log/
 2026/.coverage
 2026/.coverage.*
 2026/config.json
+# 根目录 config.json（早期遗留），含本地路径，不进仓库
+/config.json
 2026/config_profiles/
 2026/config_profiles/*.json
 2026/tasks/
