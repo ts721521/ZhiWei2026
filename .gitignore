@@ -3,6 +3,8 @@
 Thumbs.db
 .vscode/
 .idea/
+.cursor/
+.claude/
 
 # Python
 __pycache__/
@@ -70,6 +72,7 @@ log/
 2026/output/
 2026/skills/
 2026/out.txt
+2026/test_merge_config.json
 2026/2026.code-workspace
 2026/.cursor/mcp.json
 2026/.cursor/settings.json
