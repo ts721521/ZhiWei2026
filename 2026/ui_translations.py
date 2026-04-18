@@ -104,10 +104,6 @@ TRANSLATIONS = {
         "lbl_cfg_dirty_none": "Unsaved sections: None",
         "lbl_cfg_dirty_sections": "Unsaved sections: {}",
         "btn_cfg_focus_dirty": "Go to Unsaved",
-        # App mode (task vs classic)
-        "app_mode_classic": "Classic",
-        "app_mode_task": "Task",
-        "tip_app_mode": "Classic: run with current UI params. Task: run selected task with its config.",
         # Modes
         "mode_convert": "Convert Only",
         "mode_merge": "Merge & Convert",
@@ -736,10 +732,6 @@ TRANSLATIONS = {
         "lbl_cfg_dirty_none": "未保存分区：无",
         "lbl_cfg_dirty_sections": "未保存分区：{}",
         "btn_cfg_focus_dirty": "跳转未保存分区",
-        # App mode (task vs classic)
-        "app_mode_classic": "传统模式",
-        "app_mode_task": "任务模式",
-        "tip_app_mode": "传统模式：按当前界面参数运行。任务模式：运行选中的任务（使用任务配置）。",
         # Modes
         "mode_convert": "仅转换",
         "mode_merge": "合并与转换",
