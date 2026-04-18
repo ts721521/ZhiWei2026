@@ -435,21 +435,69 @@ class TaskStore:
                 return dict(s)
         return None
 
-    def set_schedule(self, task_id, enabled, daily_at="09:00", last_triggered=None):
-        """daily_at: "HH:MM" (24h). last_triggered: iso string or None."""
+    def set_schedule(
+        self,
+        task_id,
+        enabled,
+        daily_at="09:00",
+        last_triggered=None,
+        kind="daily",
+        weekdays=None,
+        interval_minutes=60,
+        once_at="",
+    ):
+        """保存任务定时。
+
+        kind: 'daily' | 'weekly' | 'interval' | 'once'
+            daily   : 每天 daily_at (HH:MM) 触发
+            weekly  : 每周指定 weekdays（0=周一..6=周日）的 daily_at 触发
+            interval: 距上次触发间隔 interval_minutes 分钟后再触发
+            once    : 到达 once_at（'YYYY-MM-DD HH:MM'）触发一次后停用
+        """
         task_id = str(task_id or "").strip()
         data = self.load_schedules()
-        schedules = [s for s in data.get("schedules", []) if not (isinstance(s, dict) and str(s.get("task_id", "")).strip() == task_id)]
+        schedules = [
+            s
+            for s in data.get("schedules", [])
+            if not (
+                isinstance(s, dict)
+                and str(s.get("task_id", "")).strip() == task_id
+            )
+        ]
         if enabled:
-            schedules.append({
+            payload = {
                 "task_id": task_id,
                 "enabled": True,
+                "kind": str(kind or "daily").strip().lower(),
                 "daily_at": str(daily_at or "09:00").strip()[:5],
+                "weekdays": sorted({int(x) for x in (weekdays or []) if 0 <= int(x) <= 6}),
+                "interval_minutes": max(1, int(interval_minutes or 60)),
+                "once_at": str(once_at or "").strip()[:16],
                 "last_triggered": last_triggered or "",
-            })
+            }
+            schedules.append(payload)
         data["schedules"] = schedules
         self.save_schedules(data)
         return self.get_schedule(task_id)
+
+    def delete_schedule(self, task_id):
+        """彻底从 schedules.json 移除指定 task 的定时记录。"""
+        task_id = str(task_id or "").strip()
+        data = self.load_schedules()
+        before = data.get("schedules", []) or []
+        after = [
+            s
+            for s in before
+            if not (
+                isinstance(s, dict)
+                and str(s.get("task_id", "")).strip() == task_id
+            )
+        ]
+        if len(after) == len(before):
+            return False
+        data["schedules"] = after
+        self.save_schedules(data)
+        return True
 
     def update_schedule_last_triggered(self, task_id, iso_str):
         data = self.load_schedules()

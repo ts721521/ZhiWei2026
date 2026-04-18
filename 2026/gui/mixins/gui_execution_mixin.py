@@ -204,14 +204,20 @@ class TaskOnlyStartMixin:
         self._on_click_task_run(resume=False)
 
     def _maybe_run_next_queued_task(self, completed_id):
-        """After a single task run finishes, if batch queue exists and completed_id was head, run next."""
+        """After a single task run finishes, if batch queue exists and completed_id was head, run next.
+
+        Worker 跑完后顺手把定时器里堆积的待触发任务也消费一下，避免长任务结束时
+        定时队列要等下一轮 60s 轮询才被发现。
+        """
         queue = getattr(self, "_task_run_queue", None)
-        if not queue or queue[0] != completed_id:
-            return
-        queue.pop(0)
-        if queue:
-            next_id = queue[0]
-            self.after(100, lambda: self._run_single_task(next_id, False))
+        if queue and queue[0] == completed_id:
+            queue.pop(0)
+            if queue:
+                next_id = queue[0]
+                self.after(100, lambda: self._run_single_task(next_id, False))
+                return
+        if hasattr(self, "_drain_pending_triggers"):
+            self.after(150, self._drain_pending_triggers)
 
     def _on_click_task_batch_run(self):
         """Queue selected tasks and run them one by one."""

@@ -318,9 +318,23 @@ class TaskWorkflowMixin:
                 full_task = task
             binding = self._summarize_task_config_binding(full_task, runtime_preview={})
             binding_name = str(binding.get("display_name", "") or "-")
-            binding_relation = str(binding.get("relation_label", "") or "-")
             status = str(task.get("status", "idle"))
             last_run = (task.get("last_run_at") or "")[:16]
+            schedule_label = "—"
+            try:
+                from gui.mixins.gui_task_schedule_mixin import summarize_schedule
+                sched = self.task_store.get_schedule(task_id)
+                weekday_labels = [
+                    self.tr("weekday_mon"), self.tr("weekday_tue"),
+                    self.tr("weekday_wed"), self.tr("weekday_thu"),
+                    self.tr("weekday_fri"), self.tr("weekday_sat"),
+                    self.tr("weekday_sun"),
+                ]
+                schedule_label = summarize_schedule(
+                    sched, tr=self.tr, weekday_labels=weekday_labels
+                )
+            except (AttributeError, ImportError, TypeError, ValueError, OSError, RuntimeError) as e:
+                self._report_nonfatal_ui_error("task.schedule_summary", exc=e, detail=task_id)
             try:
                 self.tree_tasks.insert(
                     "",
@@ -331,7 +345,7 @@ class TaskWorkflowMixin:
                         source,
                         target,
                         binding_name,
-                        binding_relation,
+                        schedule_label,
                         status,
                         last_run,
                     ),

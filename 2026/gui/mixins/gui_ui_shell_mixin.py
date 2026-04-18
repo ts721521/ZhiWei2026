@@ -578,7 +578,7 @@ class UIShellMixin:
 
         tree_row = tb.Frame(list_col)
         tree_row.pack(fill=BOTH, expand=YES)
-        cols = ("name", "source", "target", "config", "binding", "status", "last_run")
+        cols = ("name", "source", "target", "config", "schedule", "status", "last_run")
         self.tree_tasks = ttk.Treeview(
             tree_row, columns=cols, show="headings", height=12, selectmode="extended"
         )
@@ -587,7 +587,7 @@ class UIShellMixin:
             ("source", "col_task_source", "Source"),
             ("target", "col_task_target", "Target"),
             ("config", "col_task_config", "Config"),
-            ("binding", "col_task_binding", "Binding"),
+            ("schedule", "col_task_schedule", "Schedule"),
             ("status", "col_task_status", "Status"),
             ("last_run", "col_task_last_run", "Last run"),
         )
@@ -597,8 +597,8 @@ class UIShellMixin:
         self.tree_tasks.column("name", width=160)
         self.tree_tasks.column("source", width=150)
         self.tree_tasks.column("target", width=150)
-        self.tree_tasks.column("config", width=150)
-        self.tree_tasks.column("binding", width=110)
+        self.tree_tasks.column("config", width=130)
+        self.tree_tasks.column("schedule", width=110)
         self.tree_tasks.column("status", width=70)
         self.tree_tasks.column("last_run", width=100)
         self.tree_tasks.pack(fill=BOTH, expand=YES, side=LEFT)
