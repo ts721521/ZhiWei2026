@@ -4,6 +4,7 @@ import tempfile
 import unittest
 
 from office_converter import (
+    COLLECT_COPY_LAYOUT_PRESERVE_TREE,
     COLLECT_MODE_COPY_AND_INDEX,
     MODE_CONVERT_THEN_MERGE,
     STRATEGY_STANDARD,
@@ -22,6 +23,7 @@ class DefaultConfigSchemaTests(unittest.TestCase):
         self.assertEqual("classic", cfg.get("app_mode"))
         self.assertEqual(MODE_CONVERT_THEN_MERGE, cfg.get("run_mode"))
         self.assertEqual(COLLECT_MODE_COPY_AND_INDEX, cfg.get("collect_mode"))
+        self.assertEqual(COLLECT_COPY_LAYOUT_PRESERVE_TREE, cfg.get("collect_copy_layout"))
         self.assertEqual(STRATEGY_STANDARD, cfg.get("content_strategy"))
 
         self.assertIn("enable_parallel_conversion", cfg)

@@ -2,6 +2,7 @@
 """Run-mode state and toggle handlers extracted from run-tab UI mixin."""
 
 from office_converter import (
+    COLLECT_MODE_COPY_AND_INDEX,
     MODE_CONVERT_ONLY,
     MODE_MERGE_ONLY,
     MODE_CONVERT_THEN_MERGE,
@@ -12,6 +13,19 @@ from office_converter import (
 
 
 class RunModeStateMixin:
+    def _sync_collect_copy_layout_state(self):
+        if not hasattr(self, "frm_collect_copy_layout"):
+            return
+        if self.var_run_mode.get() != MODE_COLLECT_ONLY:
+            return
+        sub = self.var_collect_mode.get()
+        state = (
+            "normal"
+            if sub == COLLECT_MODE_COPY_AND_INDEX
+            else "disabled"
+        )
+        self._set_widget_tree_state(self.frm_collect_copy_layout, state)
+
     def _report_nonfatal_run_mode_error(self, scope, exc):
         reporter = getattr(self, "_report_nonfatal_ui_error", None)
         if callable(reporter):
@@ -109,6 +123,7 @@ class RunModeStateMixin:
             self._set_widget_tree_state(self.frm_collect_opts, "normal")
         else:
             self._set_widget_tree_state(self.frm_collect_opts, "disabled")
+        self._sync_collect_copy_layout_state()
 
         # 閼奉亜濮╅柅澶夎厬鐎电懓绨查惃鍕€婄仦?tab閿涘牆鎮庨獮鏈电啊濮婂磭鎮婇妴涓甋Help/鐎规矮缍呴敍?
         if not bool(getattr(self, "_suppress_run_tab_autoselect", False)):

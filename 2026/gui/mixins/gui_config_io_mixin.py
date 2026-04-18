@@ -8,6 +8,7 @@ from tkinter import messagebox
 from tkinter.constants import *
 
 from office_converter import (
+    COLLECT_COPY_LAYOUT_PRESERVE_TREE,
     MODE_CONVERT_ONLY,
     MODE_MERGE_ONLY,
     MODE_CONVERT_THEN_MERGE,
@@ -260,6 +261,10 @@ class ConfigIOMixin:
         # 鏉╂劘顢戝Ο鈥崇础 / 鐎涙劖膩瀵?/ 缁涙牜鏆愰敍鍫滅稊娑撴椽绮拋銈忕礆
         self.var_run_mode.set(cfg.get("run_mode", MODE_CONVERT_THEN_MERGE))
         self.var_collect_mode.set(cfg.get("collect_mode", COLLECT_MODE_COPY_AND_INDEX))
+        if hasattr(self, "var_collect_copy_layout"):
+            self.var_collect_copy_layout.set(
+                cfg.get("collect_copy_layout", COLLECT_COPY_LAYOUT_PRESERVE_TREE)
+            )
         self.var_strategy.set(cfg.get("content_strategy", "standard"))
 
         # 瀵洘鎼?& 鏉╂稓鈻肩粵鏍殣

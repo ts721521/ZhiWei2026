@@ -2456,3 +2456,24 @@ python -m unittest discover -s tests -p "test_*.py" -v
 
 - `Ran 401 tests in 6.578s`
 - `OK`
+
+---
+
+## 66. 2026-04-18 v5.21.0 Collect「复制 + 索引」复制布局选项
+
+### 66.1 本轮改动
+
+- 新增配置 `collect_copy_layout`：`preserve_tree` | `flat`；仅在 `collect_mode == copy_and_index` 时影响拷贝目标路径；`flat` 时对重复 basename 使用 `name__1.ext` 等形式消歧。
+- 涉及：`converter/collect_index.py`、`converter/default_config.py`、`converter/config_defaults.py`、`converter/config_validation.py`、`gui/mixins/gui_run_tab_mixin.py`、`gui/mixins/gui_run_mode_state_mixin.py`、`gui/mixins/gui_config_compose_mixin.py`、`gui/mixins/gui_config_io_mixin.py`、`gui/mixins/gui_task_workflow_mixin.py`、`ui_translations.py`、`office_converter.py`（版本 5.21.0）、相关单测。
+
+### 66.2 定向回归
+
+```bash
+python3 -m unittest tests.test_converter_collect_index_module tests.test_converter_config_validation_module tests.test_converter_config_load_module tests.test_default_config_schema tests.test_converter_constants_module tests.test_converter_config_defaults_module -v
+```
+
+结果：`Ran 17 tests` · OK。
+
+### 66.3 当前状态
+
+- 同步副本与门禁路径：`docs/plans/2026-02-24-office-converter-split-handover.md`。

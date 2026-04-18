@@ -27,6 +27,7 @@ class ConverterConfigLoadSplitTests(unittest.TestCase):
                     {
                         "run_mode": "convert_then_merge",
                         "collect_mode": "copy_and_index",
+                        "collect_copy_layout": "preserve_tree",
                         "content_strategy": "standard",
                         "default_engine": "ask",
                         "kill_process_mode": "ask",

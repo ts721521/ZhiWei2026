@@ -2,6 +2,15 @@
 
 All notable changes to this project are documented in this file.
 
+## [v5.21.0] - 2026-04-18
+### Added
+- **Collect 复制布局**：在「复制 + 生成索引」（`copy_and_index`）子模式下，新增配置 `collect_copy_layout`：`preserve_tree`（默认，保持源目录相对结构）与 `flat`（全部复制到目标根目录；同名文件依次命名为 `name__1.ext`、`name__2.ext`…）。运行参数 Tab 与任务向导提供单选项；`index_only` 不受影响。
+
+### Tests
+- 更新配置校验/默认配置/加载相关单测；新增扁平化目标路径分配的单元测试。
+
+---
+
 ## [v5.20.0 · Post-release UI 整理] - 2026-04-18
 ### Added
 - **向导"去重策略"行**：任务向导第 3 步新增去重小节。Collect 模式显示只读说明（SHA256 内容去重 + Duplicates 表）；Convert / 合并模式显示「按类型全局 MD5 去重」复选框与提示。

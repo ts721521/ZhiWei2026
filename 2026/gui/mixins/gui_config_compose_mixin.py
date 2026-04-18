@@ -187,6 +187,7 @@ class ConfigComposeMixin:
         cfg["run_mode"] = self.var_run_mode.get()
         if write_collect:
             cfg["collect_mode"] = self.var_collect_mode.get()
+            cfg["collect_copy_layout"] = self.var_collect_copy_layout.get()
         if write_convert:
             cfg["content_strategy"] = self.var_strategy.get()
 

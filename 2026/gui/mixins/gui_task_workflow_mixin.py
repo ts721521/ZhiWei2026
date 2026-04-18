@@ -9,6 +9,8 @@ from tkinter import filedialog, messagebox, simpledialog, ttk
 from tkinter.constants import *
 
 from office_converter import (
+    COLLECT_COPY_LAYOUT_FLAT,
+    COLLECT_COPY_LAYOUT_PRESERVE_TREE,
     MODE_CONVERT_ONLY,
     MODE_MERGE_ONLY,
     MODE_CONVERT_THEN_MERGE,
@@ -20,6 +22,7 @@ from office_converter import (
     MERGE_MODE_ALL_IN_ONE,
     ENGINE_WPS,
     KILL_MODE_AUTO,
+    STRATEGY_STANDARD,
 )
 from task_manager import (
     TASK_BINDING_ACTIVE,
@@ -723,6 +726,7 @@ class TaskWorkflowMixin:
                 "_task_config_source",
                 "run_mode",
                 "collect_mode",
+                "collect_copy_layout",
                 "content_strategy",
                 "default_engine",
                 "enable_incremental_mode",
@@ -813,6 +817,7 @@ class TaskWorkflowMixin:
         current = {
             "run_mode": mode,
             "collect_mode": self.var_collect_mode.get(),
+            "collect_copy_layout": self.var_collect_copy_layout.get(),
             "content_strategy": self.var_strategy.get(),
             "default_engine": self.var_engine.get(),
             "kill_process_mode": self.var_kill_mode.get(),
@@ -945,6 +950,9 @@ class TaskWorkflowMixin:
                 )
             ),
             "collect_mode": str(_overrides.get("collect_mode", COLLECT_MODE_COPY_AND_INDEX)),
+            "collect_copy_layout": str(
+                _overrides.get("collect_copy_layout", COLLECT_COPY_LAYOUT_PRESERVE_TREE)
+            ),
             "allowed_extensions": _overrides.get("allowed_extensions") if isinstance(_overrides.get("allowed_extensions"), dict) else None,
             "global_md5_dedup": bool(_overrides.get("global_md5_dedup", False)),
         }
@@ -1225,6 +1233,40 @@ class TaskWorkflowMixin:
             value=COLLECT_MODE_INDEX_ONLY,
             bg=_bg,
         ).pack(anchor=W)
+        tk.Label(
+            f3_collect,
+            text=self.tr("lbl_collect_copy_layout"),
+            font=("System", 9, "bold"),
+            bg=_bg,
+        ).pack(anchor=W, pady=(6, 0))
+        var_collect_copy_layout = tk.StringVar(value=data["collect_copy_layout"])
+        rb_collect_layout_tree = tk.Radiobutton(
+            f3_collect,
+            text=self.tr("rad_collect_copy_preserve_tree"),
+            variable=var_collect_copy_layout,
+            value=COLLECT_COPY_LAYOUT_PRESERVE_TREE,
+            bg=_bg,
+        )
+        rb_collect_layout_tree.pack(anchor=W)
+        rb_collect_layout_flat = tk.Radiobutton(
+            f3_collect,
+            text=self.tr("rad_collect_copy_flat"),
+            variable=var_collect_copy_layout,
+            value=COLLECT_COPY_LAYOUT_FLAT,
+            bg=_bg,
+        )
+        rb_collect_layout_flat.pack(anchor=W)
+
+        def _sync_wizard_collect_layout_state(*_):
+            st = (
+                "normal"
+                if var_collect_mode.get() == COLLECT_MODE_COPY_AND_INDEX
+                else "disabled"
+            )
+            rb_collect_layout_tree.configure(state=st)
+            rb_collect_layout_flat.configure(state=st)
+
+        var_collect_mode.trace_add("write", _sync_wizard_collect_layout_state)
 
         # 去重策略：复制模式始终按 SHA256 内容去重（不可关）；转换模式可选 MD5 同类型去重
         f3_dedup = tk.Frame(f3, bg=_bg)
@@ -1280,6 +1322,7 @@ class TaskWorkflowMixin:
             if is_collect:
                 f3_collect.pack(fill=X, pady=(4, 0))
                 f3_dedup.pack(fill=X, pady=(4, 0))
+                _sync_wizard_collect_layout_state()
                 return
             # 转换格式仅 convert/combo 模式可见
             if is_convert_only or is_combo:
@@ -1440,6 +1483,7 @@ class TaskWorkflowMixin:
                 else MERGE_MODE_ALL_IN_ONE
             )
             data["collect_mode"] = var_collect_mode.get()
+            data["collect_copy_layout"] = var_collect_copy_layout.get()
             data["allowed_extensions"] = ext_getter()
             data["global_md5_dedup"] = bool(var_global_md5_dedup_w.get())
 
@@ -1516,6 +1560,9 @@ class TaskWorkflowMixin:
                 d.get("merge_filename_pattern") or "Merged_{category}_{timestamp}_{idx}"
             )
             overrides["collect_mode"] = d.get("collect_mode", COLLECT_MODE_COPY_AND_INDEX)
+            overrides["collect_copy_layout"] = d.get(
+                "collect_copy_layout", COLLECT_COPY_LAYOUT_PRESERVE_TREE
+            )
             overrides["global_md5_dedup"] = bool(d.get("global_md5_dedup", False))
             ext_value = d.get("allowed_extensions") or {}
             if any(ext_value.get(k) for k in ext_value):
@@ -1741,6 +1788,10 @@ class TaskWorkflowMixin:
             self.var_collect_mode.set(
                 cfg.get("collect_mode", COLLECT_MODE_COPY_AND_INDEX)
             )
+            if hasattr(self, "var_collect_copy_layout"):
+                self.var_collect_copy_layout.set(
+                    cfg.get("collect_copy_layout", COLLECT_COPY_LAYOUT_PRESERVE_TREE)
+                )
             self.var_strategy.set(cfg.get("content_strategy", STRATEGY_STANDARD))
             self.var_engine.set(cfg.get("default_engine", ENGINE_WPS))
             self.var_kill_mode.set(cfg.get("kill_process_mode", KILL_MODE_AUTO))

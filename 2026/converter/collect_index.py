@@ -4,9 +4,34 @@
 import logging
 import os
 import shutil
+from collections import Counter
 from datetime import datetime
 
-from converter.constants import COLLECT_MODE_COPY_AND_INDEX
+from converter.constants import (
+    COLLECT_COPY_LAYOUT_FLAT,
+    COLLECT_COPY_LAYOUT_PRESERVE_TREE,
+    COLLECT_MODE_COPY_AND_INDEX,
+)
+
+
+def _assign_flat_collect_targets(unique_records, duplicate_records, target_root):
+    """Rewrite TargetPath to a single folder; disambiguate same basenames."""
+    names = [os.path.basename(rec["src"]) for rec in unique_records]
+    counts = Counter(names)
+    per_base_seq = {}
+    for rec in unique_records:
+        base = os.path.basename(rec["src"])
+        if counts[base] <= 1:
+            flat_name = base
+        else:
+            per_base_seq[base] = per_base_seq.get(base, 0) + 1
+            seq = per_base_seq[base]
+            stem, ext = os.path.splitext(base)
+            flat_name = f"{stem}__{seq}{ext}"
+        rec["dst"] = os.path.join(target_root, flat_name)
+    src_to_dst = {rec["src"]: rec["dst"] for rec in unique_records}
+    for rec in duplicate_records:
+        rec["keep_dst"] = src_to_dst.get(rec["keep_src"], rec["keep_dst"])
 
 
 def collect_office_files_and_build_excel(
@@ -38,6 +63,11 @@ def collect_office_files_and_build_excel(
         return
     target_root = converter.config["target_folder"]
     os.makedirs(target_root, exist_ok=True)
+    copy_layout = converter.config.get(
+        "collect_copy_layout", COLLECT_COPY_LAYOUT_PRESERVE_TREE
+    )
+    if copy_layout not in (COLLECT_COPY_LAYOUT_PRESERVE_TREE, COLLECT_COPY_LAYOUT_FLAT):
+        copy_layout = COLLECT_COPY_LAYOUT_PRESERVE_TREE
 
     exts_word = converter.config["allowed_extensions"].get("word", [])
     exts_excel = converter.config["allowed_extensions"].get("excel", [])
@@ -62,6 +92,11 @@ def collect_office_files_and_build_excel(
     print(f" Source dir(s) : {len(source_roots)} folder(s)")
     print(f" Target dir : {target_root}")
     print(f" Sub mode   : {converter.get_readable_collect_mode()} ({converter.collect_mode})")
+    if converter.collect_mode == COLLECT_MODE_COPY_AND_INDEX:
+        print(
+            f" Copy layout: {copy_layout} "
+            f"(flat=all files under target folder; preserve_tree=keep subfolders)"
+        )
     print(f" Filter ext : {office_exts}")
     print("=" * 60)
 
@@ -185,6 +220,12 @@ def collect_office_files_and_build_excel(
     logging.info(
         f"[collect_only] unique={len(unique_records)}, duplicate={len(duplicate_records)}"
     )
+
+    if (
+        converter.collect_mode == COLLECT_MODE_COPY_AND_INDEX
+        and copy_layout == COLLECT_COPY_LAYOUT_FLAT
+    ):
+        _assign_flat_collect_targets(unique_records, duplicate_records, target_root)
 
     copied_count = 0
     if converter.collect_mode == COLLECT_MODE_COPY_AND_INDEX:

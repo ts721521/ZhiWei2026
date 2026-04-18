@@ -4,6 +4,7 @@
 import json
 
 from converter.constants import (
+    COLLECT_COPY_LAYOUT_PRESERVE_TREE,
     COLLECT_MODE_COPY_AND_INDEX,
     MERGE_CONVERT_SUBMODE_MERGE_ONLY,
     MERGE_MODE_CATEGORY,
@@ -114,6 +115,7 @@ def create_default_config(config_path):
             "merge_mode": MERGE_MODE_CATEGORY,
             "run_mode": MODE_CONVERT_THEN_MERGE,
             "collect_mode": COLLECT_MODE_COPY_AND_INDEX,
+            "collect_copy_layout": COLLECT_COPY_LAYOUT_PRESERVE_TREE,
             "content_strategy": STRATEGY_STANDARD,
             "merge_source": "target",
             "temp_sandbox_root": "",
