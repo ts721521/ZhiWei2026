@@ -123,4 +123,4 @@ flowchart LR
 ## 五、相关文档
 
 - [CONFIG_PRESETS_NOTEBOOKLM.md](CONFIG_PRESETS_NOTEBOOKLM.md)：NotebookLM 预设详细说明与溯源清单。
-- [configs/README.md](../configs/README.md)：configs 目录结构与 `_meta` 约定；配置说明在「加载配置」界面备注列的展示方式。
+- [configs/README.md](../../configs/README.md)：configs 目录结构与 `_meta` 约定；配置说明在「加载配置」界面备注列的展示方式。

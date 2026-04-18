@@ -60,5 +60,5 @@ Example:
 ## 配置说明与界面展示
 
 - **`_meta.description`** 与 **`_meta.notes`** 会显示在软件「加载配置」对话框的**备注**列中；内置预设与场景在列表中不再显示为固定的 "Built-in config"，而是从各 JSON 的 `_meta` 读取后展示，便于用户直接看到配置用途。
-- 完整配置说明、预设一览表及「按场景选预设」「数据流」流程图见：**[docs/CONFIG_REFERENCE.md](../docs/CONFIG_REFERENCE.md)**；NotebookLM 预设的详细说明见 **[docs/CONFIG_PRESETS_NOTEBOOKLM.md](../docs/CONFIG_PRESETS_NOTEBOOKLM.md)**。
+- 完整配置说明、预设一览表及「按场景选预设」「数据流」流程图见：**[docs/design/CONFIG_REFERENCE.md](../docs/design/CONFIG_REFERENCE.md)**；NotebookLM 预设的详细说明见 **[docs/design/CONFIG_PRESETS_NOTEBOOKLM.md](../docs/design/CONFIG_PRESETS_NOTEBOOKLM.md)**。
 

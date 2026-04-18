@@ -80,8 +80,8 @@ python -m unittest discover -s tests -p "test_*.py" -v
 - [docs/notes/使用说明书.md](docs/notes/使用说明书.md)
 - [docs/notes/打包说明.md](docs/notes/打包说明.md)
 - [docs/plans/V6.0_需求书与项目现状对照评估.md](docs/plans/V6.0_需求书与项目现状对照评估.md)（V6.0 规划与风险建议）
-- [docs/plans/2026-02-24-office-converter-split-plan.md](docs/plans/2026-02-24-office-converter-split-plan.md)
-- [docs/AI_交接文档_下一阶段开发.md](docs/AI_交接文档_下一阶段开发.md)
+- [docs/archive/plans-2026-02-landed/2026-02-24-office-converter-split-plan.md](docs/archive/plans-2026-02-landed/2026-02-24-office-converter-split-plan.md)
+- [docs/dev/AI_交接文档_下一阶段开发.md](docs/dev/AI_交接文档_下一阶段开发.md)
 
 ## 项目结构（核心）
 
@@ -91,9 +91,13 @@ office_converter.py             核心转换与流水线
 task_manager.py                 任务存储与运行态合成
 ui_translations.py              UI 文案
 docs/
-  notes/
-  plans/
-  test-reports/
+  user/                         操作手册/流程文件（终端用户）
+  dev/                          AI 交接 / AGENTS 模板 / 脚本清单
+  design/                       配置参考 / 需求 / 任务清单 / 历史规划
+  notes/                        使用说明书 / 打包说明
+  plans/                        进行中规划
+  test-reports/                 测试报告
+  archive/                      已落地/过期的规划归档
 tests/                          自动化测试
 scripts/                        辅助脚本
 ```

@@ -157,6 +157,6 @@ google-api-python-client>=2.0.0
 | `.gitignore` | 增加 `.gdrive_token.json` 或通用 token 文件名 |
 | `docs/notes/使用说明书.md` | 增加「Google Drive 上传」小节 |
 | `CHANGELOG.md` | 新版本条目标注 GDrive 上传功能 |
-| `docs/AI_交接文档_下一阶段开发.md` | 可选：将 GDrive 从「建议」改为「已实现」并简述用法 |
+| `docs/dev/AI_交接文档_下一阶段开发.md` | 可选：将 GDrive 从「建议」改为「已实现」并简述用法 |
 
 按上述顺序实现即可分步落地，且不破坏现有流程。

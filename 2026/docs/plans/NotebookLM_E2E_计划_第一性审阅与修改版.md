@@ -57,7 +57,7 @@
 
 以下三项已与需求方确认，落实时按此执行：
 
-1. **规则写入位置**：NotebookLM E2E「循环直至通过」规则只写进 **2026/AGENTS.md**，不要求修改 `docs/AGENTS_TEMPLATE.md`。
+1. **规则写入位置**：NotebookLM E2E「循环直至通过」规则只写进 **2026/AGENTS.md**，不要求修改 `docs/dev/AGENTS_TEMPLATE.md`。
 2. **源/目标路径可覆盖**：E2E 脚本支持通过 **参数（如 --source / --target）或环境变量** 覆盖源目录与目标目录，便于在 CI 或无 Z: 盘环境使用其他路径或跳过。
 3. **退出码 2 仍写修复提示文件**：即使 E2E 以退出码 2（成功但需优化）结束，也**写入**同一路径的修复提示文件。  
    **说明**：退出码 2 表示转换已跑完、_LLM_UPLOAD 也有内容，但可能文件数>50 或单文件>200MB，不符合 NotebookLM 免费版限制。此时 Agent 可以有两种选择：(A) 视为通过，结束并记录到 TEST_REPORT；(B) 按决策表「调整 max_merge_size_mb 或合并策略后再跑」，让产物满足 50 来源/200MB 限制。若退出码 2 时也写修复提示文件，Agent 会拿到与失败时相同的结构化信息（log_path、error_category=file_too_large_or_many、决策表引用），便于在**同一套流程**里选择 (B)：读修复提示 → 按表改配置 → 再跑 E2E。若不写，Agent 只能看到结果 JSON 和退出码 2，没有统一的「下一步动作」入口，选择 (B) 时还要再去翻决策表；写的话则与退出码 1 的处理一致，方便「想继续优化就按提示再跑一轮」。
@@ -194,7 +194,7 @@
 |------|------|
 | 测试计划 `NotebookLM_知识库测试计划_5_投标_ZWPDFTSEST.md` | 新增第六节：可执行规格（含 cwd、命令）、通过/失败/需优化定义、结果→动作表（与 error_category 枚举一致）、AI 执行策略（含需人工介入与连续失败停止）、修复提示路径。 |
 | `2026/scripts/run_notebooklm_e2e.py` | 新建。实现 config 生成/加载、无交互 run、检查、结果 JSON、失败时写修复提示、error_category 与表一致、退出码 0/1/2。 |
-| `2026/AGENTS.md` 或 `docs/AGENTS_TEMPLATE.md` | 增加一条：NotebookLM E2E 须循环直至通过或需人工介入；第六节路径；命令与修复提示路径。 |
+| `2026/AGENTS.md` 或 `docs/dev/AGENTS_TEMPLATE.md` | 增加一条：NotebookLM E2E 须循环直至通过或需人工介入；第六节路径；命令与修复提示路径。 |
 
 ---
 

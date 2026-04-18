@@ -30,12 +30,12 @@
 
 1. **读本文档**（AGENTS.md），了解强制规则与目录约定。
 2. **读交接与现状**  
-   - [docs/AI_交接文档_下一阶段开发.md](docs/AI_交接文档_下一阶段开发.md) — 项目概览、入口、已实现能力、建议下一阶段。  
-   - [docs/plans/2026-02-24-office-converter-split-handover.md](docs/plans/2026-02-24-office-converter-split-handover.md) — 最后一节的「当前状态」为代码/拆分现状。  
+   - [docs/dev/AI_交接文档_下一阶段开发.md](docs/dev/AI_交接文档_下一阶段开发.md) — 项目概览、入口、已实现能力、建议下一阶段。  
+   - [docs/archive/plans-2026-02-landed/2026-02-24-office-converter-split-handover.md](docs/archive/plans-2026-02-landed/2026-02-24-office-converter-split-handover.md) — 最后一节的「当前状态」为代码/拆分现状。  
    - [docs/test-reports/TEST_REPORT_SUMMARY.md](docs/test-reports/TEST_REPORT_SUMMARY.md) — 顶部为最新全量回归结果。  
-   - [docs/程序与脚本清单.md](docs/程序与脚本清单.md) — 列出主程序、E2E 脚本与辅助脚本的职责，明确 NotebookLM E2E 测试的是真实程序（OfficeConverter + run_workflow），而非替代实现。
+   - [docs/dev/程序与脚本清单.md](docs/dev/程序与脚本清单.md) — 列出主程序、E2E 脚本与辅助脚本的职责，明确 NotebookLM E2E 测试的是真实程序（OfficeConverter + run_workflow），而非替代实现。
 3. **读待办与计划**  
-   - [docs/TASK_LIST.md](docs/TASK_LIST.md) — 任务清单与 Phase，未勾选为待办。  
+   - [docs/design/TASK_LIST.md](docs/design/TASK_LIST.md) — 任务清单与 Phase，未勾选为待办。  
    - [docs/plans/2026-02-24-code-review-optimization-suggestions.md](docs/plans/2026-02-24-code-review-optimization-suggestions.md) — 代码审查与优化建议。  
    其他计划见 `docs/plans/` 目录。
 4. **开始工作前**（建议）：若你对本轮改动负责，请在「本轮变更摘要」中注明**执行者/会话标识**（如 Agent 名或会话 ID + 日期），便于多 AI 追溯。
@@ -172,7 +172,7 @@ python scripts/install_git_hook.py
 
 ---
 
-**其他项目复用**：本仓库提供通用模板 [docs/AGENTS_TEMPLATE.md](docs/AGENTS_TEMPLATE.md)，可复制到其他项目根目录并重命名为 `AGENTS.md`；若该项目无对应文档目录，默认在当前项目下创建，或由用户指定路径后 AI 按模板「初始化清单」执行。
+**其他项目复用**：本仓库提供通用模板 [docs/dev/AGENTS_TEMPLATE.md](docs/dev/AGENTS_TEMPLATE.md)，可复制到其他项目根目录并重命名为 `AGENTS.md`；若该项目无对应文档目录，默认在当前项目下创建，或由用户指定路径后 AI 按模板「初始化清单」执行。
 
 ## 2026-02-27 note (GUI config key)
 - Added runtime/config key `enable_markdown_image_manifest` for merged markdown image mapping manifest.

@@ -262,7 +262,7 @@
 3. 两项均建议放在 V1.1（稳定性与可用性增强），再进入 V2/V3 性能迭代。  
 
 ### 8.4 交接文档
-- 下个 AI 的完整接续说明见：`docs/AI_HANDOVER_20260211.md`。
+- 下个 AI 的完整接续说明见：`docs/dev/AI_HANDOVER_20260211.md`。
 
 ### 8.5 后续能力：Google Drive 直接上传（桌面 OAuth）
 - 场景：个人用户在本机完成 `_LLM_UPLOAD` 产物归集后，希望一键上传到自己的 Google Drive / NotebookLM。

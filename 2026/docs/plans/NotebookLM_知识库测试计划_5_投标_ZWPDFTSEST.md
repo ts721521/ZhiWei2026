@@ -126,7 +126,7 @@
 ## 六、AI 自主执行与修复决策
 
 本节约定：AI（Cursor Agent）如何无交互跑完 E2E、如何判定通过/失败、失败时如何按决策表修复并重跑直至通过或需人工介入。详见 [docs/plans/NotebookLM_E2E_计划_第一性审阅与修改版.md](NotebookLM_E2E_计划_第一性审阅与修改版.md)。  
-各程序/脚本的职责分工见 [docs/程序与脚本清单.md](../程序与脚本清单.md)（包括被测主程序 `OfficeConverter` 与 E2E 驱动脚本 `scripts/run_notebooklm_e2e.py` 的关系）。
+各程序/脚本的职责分工见 [docs/dev/程序与脚本清单.md](../dev/程序与脚本清单.md)（包括被测主程序 `OfficeConverter` 与 E2E 驱动脚本 `scripts/run_notebooklm_e2e.py` 的关系）。
 
 ### 6.1 AI 执行策略
 

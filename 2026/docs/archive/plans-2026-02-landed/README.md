@@ -17,5 +17,5 @@
 ## 当前规划文档去向
 
 - 仍在用的规划：`docs/plans/`（如 V6.0 评估、code-review 优化建议）。
-- AI 交接：`docs/AI_交接文档_下一阶段开发.md`。
+- AI 交接：`docs/dev/AI_交接文档_下一阶段开发.md`。
 - 变更日志：`CHANGELOG.md`。

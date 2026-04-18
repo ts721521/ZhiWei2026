@@ -73,7 +73,7 @@
 ## 六、对 2026/AGENTS.md 的修改动作
 
 1. **补回**：在目标与基本原则之间插入「规则不变」+「本项目就是 AI 主导：人提需求，AI 开发（写死）。…」段。
-2. **补回**：在基本原则之前插入 **## 0. 接手必读**，列出 docs/AI_交接文档_下一阶段开发.md、docs/plans/2026-02-24-office-converter-split-handover.md、docs/test-reports/TEST_REPORT_SUMMARY.md、docs/TASK_LIST.md、docs/plans/ 等（与当前 2026 实际路径一致）。
+2. **补回**：在基本原则之前插入 **## 0. 接手必读**，列出 docs/dev/AI_交接文档_下一阶段开发.md、docs/archive/plans-2026-02-landed/2026-02-24-office-converter-split-handover.md、docs/test-reports/TEST_REPORT_SUMMARY.md、docs/design/TASK_LIST.md、docs/plans/ 等（与当前 2026 实际路径一致）。
 3. **可选收紧**：第 1 节「任何结构迁移」改为「任何导致本文档所列路径或目录失效的变更」。
 
 以上为第二轮自我批判式审查结论；据此补全 2026 AGENTS.md 的硬核内容。
