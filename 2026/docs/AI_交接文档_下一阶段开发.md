@@ -1,6 +1,6 @@
 # 知喂 (ZhiWei) — 下一阶段开发交接文档
 
-供下一位开发者或 AI 接续开发时使用。文档日期：2026-02-24。
+供下一位开发者或 AI 接续开发时使用。文档日期：2026-04-18。
 
 ---
 
@@ -9,7 +9,7 @@
 | 项目 | 说明 |
 |------|------|
 | **产品名** | 知喂 (ZhiWei)，副标题：知识投喂工具 |
-| **版本** | v5.19.1（唯一定义在 `office_converter.py` 的 `__version__`） |
+| **版本** | v5.20.0（唯一定义在 `office_converter.py` 的 `__version__`） |
 | **仓库** | https://github.com/ts721521/ZhiWei2026.git；项目代码在 `2026/` 目录下 |
 | **界面** | 仅中文，无英文模式 |
 
@@ -24,7 +24,7 @@
 | 文件 | 作用 |
 |------|------|
 | `office_converter.py` | 核心：转换 / 合并 / 梳理 / MSHelp / 增量 / LLM 归集；`OfficeConverter` 类，`run()` 主流程，版本号 `__version__` |
-| `office_gui.py` | GUI：Tk + ttkbootstrap，单层 7 Tab（模式与路径、转换选项、合并梳理、MSHelp、快速定位、成果文件、高级设置）；**自 2026-03 起仅支持任务模式运行，所有转换/合并必须从任务中心启动** |
+| `office_gui.py` | GUI：Tk + ttkbootstrap，**v5.20.0 起强制任务中心模式**（classic / app_mode 切换已移除）；所有转换/合并/采集从任务列表发起；单次 / 批量 / 定时共用 `_run_single_task` |
 | `ui_translations.py` | 界面文案（当前仅中文），`TRANSLATIONS["zh"]`，`tr(key)` 取文案 |
 | `task_manager.py` | 任务存储与 checkpoint，`tasks/` 目录与 `tasks_index.json` |
 | `build_exe.py` | 一键打包：先清空 dist/build，再 PyInstaller，产出 `ZhiWei_v<版本>.exe` |
@@ -52,7 +52,7 @@ python office_converter.py --help   # 查看参数
 - **运行模式**：`convert_only` / `merge_only` / `convert_then_merge` / `collect_only` / `mshelp_only`
 - **多源目录**：支持多选源文件夹，转换/合并/归集均会扫描并处理所有选中目录
 - **合并输出**：`merge_filename_pattern` 可配置，占位符 `{category}`, `{timestamp}`, `{date}`, `{time}`, `{idx}`
-- **任务模式**：多组「源+目标+参数」保存与一键运行，断点续传；任务列表支持「仅当前配置」过滤（`ui.task_current_config_only`）及筛选/排序与状态下拉一致性
+- **任务中心**（v5.20.0 唯一入口）：多组「源+目标+参数」保存与一键运行、断点续传；每任务独立 profile（`config_profiles/task_<id>.json`）；新建/编辑统一走向导；批量运行（多选顺序入队）、定时运行（HH:MM 持久化 `tasks/schedules.json`）、「定时一览」；任务列表筛选/排序与状态下拉一致
 - **增量同步**：账本、Added/Modified/Renamed/Deleted、增量包、MD5 去重、同名优先 Office
 - **并发转换**：多线程并发处理（ThreadPoolExecutor），可配置工作线程数，预期提速 3-4 倍
 - **断点续传**：定期保存进度，中断后可恢复继续处理
@@ -125,5 +125,5 @@ python -m unittest discover -s tests -p "test_*.py" -v
 
 ---
 
-*本文档随版本与需求更新，当前对应 v5.19.1。*
+*本文档随版本与需求更新，当前对应 v5.20.0。*
 

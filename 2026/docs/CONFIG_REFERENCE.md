@@ -97,7 +97,30 @@ flowchart LR
 
 ---
 
-## 四、相关文档
+## 四、运行时存储（v5.20.0 起）
+
+任务中心模式下，除 `config.json` 外还有以下存储路径：
+
+| 路径 | 内容 | 生成 / 清理 |
+|------|------|-------------|
+| `config_profiles/task_<id>.json` | 每任务独立配置 profile（`project_config` + `overrides` 合并后的完整配置） | 新建/保存任务时由向导写入；删除任务时一并清除 |
+| `tasks/tasks_index.json` | 任务列表元数据（id、name、binding、status 等） | `TaskStore.save_task` 维护 |
+| `tasks/task_<id>_checkpoint.json` | 任务运行断点 | 运行时定期写入；完成后可清空 |
+| `tasks/schedules.json` | 定时任务计划（HH:MM、频率、启用状态） | 「定时运行」按钮 / 「定时一览」维护 |
+
+向导写入 `overrides` 时可能新增以下键（若与项目默认不同）：
+
+| Key | 含义 | 来源 |
+|-----|------|------|
+| `run_mode` | 运行模式 | 向导第 2 步 |
+| `output_enable_pdf` / `output_enable_md` | PDF / MD 开关 | 向导第 3 步 |
+| `output_enable_merged` / `output_enable_independent` | 合并 / 独立输出 | 向导第 3 步 |
+| `merge_mode` / `max_merge_size_mb` / `merge_filename_pattern` | 合并参数 | 向导第 3 步 |
+| `collect_mode` | 复制 + 索引 / 仅索引 | 向导第 3 步（collect_only 模式） |
+| `allowed_extensions` | 按桶（word/excel/ppt/pdf/cab）配置允许扩展名 | 向导第 3 步 chip 编辑器 |
+| `global_md5_dedup` | 按类型全局 MD5 去重（复制模式不受此开关控制，始终按 SHA256 内容去重） | 向导第 3 步去重策略 |
+
+## 五、相关文档
 
 - [CONFIG_PRESETS_NOTEBOOKLM.md](CONFIG_PRESETS_NOTEBOOKLM.md)：NotebookLM 预设详细说明与溯源清单。
 - [configs/README.md](../configs/README.md)：configs 目录结构与 `_meta` 约定；配置说明在「加载配置」界面备注列的展示方式。

@@ -1,5 +1,11 @@
 # AI Handover (2026-02-11)
 
+> **Status (2026-04-18):** This is a historical handover drafted at v5.19.1. It still captures useful design rationale, but two areas are outdated as of **v5.20.0**:
+> 1. The `classic + task mode` split no longer exists — task center is the only run entry.
+> 2. `_open_task_edit_form` / `_edit_task_binding_in_dialog` were deleted; editing a task reuses `_open_task_wizard(task=?)`.
+>
+> For the current state, see [AI_交接文档_下一阶段开发.md](AI_交接文档_下一阶段开发.md) and [CHANGELOG.md](../CHANGELOG.md).
+
 **For next AI / developer:** 中文交接文档（项目概览、入口、下一阶段功能、约束与文档索引）见 **[AI_交接文档_下一阶段开发.md](AI_交接文档_下一阶段开发.md)**。本文档侧重英文设计要点与验收标准。
 
 ## 1. Project Snapshot

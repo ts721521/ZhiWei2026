@@ -2,6 +2,29 @@
 
 All notable changes to this project are documented in this file.
 
+## [v5.20.0 · Post-release UI 整理] - 2026-04-18
+### Added
+- **向导"去重策略"行**：任务向导第 3 步新增去重小节。Collect 模式显示只读说明（SHA256 内容去重 + Duplicates 表）；Convert / 合并模式显示「按类型全局 MD5 去重」复选框与提示。
+- **任务编辑复用向导**：编辑任务直接调用 `_open_task_wizard(task=?)`，窗口标题切为「编辑任务」，预填所有字段（名称/描述/多源/目标/增量/输出/合并/收集策略/扩展名/去重）。删除旧的 `_open_task_edit_form` 与 `_edit_task_binding_in_dialog`（净 -347 行）。
+- **定时一览**：工具菜单新增「定时一览」窗口，集中查看 `tasks/schedules.json` 中所有计划。
+- **定时任务补全**：支持多频率、待触发队列、列表可见性、立即触发 / 删除操作。
+- **扩展名 chip 编辑器**：共享 chip UI，向导和共用配置一致。
+- **全局默认子分页 / 顶部面包屑**：顶部面包屑点击跳回任务中心。
+
+### Changed
+- **任务中心强制化**：移除 classic / task 模式切换，`OfficeGUI` 始终以任务模式运行；清理 `app_mode_*`、`btn_go_task_center`、「仅当前配置」toggle 相关 i18n 键与死代码。
+- **dark 模式**：Checkbutton `command` 在 var 翻转后触发，不再二次反转；无 ttkbootstrap 时回退 cosmo。
+- **启动构建容错**：`_build_task_tab_content` 末尾的 `_refresh_task_list_ui` 套 try/except，避免单点异常打爆后续 tab 构建链。
+
+### Fixed
+- **新建任务向导白屏**：修复 `self.config` 被误用（它是 tk 控件方法而非配置 dict），改用 `_load_config_for_write()`。
+- **配置中心白屏**：`task_manager._iter_task_ids_from_disk` 排除 `schedules.json` 等非任务文件，避免被当作任务触发 `KeyError: 'id'` 导致级联失败。
+
+### Documentation
+- README（根 + 2026）、使用说明书 统一到 v5.20.0。
+- 过时 plans 迁入 `docs/archive/`。
+
+---
 ## [v5.20.0] - 2026-02-28
 ### Added
 - **保存到任务**：任务 Tab 新增「保存到任务」按钮，一键将当前界面配置绑定写回所选任务（等价于编辑任务并选择「绑定当前配置」），无需再打开编辑弹窗。
