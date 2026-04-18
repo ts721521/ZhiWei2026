@@ -340,46 +340,23 @@ class UIShellMixin:
         ctrl_frame.pack(side=RIGHT, padx=20)
 
         if not hasattr(self, "var_app_mode"):
-            self.var_app_mode = tk.StringVar(value="classic")
-        frm_app_mode = tb.Frame(ctrl_frame, bootstyle="light")
-        frm_app_mode.pack(side=LEFT, padx=(0, 12))
-        tb.Label(
-            frm_app_mode,
-            text=self.tr("app_mode_classic") + " / " + self.tr("app_mode_task") + ":",
-            font=("System", 9),
-        ).pack(side=LEFT, padx=(0, 4))
-        tb.Radiobutton(
-            frm_app_mode,
-            text=self.tr("app_mode_classic"),
-            variable=self.var_app_mode,
-            value="classic",
-            bootstyle="toolbutton-outline",
-        ).pack(side=LEFT, padx=2)
-        tb.Radiobutton(
-            frm_app_mode,
-            text=self.tr("app_mode_task"),
-            variable=self.var_app_mode,
-            value="task",
-            bootstyle="toolbutton-outline",
-        ).pack(side=LEFT, padx=2)
-        self._attach_tooltip(frm_app_mode, "tip_app_mode")
+            self.var_app_mode = tk.StringVar(value="task")
 
         self.var_theme = tk.StringVar(value="cosmo")
 
         def toggle_theme():
-            t = self.var_theme.get()
-            new_theme = "superhero" if t == "cosmo" else "cosmo"
-            # 无 ttkbootstrap 时 FallbackStyle.theme_use 仅存名称不生效，提示用户安装
+            # Checkbutton 在调用 command 前已经把 var 翻到新值，直接用即可。
+            new_theme = self.var_theme.get()
             if not HAS_TTKBOOTSTRAP and new_theme == "superhero":
                 messagebox.showinfo(
                     "主题", "深色主题需要安装 ttkbootstrap：pip install ttkbootstrap"
                 )
+                self.var_theme.set("cosmo")
                 return
             try:
                 self.style.theme_use(new_theme)
             except Exception:
                 pass
-            self.var_theme.set(new_theme)
 
         self.chk_theme_toggle = tb.Checkbutton(
             ctrl_frame,
@@ -727,7 +704,11 @@ class UIShellMixin:
                 "write", lambda *a: self.after(0, self._on_app_mode_change_for_task_tab)
             )
             self._task_tab_app_mode_trace_done = True
-        self._refresh_task_list_ui()
+        try:
+            self._refresh_task_list_ui()
+        except Exception as exc:
+            # 任务列表数据异常不应阻断后续 _build_config_tab_content 等构建
+            print(f"[GUI] _refresh_task_list_ui at startup failed: {type(exc).__name__}: {exc}")
 
     def _build_footer(self, parent):
         """Build footer actions and status widgets."""
