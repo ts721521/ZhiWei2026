@@ -400,10 +400,14 @@ class UIShellMixin:
             breadcrumb, text="", bootstyle="secondary", cursor="hand2"
         )
         self.lbl_breadcrumb_task.pack(side=LEFT)
-        self.lbl_breadcrumb_task.bind(
-            "<Button-1>",
-            lambda _e: self._go_to_task_center() if hasattr(self, "_go_to_task_center") else None,
-        )
+        def _breadcrumb_jump(_e):
+            try:
+                if getattr(self, "tab_run_tasks", None) is not None:
+                    self.main_notebook.select(self.tab_run_tasks)
+            except (tk.TclError, AttributeError, RuntimeError):
+                pass
+
+        self.lbl_breadcrumb_task.bind("<Button-1>", _breadcrumb_jump)
 
         self.config_container = tb.Frame(body_frame)
         self.config_container.pack(fill=BOTH, expand=YES)

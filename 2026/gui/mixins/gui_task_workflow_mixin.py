@@ -891,9 +891,10 @@ class TaskWorkflowMixin:
     def _on_click_task_create(self):
         self._open_task_wizard()
 
-    def _open_task_wizard(self):
+    def _open_task_wizard(self, task=None):
+        editing = isinstance(task, dict) and bool(str(task.get("id", "")).strip())
         win = tk.Toplevel(self)
-        win.title(self.tr("win_task_wizard"))
+        win.title(self.tr("win_task_edit") if editing else self.tr("win_task_wizard"))
         win.minsize(680, 560)
         win.geometry("700x580")
         win.transient(self)
@@ -901,26 +902,50 @@ class TaskWorkflowMixin:
             win.configure(bg="#f0f0f0")
         except (tk.TclError, RuntimeError):
             pass
+        _existing = task if editing else {}
+        _overrides = _existing.get("config_overrides") or {}
+
+        def _src_list():
+            lst = _existing.get("source_folders")
+            if isinstance(lst, list) and lst:
+                return [str(p).strip() for p in lst if str(p).strip()]
+            single = str(_existing.get("source_folder", "")).strip()
+            return [single] if single else []
+
+        def _initial_output_choice():
+            merged = bool(_overrides.get("output_enable_merged", True))
+            indep = bool(_overrides.get("output_enable_independent", False))
+            if merged and not indep:
+                return "only_merged"
+            if indep and not merged:
+                return "only_independent"
+            return "both"
+
         data = {
-            "name": "",
-            "description": "",
-            "source_folder": "",
-            "source_folders": [],
-            "target_folder": "",
-            "run_incremental": True,
-            "run_mode": MODE_CONVERT_THEN_MERGE,
-            "output_enable_pdf": True,
-            "output_enable_md": True,
-            "output_enable_merged": True,
-            "output_enable_independent": False,
-            "output_choice": "both",
-            "merge_how": MERGE_MODE_CATEGORY,
-            "max_merge_size_mb": 80,
+            "name": str(_existing.get("name", "")),
+            "description": str(_existing.get("description", "")),
+            "source_folder": (_src_list() or [""])[0],
+            "source_folders": _src_list(),
+            "target_folder": str(_existing.get("target_folder", "")),
+            "run_incremental": bool(_existing.get("run_incremental", True)) if editing else True,
+            "run_mode": str(_overrides.get("run_mode", MODE_CONVERT_THEN_MERGE)),
+            "output_enable_pdf": bool(_overrides.get("output_enable_pdf", True)),
+            "output_enable_md": bool(_overrides.get("output_enable_md", True)),
+            "output_enable_merged": bool(_overrides.get("output_enable_merged", True)),
+            "output_enable_independent": bool(_overrides.get("output_enable_independent", False)),
+            "output_choice": _initial_output_choice(),
+            "merge_how": str(_overrides.get("merge_mode", MERGE_MODE_CATEGORY)),
+            "max_merge_size_mb": int(_overrides.get("max_merge_size_mb", 80) or 80),
             "merge_filename_pattern": (
-                getattr(self, "var_merge_filename_pattern", None)
-                and self.var_merge_filename_pattern.get().strip()
-                or "Merged_{category}_{timestamp}_{idx}"
+                str(_overrides.get("merge_filename_pattern", "")).strip()
+                or (
+                    getattr(self, "var_merge_filename_pattern", None)
+                    and self.var_merge_filename_pattern.get().strip()
+                    or "Merged_{category}_{timestamp}_{idx}"
+                )
             ),
+            "collect_mode": str(_overrides.get("collect_mode", COLLECT_MODE_COPY_AND_INDEX)),
+            "allowed_extensions": _overrides.get("allowed_extensions") if isinstance(_overrides.get("allowed_extensions"), dict) else None,
         }
         win._wizard_data = data
         win._wizard_step = 1
@@ -972,9 +997,13 @@ class TaskWorkflowMixin:
         tk.Label(f1, text=self.tr("msg_task_input_name"), bg=_bg).pack(anchor=W)
         ent_name = tk.Entry(f1, width=50)
         ent_name.pack(fill=X, pady=(0, 8))
+        if data["name"]:
+            ent_name.insert(0, data["name"])
         tk.Label(f1, text=self.tr("lbl_task_description"), bg=_bg).pack(anchor=W)
         txt_desc = tk.Text(f1, height=3, width=50)
         txt_desc.pack(fill=X, pady=(0, 8))
+        if data["description"]:
+            txt_desc.insert("1.0", data["description"])
         tk.Label(
             f2, text=self.tr("wizard_step2"), font=("System", 11, "bold"), bg=_bg
         ).pack(anchor=W)
@@ -983,6 +1012,8 @@ class TaskWorkflowMixin:
         f2_src.pack(fill=X)
         lst_src = tk.Listbox(f2_src, height=4, selectmode=SINGLE, font=("Consolas", 9))
         lst_src.pack(side=LEFT, fill=BOTH, expand=True, padx=(0, 4))
+        for _p in data["source_folders"]:
+            lst_src.insert(END, _p)
         scr_src = tk.Scrollbar(f2_src, orient="vertical", command=lst_src.yview)
         scr_src.pack(side=LEFT, fill=Y)
         lst_src.configure(yscrollcommand=scr_src.set)
@@ -1064,6 +1095,8 @@ class TaskWorkflowMixin:
         f2_tgt.pack(fill=X)
         ent_tgt = tk.Entry(f2_tgt, width=40)
         ent_tgt.pack(side=LEFT, fill=X, expand=True, padx=(0, 4))
+        if data["target_folder"]:
+            ent_tgt.insert(0, data["target_folder"])
 
         def pick_tgt():
             p = filedialog.askdirectory(
@@ -1076,7 +1109,7 @@ class TaskWorkflowMixin:
         tk.Button(f2_tgt, text=self.tr("btn_browse"), command=pick_tgt, width=4).pack(
             side=LEFT
         )
-        var_inc = tk.IntVar(value=1)
+        var_inc = tk.IntVar(value=1 if data["run_incremental"] else 0)
         tk.Checkbutton(
             f2, text=self.tr("chk_incremental_mode"), variable=var_inc, bg=_bg
         ).pack(anchor=W, pady=(8, 0))
@@ -1086,7 +1119,7 @@ class TaskWorkflowMixin:
         # ── 模式选择 ──────────────────────────────────────────────
         f3_mode = tk.Frame(f3, bg=_bg)
         f3_mode.pack(fill=X)
-        var_mode = tk.StringVar(value=MODE_CONVERT_THEN_MERGE)
+        var_mode = tk.StringVar(value=data["run_mode"])
         for val, key in [
             (MODE_CONVERT_ONLY, "mode_convert"),
             (MODE_CONVERT_THEN_MERGE, "mode_convert_merge"),
@@ -1106,7 +1139,7 @@ class TaskWorkflowMixin:
             font=("System", 9, "bold"),
             bg=_bg,
         ).pack(anchor=W, pady=(8, 0))
-        var_output_choice = tk.StringVar(value="both")
+        var_output_choice = tk.StringVar(value=data["output_choice"])
         tk.Radiobutton(
             f3_output_choice,
             text=self.tr("wizard_output_only_independent"),
@@ -1131,8 +1164,8 @@ class TaskWorkflowMixin:
 
         # 转换格式：仅含转换的模式
         f3_convert = tk.Frame(f3, bg=_bg)
-        var_pdf = tk.IntVar(value=1)
-        var_md = tk.IntVar(value=1)
+        var_pdf = tk.IntVar(value=1 if data["output_enable_pdf"] else 0)
+        var_md = tk.IntVar(value=1 if data["output_enable_md"] else 0)
         tk.Checkbutton(
             f3_convert, text=self.tr("chk_output_pdf"), variable=var_pdf, bg=_bg
         ).pack(anchor=W, pady=(4, 0))
@@ -1142,7 +1175,7 @@ class TaskWorkflowMixin:
 
         # 合并参数：仅含合并的模式
         f3_merge = tk.Frame(f3, bg=_bg)
-        var_merge_how = tk.StringVar(value=MERGE_MODE_CATEGORY)
+        var_merge_how = tk.StringVar(value=data["merge_how"])
         tk.Radiobutton(
             f3_merge,
             text=self.tr("wizard_merge_single_file"),
@@ -1162,7 +1195,7 @@ class TaskWorkflowMixin:
         tk.Label(f3_mb, text=self.tr("wizard_merge_size_mb"), bg=_bg).pack(
             side=LEFT, padx=(0, 4)
         )
-        var_mb = tk.StringVar(value="80")
+        var_mb = tk.StringVar(value=str(data["max_merge_size_mb"]))
         ent_mb = tk.Entry(f3_mb, width=6, textvariable=var_mb)
         ent_mb.pack(side=LEFT)
         lbl_mb_tip = tk.Label(f3_merge, text="", bg=_bg, fg="#666")
@@ -1176,7 +1209,7 @@ class TaskWorkflowMixin:
             font=("System", 9, "bold"),
             bg=_bg,
         ).pack(anchor=W, pady=(8, 0))
-        var_collect_mode = tk.StringVar(value=COLLECT_MODE_COPY_AND_INDEX)
+        var_collect_mode = tk.StringVar(value=data["collect_mode"])
         tk.Radiobutton(
             f3_collect,
             text="复制 + 生成索引（推荐用于 AnythingLLM 等知识库）",
@@ -1258,6 +1291,9 @@ class TaskWorkflowMixin:
                     _initial_ext = _ext_cfg
         except (AttributeError, TypeError, ValueError, OSError, RuntimeError):
             pass
+        # 编辑任务时：优先使用任务自身 overrides.allowed_extensions（否则回退项目默认）。
+        if isinstance(data.get("allowed_extensions"), dict) and any(data["allowed_extensions"].values()):
+            _initial_ext = data["allowed_extensions"]
         ext_frame, ext_getter, ext_setter = self._create_extension_chip_editor(
             f3_ext, initial=_initial_ext
         )
@@ -1370,18 +1406,24 @@ class TaskWorkflowMixin:
         def _save():
             _collect()
             d = win._wizard_data
+            title_key = "win_task_edit" if editing else "win_task_wizard"
             if not d["name"]:
                 messagebox.showwarning(
-                    self.tr("win_task_wizard"),
+                    self.tr(title_key),
                     self.tr("msg_task_input_name"),
                     parent=win,
                 )
                 return
             name_trim = d["name"].strip()
+            self_id = str(_existing.get("id", "")).strip() if editing else ""
             for t in self.task_store.list_tasks() or []:
-                if isinstance(t, dict) and (t.get("name") or "").strip() == name_trim:
+                if not isinstance(t, dict):
+                    continue
+                if editing and str(t.get("id", "")).strip() == self_id:
+                    continue
+                if (t.get("name") or "").strip() == name_trim:
                     messagebox.showwarning(
-                        self.tr("win_task_wizard"),
+                        self.tr(title_key),
                         self.tr("msg_task_name_duplicate"),
                         parent=win,
                     )
@@ -1393,7 +1435,7 @@ class TaskWorkflowMixin:
             ]
             if not source_folders:
                 messagebox.showwarning(
-                    self.tr("win_task_wizard"),
+                    self.tr(title_key),
                     self.tr("msg_source_folder_required"),
                     parent=win,
                 )
@@ -1401,14 +1443,14 @@ class TaskWorkflowMixin:
             for p in source_folders:
                 if not os.path.isdir(p):
                     messagebox.showwarning(
-                        self.tr("win_task_wizard"),
+                        self.tr(title_key),
                         self.tr("msg_source_folder_required"),
                         parent=win,
                     )
                     return
             if not d["target_folder"] or not os.path.isdir(d["target_folder"]):
                 messagebox.showwarning(
-                    self.tr("win_task_wizard"),
+                    self.tr(title_key),
                     self.tr("msg_target_folder_required"),
                     parent=win,
                 )
@@ -1431,35 +1473,48 @@ class TaskWorkflowMixin:
             ext_value = d.get("allowed_extensions") or {}
             if any(ext_value.get(k) for k in ext_value):
                 overrides["allowed_extensions"] = ext_value
-            new_task_id = self._new_task_id()
-            # 独立配置：把项目配置 + 本次 overrides 合并后写到 config_profiles/task_<id>.json
-            # 让任务运行时直接读自己的 profile，而不是跟随当前活动配置档。
+            target_task_id = self_id if editing else self._new_task_id()
+            # 独立配置：把项目配置 + 本次 overrides 合并后写回 config_profiles/task_<id>.json
             independent_cfg = _deep_merge_dict(project_cfg, overrides)
             binding_meta = self._build_task_config_binding_meta(
-                task_id=new_task_id, base_cfg=independent_cfg
+                task_id=target_task_id, base_cfg=independent_cfg
             )
-            task = {
-                "id": new_task_id,
-                "name": d["name"],
-                "description": d.get("description", ""),
-                "source_folders": source_folders,
-                "source_folder": (source_folders or [""])[0],
-                "target_folder": d["target_folder"],
-                "run_incremental": d["run_incremental"],
-                "project_config_snapshot": dict(project_cfg),
-                **binding_meta,
-                "config_overrides": overrides,
-                "status": "idle",
-            }
-            task, _ = self._ensure_task_config_snapshots(
-                task, project_cfg=project_cfg, persist=False
+            if editing:
+                task_out = dict(_existing)
+                task_out.update({
+                    "name": d["name"],
+                    "description": d.get("description", ""),
+                    "source_folders": source_folders,
+                    "source_folder": (source_folders or [""])[0],
+                    "target_folder": d["target_folder"],
+                    "run_incremental": d["run_incremental"],
+                    "project_config_snapshot": dict(project_cfg),
+                    "config_overrides": overrides,
+                })
+                task_out.update(binding_meta)
+            else:
+                task_out = {
+                    "id": target_task_id,
+                    "name": d["name"],
+                    "description": d.get("description", ""),
+                    "source_folders": source_folders,
+                    "source_folder": (source_folders or [""])[0],
+                    "target_folder": d["target_folder"],
+                    "run_incremental": d["run_incremental"],
+                    "project_config_snapshot": dict(project_cfg),
+                    **binding_meta,
+                    "config_overrides": overrides,
+                    "status": "idle",
+                }
+            task_out, _ = self._ensure_task_config_snapshots(
+                task_out, project_cfg=project_cfg, persist=False
             )
             try:
-                self.task_store.save_task(task)
+                self.task_store.save_task(task_out)
             except (AttributeError, TypeError, ValueError, OSError, RuntimeError) as e:
-                messagebox.showerror(self.tr("win_task_create"), str(e), parent=win)
+                messagebox.showerror(self.tr(title_key), str(e), parent=win)
                 return
-            saved_id = task["id"]
+            saved_id = task_out["id"]
             run_after_save = bool(var_run_after_save.get())
             self._refresh_task_list_ui()
             win.destroy()
@@ -1504,372 +1559,6 @@ class TaskWorkflowMixin:
             TASK_BINDING_SNAPSHOT: "使用任务快照",
         }.get(mode, mode)
 
-    def _edit_task_binding_in_dialog(self, task, parent=None):
-        task = task if isinstance(task, dict) else {}
-        parent = parent or self
-        current_mode = normalize_task_binding_mode(task.get("config_binding_mode"))
-        bound_path = self._safe_abs_path(task.get("config_snapshot_path", ""))
-        profile_records = []
-        try:
-            for rec in self._load_profile_records() or []:
-                if not isinstance(rec, dict):
-                    continue
-                abs_path = self._profile_record_abs_path(rec)
-                if not abs_path:
-                    continue
-                row = dict(rec)
-                row["abs_path"] = abs_path
-                profile_records.append(row)
-        except (AttributeError, TypeError, ValueError, OSError):
-            profile_records = []
-
-        profile_labels = []
-        profile_map = {}
-        selected_label = ""
-        for rec in profile_records:
-            name = str(rec.get("name", "")).strip()
-            file_name = str(rec.get("file", "")).strip()
-            abs_path = str(rec.get("abs_path", "")).strip()
-            label = f"{name} ({file_name})"
-            profile_labels.append(label)
-            profile_map[label] = rec
-            if not selected_label and bound_path and self._safe_abs_path(abs_path) == bound_path:
-                selected_label = label
-        if not selected_label and profile_labels:
-            selected_label = profile_labels[0]
-
-        win = tk.Toplevel(parent)
-        win.title("任务配置绑定")
-        win.geometry("640x320")
-        win.minsize(560, 280)
-        win.transient(parent)
-        win.grab_set()
-
-        var_mode = tk.StringVar(value=current_mode)
-        var_profile = tk.StringVar(value=selected_label)
-        result = {"updates": None}
-
-        tk.Label(
-            win,
-            text="选择任务运行时使用的配置来源：",
-            anchor="w",
-            font=("Microsoft YaHei", 10, "bold"),
-        ).pack(fill=X, padx=12, pady=(12, 8))
-
-        mode_frame = tk.LabelFrame(win, text="绑定模式", padx=8, pady=8)
-        mode_frame.pack(fill=X, padx=12, pady=(0, 8))
-        for mode_value in (
-            TASK_BINDING_ACTIVE,
-            TASK_BINDING_PROFILE,
-            TASK_BINDING_SNAPSHOT,
-        ):
-            tk.Radiobutton(
-                mode_frame,
-                text=self._task_binding_mode_text(mode_value),
-                variable=var_mode,
-                value=mode_value,
-                anchor="w",
-            ).pack(fill=X, anchor="w")
-
-        profile_frame = tk.LabelFrame(win, text="指定配置档", padx=8, pady=8)
-        profile_frame.pack(fill=X, padx=12, pady=(0, 8))
-        cmb_profiles = ttk.Combobox(
-            profile_frame,
-            textvariable=var_profile,
-            state="readonly",
-            values=profile_labels,
-        )
-        cmb_profiles.pack(fill=X)
-        if selected_label:
-            cmb_profiles.set(selected_label)
-        hint_text = "提示：仅在“绑定指定配置档”模式下生效。"
-        if not profile_labels:
-            hint_text = "未找到配置档，请先在“配置管理”中保存配置档。"
-        tk.Label(profile_frame, text=hint_text, anchor="w").pack(
-            fill=X, pady=(6, 0)
-        )
-
-        def _refresh_mode_ui(*_args):
-            if var_mode.get() == TASK_BINDING_PROFILE and profile_labels:
-                cmb_profiles.configure(state="readonly")
-            else:
-                cmb_profiles.configure(state="disabled")
-
-        var_mode.trace_add("write", _refresh_mode_ui)
-        _refresh_mode_ui()
-
-        def _confirm():
-            chosen_mode = normalize_task_binding_mode(var_mode.get())
-            updates = {"config_binding_mode": chosen_mode}
-            if chosen_mode == TASK_BINDING_ACTIVE:
-                updates.update(self._build_task_config_binding_meta())
-            elif chosen_mode == TASK_BINDING_PROFILE:
-                rec = profile_map.get(var_profile.get())
-                if not rec:
-                    messagebox.showwarning(
-                        "任务配置绑定",
-                        "请先选择一个可用的配置档。",
-                        parent=win,
-                    )
-                    return
-                updates["config_snapshot_path"] = str(rec.get("abs_path", "")).strip()
-                updates["config_snapshot_profile_name"] = str(rec.get("name", "")).strip()
-                updates["config_snapshot_profile_file"] = str(rec.get("file", "")).strip()
-            else:
-                updates["config_snapshot_path"] = ""
-                updates["config_snapshot_profile_name"] = ""
-                updates["config_snapshot_profile_file"] = ""
-            result["updates"] = updates
-            win.destroy()
-
-        def _cancel():
-            win.destroy()
-
-        btn_row = tk.Frame(win)
-        btn_row.pack(fill=X, padx=12, pady=(8, 12))
-        tk.Button(btn_row, text="确认", command=_confirm).pack(side=LEFT)
-        tk.Button(btn_row, text="取消", command=_cancel).pack(side=LEFT, padx=(8, 0))
-        win.protocol("WM_DELETE_WINDOW", _cancel)
-        self.wait_window(win)
-        return result["updates"]
-
-    def _open_task_edit_form(self, task, parent=None):
-        task = task if isinstance(task, dict) else {}
-        parent = parent or self
-        records = []
-        try:
-            for rec in self._load_profile_records() or []:
-                if not isinstance(rec, dict):
-                    continue
-                abs_path = self._profile_record_abs_path(rec)
-                if not abs_path:
-                    continue
-                row = dict(rec)
-                row["abs_path"] = abs_path
-                records.append(row)
-        except (AttributeError, TypeError, ValueError, OSError):
-            records = []
-
-        source_folders = task.get("source_folders") or []
-        source_default = str(
-            (source_folders[0] if source_folders else task.get("source_folder", "")) or ""
-        ).strip()
-        target_default = str(task.get("target_folder", "") or "").strip()
-        mode_default = normalize_task_binding_mode(task.get("config_binding_mode"))
-        task_cfg_path = self._safe_abs_path(task.get("config_snapshot_path", ""))
-        selected_profile = None
-        for rec in records:
-            if self._safe_abs_path(rec.get("abs_path", "")) == task_cfg_path:
-                selected_profile = rec
-                break
-
-        win = tk.Toplevel(parent)
-        win.title(self.tr("win_task_edit"))
-        win.geometry("760x520")
-        win.minsize(700, 480)
-        win.transient(parent)
-        win.grab_set()
-
-        frm = ttk.Frame(win, padding=12)
-        frm.pack(fill=BOTH, expand=YES)
-
-        var_name = tk.StringVar(value=str(task.get("name", "")))
-        var_source = tk.StringVar(value=source_default)
-        var_target = tk.StringVar(value=target_default)
-        var_incremental = tk.IntVar(value=1 if task.get("run_incremental", True) else 0)
-        var_mode = tk.StringVar(value=mode_default)
-        var_profile_path = tk.StringVar(value=task_cfg_path)
-
-        profile_labels = []
-        profile_by_label = {}
-        label_by_path = {}
-        for rec in records:
-            label = f"{rec.get('name', '')} ({rec.get('file', '')})"
-            profile_labels.append(label)
-            profile_by_label[label] = rec
-            label_by_path[self._safe_abs_path(rec.get("abs_path", ""))] = label
-        var_profile = tk.StringVar(
-            value=label_by_path.get(task_cfg_path, profile_labels[0] if profile_labels else "")
-        )
-        if selected_profile is not None:
-            var_profile_path.set(str(selected_profile.get("abs_path", "")).strip())
-
-        ttk.Label(frm, text="任务名称").pack(anchor=W, pady=(0, 4))
-        ttk.Entry(frm, textvariable=var_name).pack(fill=X)
-
-        ttk.Label(frm, text="任务描述（可选）").pack(anchor=W, pady=(8, 4))
-        txt_desc = tk.Text(frm, height=3, wrap="word")
-        txt_desc.pack(fill=X)
-        txt_desc.insert("1.0", str(task.get("description", "") or ""))
-
-        row_src = ttk.Frame(frm)
-        row_src.pack(fill=X, pady=(8, 0))
-        ttk.Label(row_src, text="源目录").pack(side=LEFT)
-        ttk.Entry(row_src, textvariable=var_source).pack(side=LEFT, fill=X, expand=YES, padx=(8, 6))
-        ttk.Button(
-            row_src,
-            text="浏览",
-            command=lambda: (
-                (lambda p: var_source.set(p) if p else None)(
-                    filedialog.askdirectory(title=self.tr("msg_task_pick_source"), parent=win)
-                )
-            ),
-        ).pack(side=LEFT)
-
-        row_tgt = ttk.Frame(frm)
-        row_tgt.pack(fill=X, pady=(6, 0))
-        ttk.Label(row_tgt, text="目标目录").pack(side=LEFT)
-        ttk.Entry(row_tgt, textvariable=var_target).pack(side=LEFT, fill=X, expand=YES, padx=(8, 6))
-        ttk.Button(
-            row_tgt,
-            text="浏览",
-            command=lambda: (
-                (lambda p: var_target.set(p) if p else None)(
-                    filedialog.askdirectory(title=self.tr("msg_task_pick_target"), parent=win)
-                )
-            ),
-        ).pack(side=LEFT)
-
-        ttk.Checkbutton(
-            frm,
-            text=self.tr("msg_task_incremental_prompt"),
-            variable=var_incremental,
-        ).pack(anchor=W, pady=(10, 0))
-
-        lf_binding = ttk.LabelFrame(frm, text="任务配置绑定", padding=8)
-        lf_binding.pack(fill=X, pady=(10, 0))
-
-        for mv in (TASK_BINDING_ACTIVE, TASK_BINDING_PROFILE, TASK_BINDING_SNAPSHOT):
-            ttk.Radiobutton(
-                lf_binding,
-                text=self._task_binding_mode_text(mv),
-                variable=var_mode,
-                value=mv,
-            ).pack(anchor=W)
-
-        row_profile = ttk.Frame(lf_binding)
-        row_profile.pack(fill=X, pady=(8, 0))
-        ttk.Label(row_profile, text="配置档").pack(side=LEFT)
-        cmb_profile = ttk.Combobox(
-            row_profile,
-            textvariable=var_profile,
-            values=profile_labels,
-            state="readonly",
-        )
-        cmb_profile.pack(side=LEFT, fill=X, expand=YES, padx=(8, 6))
-
-        def _on_pick_profile(_event=None):
-            rec = profile_by_label.get(var_profile.get())
-            if isinstance(rec, dict):
-                var_profile_path.set(str(rec.get("abs_path", "")).strip())
-
-        cmb_profile.bind("<<ComboboxSelected>>", _on_pick_profile)
-
-        row_profile_path = ttk.Frame(lf_binding)
-        row_profile_path.pack(fill=X, pady=(6, 0))
-        ttk.Label(row_profile_path, text="绑定配置文件").pack(side=LEFT)
-        ent_profile_path = ttk.Entry(row_profile_path, textvariable=var_profile_path)
-        ent_profile_path.pack(side=LEFT, fill=X, expand=YES, padx=(8, 6))
-
-        def _pick_profile_json():
-            picked = filedialog.askopenfilename(
-                title="选择配置 JSON 文件",
-                parent=win,
-                filetypes=[("JSON files", "*.json"), ("All files", "*.*")],
-            )
-            if not picked:
-                return
-            abs_picked = self._safe_abs_path(picked)
-            var_profile_path.set(abs_picked)
-            if abs_picked in label_by_path:
-                var_profile.set(label_by_path[abs_picked])
-
-        btn_pick_json = ttk.Button(
-            row_profile_path, text="选择文件", command=_pick_profile_json
-        )
-        btn_pick_json.pack(side=LEFT)
-
-        lbl_hint = ttk.Label(
-            lf_binding,
-            text="提示：'绑定指定配置档' 可选择已保存配置档或任意 JSON 配置文件。",
-        )
-        lbl_hint.pack(anchor=W, pady=(6, 0))
-
-        def _refresh_binding_controls(*_args):
-            is_profile = var_mode.get() == TASK_BINDING_PROFILE
-            state = "readonly" if is_profile and profile_labels else "disabled"
-            cmb_profile.configure(state=state)
-            ent_profile_path.configure(state="normal" if is_profile else "disabled")
-            btn_pick_json.configure(state="normal" if is_profile else "disabled")
-
-        var_mode.trace_add("write", _refresh_binding_controls)
-        _refresh_binding_controls()
-
-        result = {"updates": None}
-
-        def _save():
-            name = var_name.get().strip()
-            source = var_source.get().strip()
-            target = var_target.get().strip()
-            if not name:
-                messagebox.showwarning(self.tr("win_task_edit"), self.tr("msg_task_input_name"), parent=win)
-                return
-            if not source or not os.path.isdir(source):
-                messagebox.showwarning(self.tr("win_task_edit"), self.tr("msg_source_folder_required"), parent=win)
-                return
-            if not target or not os.path.isdir(target):
-                messagebox.showwarning(self.tr("win_task_edit"), self.tr("msg_target_folder_required"), parent=win)
-                return
-
-            updates = {
-                "name": name,
-                "description": txt_desc.get("1.0", END).strip(),
-                "source_folder": source,
-                "source_folders": [source],
-                "target_folder": target,
-                "run_incremental": bool(var_incremental.get()),
-            }
-
-            mode = normalize_task_binding_mode(var_mode.get())
-            updates["config_binding_mode"] = mode
-            if mode == TASK_BINDING_ACTIVE:
-                updates.update(self._build_task_config_binding_meta())
-            elif mode == TASK_BINDING_PROFILE:
-                chosen_path = self._safe_abs_path(var_profile_path.get())
-                if not chosen_path or not os.path.isfile(chosen_path):
-                    messagebox.showwarning(
-                        self.tr("win_task_edit"),
-                        "请先选择一个存在的配置 JSON 文件。",
-                        parent=win,
-                    )
-                    return
-                updates["config_snapshot_path"] = chosen_path
-                rec = self._find_profile_record_by_path(chosen_path)
-                if isinstance(rec, dict):
-                    updates["config_snapshot_profile_name"] = str(rec.get("name", "")).strip()
-                    updates["config_snapshot_profile_file"] = str(rec.get("file", "")).strip()
-                else:
-                    updates["config_snapshot_profile_name"] = ""
-                    updates["config_snapshot_profile_file"] = os.path.basename(chosen_path)
-            else:
-                updates["config_snapshot_path"] = ""
-                updates["config_snapshot_profile_name"] = ""
-                updates["config_snapshot_profile_file"] = ""
-
-            result["updates"] = updates
-            win.destroy()
-
-        def _cancel():
-            win.destroy()
-
-        row_btn = ttk.Frame(frm)
-        row_btn.pack(fill=X, pady=(12, 0))
-        ttk.Button(row_btn, text="保存", command=_save).pack(side=LEFT)
-        ttk.Button(row_btn, text="取消", command=_cancel).pack(side=LEFT, padx=(8, 0))
-        win.protocol("WM_DELETE_WINDOW", _cancel)
-        self.wait_window(win)
-        return result["updates"]
-
     def _on_click_task_edit(self):
         task_id = self._get_selected_task_id()
         if not task_id:
@@ -1880,26 +1569,7 @@ class TaskWorkflowMixin:
         task = self.task_store.get_task(task_id)
         if not task:
             return
-        updates = self._open_task_edit_form(task, parent=self)
-        if not isinstance(updates, dict):
-            return
-        task.update(updates)
-        # Keep per-task config independent from current UI state.
-        # Edit dialog only updates basic task metadata, not advanced runtime config.
-        task["config_overrides"] = (
-            task.get("config_overrides")
-            if isinstance(task.get("config_overrides"), dict)
-            else {}
-        )
-        task, _ = self._ensure_task_config_snapshots(
-            task, project_cfg=self._load_config_for_write(), persist=False
-        )
-        try:
-            self.task_store.save_task(task)
-        except (AttributeError, TypeError, ValueError, OSError, RuntimeError) as e:
-            messagebox.showerror(self.tr("win_task_edit"), str(e))
-            return
-        self._refresh_task_list_ui()
+        self._open_task_wizard(task=task)
 
     def _on_click_task_delete(self):
         task_id = self._get_selected_task_id()
