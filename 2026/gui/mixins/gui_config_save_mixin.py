@@ -148,11 +148,6 @@ class ConfigSaveMixin:
                 "tooltip_font_size": self.tooltip_font_size,
                 "tooltip_auto_theme": self.tooltip_auto_theme,
                 "confirm_revert_dirty": bool(self.var_confirm_revert_dirty.get()),
-                "task_current_config_only": (
-                    bool(self.var_task_scope_current_config_only.get())
-                    if hasattr(self, "var_task_scope_current_config_only")
-                    else True
-                ),
                 # 鐠佹澘绻傜粣妤€褰涚亸鍝勵嚟娑撳簼缍呯純?
                 "window_geometry": self.geometry(),
                 "window_state": self.state(),

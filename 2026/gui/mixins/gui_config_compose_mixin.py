@@ -251,14 +251,6 @@ class ConfigComposeMixin:
         )
         cfg["privacy"] = cfg.get("privacy", {"mask_md5_in_logs": True})
         self.apply_tooltip_settings(silent=True)
-        task_scope_current_only = True
-        if hasattr(self, "var_task_scope_current_config_only"):
-            try:
-                task_scope_current_only = bool(
-                    self.var_task_scope_current_config_only.get()
-                )
-            except Exception:
-                task_scope_current_only = True
         cfg["ui"] = {
             "tooltip_delay_ms": self.tooltip_delay_ms,
             "tooltip_bg": self.tooltip_bg,
@@ -267,7 +259,6 @@ class ConfigComposeMixin:
             "tooltip_font_size": self.tooltip_font_size,
             "tooltip_auto_theme": self.tooltip_auto_theme,
             "confirm_revert_dirty": bool(self.var_confirm_revert_dirty.get()),
-            "task_current_config_only": task_scope_current_only,
         }
         return cfg
 

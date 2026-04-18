@@ -110,6 +110,54 @@ def _should_trigger_now(schedule, now):
     return True
 
 
+def next_trigger_at(schedule, now=None):
+    """估算下一次触发时间（datetime 或 None）。enabled=False / 配置无效都返回 None。
+
+    once 已触发过会返回 None。interval 没有 last_triggered 就视为立即；
+    daily/weekly 若今天的时间已过且当天已触发，则寻找下一个合法日。
+    """
+    if not isinstance(schedule, dict) or not schedule.get("enabled"):
+        return None
+    now = now or datetime.now()
+    kind = _kind_of(schedule)
+    last_dt = _parse_iso(schedule.get("last_triggered") or "")
+
+    if kind == "interval":
+        minutes = max(1, int(schedule.get("interval_minutes") or 60))
+        if last_dt is None:
+            return now
+        return last_dt + timedelta(minutes=minutes)
+
+    if kind == "once":
+        if last_dt is not None:
+            return None
+        return _parse_once_at(schedule.get("once_at") or "")
+
+    hm = _parse_hhmm(schedule.get("daily_at") or "09:00")
+    if not hm:
+        return None
+    today_target = datetime.combine(now.date(), dt_time(hm[0], hm[1], 0))
+    triggered_today = last_dt is not None and last_dt.date() >= now.date()
+
+    if kind == "weekly":
+        valid_days = {int(x) for x in (schedule.get("weekdays") or []) if 0 <= int(x) <= 6}
+        if not valid_days:
+            return None
+        for offset in range(0, 8):
+            cand = today_target + timedelta(days=offset)
+            if cand.weekday() not in valid_days:
+                continue
+            if offset == 0 and (cand <= now or triggered_today):
+                continue
+            return cand
+        return None
+
+    # daily
+    if today_target > now and not triggered_today:
+        return today_target
+    return today_target + timedelta(days=1)
+
+
 def summarize_schedule(schedule, tr=None, weekday_labels=None):
     """把一条 schedule 压成一句简短文案供任务列表展示。"""
     if not isinstance(schedule, dict) or not schedule.get("enabled"):
@@ -215,6 +263,107 @@ class TaskScheduleMixin:
         pending = [x for x in (getattr(self, "_pending_triggers", []) or []) if x != task_id]
         self._pending_triggers = pending
         return ok
+
+    # ---------- overview ----------
+    def _open_task_schedule_overview(self):
+        """全任务定时一览：列出 schedules.json 里所有条目并支持编辑/删除/试触发。"""
+        win = tk.Toplevel(self)
+        win.title(self.tr("win_task_schedule_overview"))
+        win.geometry("760x420")
+        win.transient(self)
+        from tkinter import ttk
+        frm = ttk.Frame(win, padding=10)
+        frm.pack(fill="both", expand=True)
+
+        cols = ("name", "schedule", "last", "next")
+        tree = ttk.Treeview(frm, columns=cols, show="headings", height=12)
+        for c, key, fb in (
+            ("name", "col_task_name", "Name"),
+            ("schedule", "col_task_schedule", "Schedule"),
+            ("last", "lbl_task_schedule_last_triggered", "Last triggered"),
+            ("next", "col_task_schedule_next", "Next"),
+        ):
+            text = self.tr(key)
+            tree.heading(c, text=fb if text == key else text)
+        tree.column("name", width=180)
+        tree.column("schedule", width=200)
+        tree.column("last", width=160)
+        tree.column("next", width=160)
+        tree.pack(fill="both", expand=True, side="left")
+        scr = ttk.Scrollbar(frm, orient="vertical", command=tree.yview)
+        scr.pack(side="left", fill="y")
+        tree.configure(yscrollcommand=scr.set)
+
+        weekday_labels = [
+            self.tr("weekday_mon"), self.tr("weekday_tue"),
+            self.tr("weekday_wed"), self.tr("weekday_thu"),
+            self.tr("weekday_fri"), self.tr("weekday_sat"),
+            self.tr("weekday_sun"),
+        ]
+
+        def _refresh():
+            for iid in tree.get_children():
+                tree.delete(iid)
+            data = self.task_store.load_schedules()
+            now = datetime.now()
+            for s in data.get("schedules", []) or []:
+                if not isinstance(s, dict):
+                    continue
+                tid = str(s.get("task_id", "")).strip()
+                if not tid:
+                    continue
+                task = self.task_store.get_task(tid) or {}
+                name = str(task.get("name") or tid)
+                sched_text = summarize_schedule(s, tr=self.tr, weekday_labels=weekday_labels)
+                last = (s.get("last_triggered") or "").strip() or "—"
+                nxt_dt = next_trigger_at(s, now=now)
+                nxt = nxt_dt.strftime("%Y-%m-%d %H:%M") if nxt_dt else "—"
+                tree.insert("", "end", iid=tid, values=(name, sched_text, last[:16], nxt))
+
+        _refresh()
+
+        def _selected_id():
+            sel = tree.selection()
+            return sel[0] if sel else None
+
+        def edit():
+            tid = _selected_id()
+            if tid:
+                self._open_task_schedule_dialog(tid)
+                self.after(200, _refresh)
+
+        def trigger():
+            tid = _selected_id()
+            if not tid:
+                return
+            self._trigger_task_now(tid)
+
+        def delete():
+            tid = _selected_id()
+            if not tid:
+                return
+            if not messagebox.askyesno(
+                self.tr("win_task_schedule_overview"),
+                self.tr("msg_task_schedule_confirm_delete"),
+                parent=win,
+            ):
+                return
+            self._delete_task_schedule(tid)
+            _refresh()
+            if hasattr(self, "_refresh_task_list_ui"):
+                self.after(0, self._refresh_task_list_ui)
+
+        btn_row = ttk.Frame(win, padding=(10, 0, 10, 10))
+        btn_row.pack(fill="x")
+        ttk.Button(btn_row, text=self.tr("btn_task_edit"), command=edit).pack(side="left")
+        ttk.Button(
+            btn_row, text=self.tr("btn_task_schedule_trigger_now"), command=trigger
+        ).pack(side="left", padx=(8, 0))
+        ttk.Button(
+            btn_row, text=self.tr("btn_task_schedule_delete"), command=delete
+        ).pack(side="left", padx=(8, 0))
+        ttk.Button(btn_row, text=self.tr("btn_task_refresh"), command=_refresh).pack(side="left", padx=(8, 0))
+        ttk.Button(btn_row, text=self.tr("btn_cancel"), command=win.destroy).pack(side="right")
 
     # ---------- dialog ----------
     def _open_task_schedule_dialog(self, task_id=None):

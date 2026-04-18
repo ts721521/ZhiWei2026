@@ -65,12 +65,10 @@ class TaskWorkflowExceptionNarrowingTests(unittest.TestCase):
         wf.var_task_filter_text = _BadVar()
         wf.var_task_status_filter = _BadVar()
         wf.var_task_sort_by = _BadVar()
-        wf.var_task_scope_current_config_only = _BadVar()
 
         self.assertEqual("", wf._task_list_filter_text())
         self.assertEqual("all", wf._task_list_status_filter())
         self.assertEqual("updated_desc", wf._task_list_sort_by())
-        self.assertFalse(wf._task_scope_current_config_only())
 
     def test_refresh_status_filter_values_uses_setitem_fallback(self):
         wf = _Dummy()

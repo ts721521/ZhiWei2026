@@ -139,53 +139,6 @@ class TaskWorkflowMixin:
         except (AttributeError, TypeError, ValueError, tk.TclError):
             return "updated_desc"
 
-    def _task_scope_current_config_only(self):
-        try:
-            var = getattr(self, "var_task_scope_current_config_only", None)
-            if var is None:
-                return False
-            return bool(int(var.get()))
-        except (AttributeError, TypeError, ValueError, tk.TclError):
-            return False
-
-    def _task_matches_current_config_scope(self, task):
-        if not self._task_scope_current_config_only():
-            return True
-        if not isinstance(task, dict):
-            return False
-
-        current_config = self._safe_abs_path(getattr(self, "config_path", ""))
-        if not current_config:
-            return True
-
-        task_cfg_path = self._safe_abs_path(task.get("config_snapshot_path", ""))
-        if task_cfg_path:
-            # 任务自带的独立 profile（config_profiles/task_*.json）始终视为"在当前作用域"，
-            # 否则统一任务模式下新任务全被过滤掉，列表永远是空的。
-            base = os.path.basename(task_cfg_path).lower()
-            if base.startswith("task_") and base.endswith(".json"):
-                return True
-            return task_cfg_path == current_config
-
-        mode = normalize_task_binding_mode(task.get("config_binding_mode"))
-        if mode == TASK_BINDING_ACTIVE:
-            return True
-
-        task_snapshot_sig = self._normalize_config_for_compare(
-            task.get("project_config_snapshot")
-        )
-        if not task_snapshot_sig:
-            return False
-        loader = getattr(self, "_load_config_for_write", None)
-        if not callable(loader):
-            return False
-        try:
-            current_cfg_sig = self._normalize_config_for_compare(loader())
-        except (AttributeError, TypeError, ValueError, OSError, RuntimeError) as e:
-            self._report_nonfatal_ui_error("task.scope.current_cfg", exc=e)
-            return False
-        return bool(current_cfg_sig and current_cfg_sig == task_snapshot_sig)
-
     def _refresh_task_status_filter_values(self, tasks):
         cb = getattr(self, "cb_task_status_filter", None)
         if cb is None:
@@ -229,8 +182,6 @@ class TaskWorkflowMixin:
         status_filter = self._task_list_status_filter()
         out = []
         for task in rows:
-            if not self._task_matches_current_config_scope(task):
-                continue
             if status_filter != "all":
                 row_status = str(task.get("status", "idle")).strip().lower()
                 if row_status != status_filter:
@@ -302,8 +253,7 @@ class TaskWorkflowMixin:
         except (AttributeError, TypeError, ValueError, OSError, RuntimeError) as e:
             self._report_nonfatal_ui_error("task.list_tasks", exc=e)
             tasks = []
-        scoped_tasks = [t for t in tasks if self._task_matches_current_config_scope(t)]
-        self._refresh_task_status_filter_values(scoped_tasks)
+        self._refresh_task_status_filter_values(tasks)
         tasks = self._filter_task_list_rows(tasks)
         tasks = self._sort_task_list_rows(tasks)
         for task in tasks:
@@ -1094,7 +1044,7 @@ class TaskWorkflowMixin:
         def _paste_clipboard():
             try:
                 clip = win.clipboard_get()
-            except Exception:
+            except tk.TclError:
                 clip = ""
             if not clip:
                 return
@@ -1306,7 +1256,7 @@ class TaskWorkflowMixin:
                 _ext_cfg = _cfg_dict.get("allowed_extensions") if isinstance(_cfg_dict, dict) else None
                 if isinstance(_ext_cfg, dict) and any(_ext_cfg.values()):
                     _initial_ext = _ext_cfg
-        except Exception:
+        except (AttributeError, TypeError, ValueError, OSError, RuntimeError):
             pass
         ext_frame, ext_getter, ext_setter = self._create_extension_chip_editor(
             f3_ext, initial=_initial_ext

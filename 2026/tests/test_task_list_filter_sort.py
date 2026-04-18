@@ -61,7 +61,6 @@ class _DummyTaskWorkflow(TaskWorkflowMixin):
         self.var_task_filter_text = _FakeVar("")
         self.var_task_status_filter = _FakeVar("all")
         self.var_task_sort_by = _FakeVar("updated_desc")
-        self.var_task_scope_current_config_only = _FakeVar(0)
         self.config_path = r"C:\cfg\current.json"
         self._selected_called = 0
 
@@ -125,37 +124,6 @@ class TaskListFilterSortTests(unittest.TestCase):
         wf._refresh_task_list_ui()
 
         self.assertEqual(["t1", "t2", "t3"], self._row_ids(wf))
-
-    def test_scope_filter_only_current_config(self):
-        scoped_tasks = [
-            {
-                "id": "cur",
-                "name": "CurrentCfgTask",
-                "source_folder": r"C:\src\cur",
-                "target_folder": r"C:\out",
-                "status": "idle",
-                "last_run_at": "2026-02-24T10:00:00",
-                "updated_at": "2026-02-24T10:00:00",
-                "config_snapshot_path": r"C:\cfg\current.json",
-            },
-            {
-                "id": "other",
-                "name": "OtherCfgTask",
-                "source_folder": r"C:\src\other",
-                "target_folder": r"C:\out",
-                "status": "idle",
-                "last_run_at": "2026-02-24T09:00:00",
-                "updated_at": "2026-02-24T09:00:00",
-                "config_snapshot_path": r"C:\cfg\other.json",
-            },
-        ]
-        wf = _DummyTaskWorkflow(scoped_tasks)
-        wf.var_task_scope_current_config_only.set(1)
-
-        wf._refresh_task_list_ui()
-
-        self.assertEqual(["cur"], self._row_ids(wf))
-
 
 if __name__ == "__main__":
     unittest.main()

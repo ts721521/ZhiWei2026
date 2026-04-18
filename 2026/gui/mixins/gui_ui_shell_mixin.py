@@ -522,8 +522,6 @@ class UIShellMixin:
             self.var_task_status_filter = tk.StringVar(value="all")
         if not hasattr(self, "var_task_sort_by"):
             self.var_task_sort_by = tk.StringVar(value="updated_desc")
-        if not hasattr(self, "var_task_scope_current_config_only"):
-            self.var_task_scope_current_config_only = tk.IntVar(value=1)
 
         list_col = tb.Frame(lf_tasks)
 
@@ -555,18 +553,6 @@ class UIShellMixin:
         )
         self.cb_task_sort.pack(side=LEFT, padx=(4, 8))
 
-        self.chk_task_scope_current_config_only = tb.Checkbutton(
-            filter_row,
-            text=self.tr("chk_task_scope_current_config_only"),
-            variable=self.var_task_scope_current_config_only,
-            bootstyle="round-toggle",
-        )
-        self.chk_task_scope_current_config_only.pack(side=LEFT, padx=(0, 8))
-        self._attach_tooltip(
-            self.chk_task_scope_current_config_only,
-            "tip_task_scope_current_config_only",
-        )
-
         self.btn_task_filter_clear = tb.Button(
             filter_row,
             text=self.tr("btn_task_filter_clear"),
@@ -575,6 +561,15 @@ class UIShellMixin:
             command=self._reset_task_list_filters,
         )
         self.btn_task_filter_clear.pack(side=LEFT)
+
+        self.btn_task_schedule_overview = tb.Button(
+            filter_row,
+            text=self.tr("btn_task_schedule_overview"),
+            width=10,
+            bootstyle="info-outline",
+            command=self._open_task_schedule_overview,
+        )
+        self.btn_task_schedule_overview.pack(side=LEFT, padx=(8, 0))
 
         tree_row = tb.Frame(list_col)
         tree_row.pack(fill=BOTH, expand=YES)
@@ -722,9 +717,6 @@ class UIShellMixin:
                 "write", lambda *a: self.after(0, self._refresh_task_list_ui)
             )
             self.var_task_sort_by.trace_add(
-                "write", lambda *a: self.after(0, self._refresh_task_list_ui)
-            )
-            self.var_task_scope_current_config_only.trace_add(
                 "write", lambda *a: self.after(0, self._refresh_task_list_ui)
             )
             self._task_tab_filters_trace_done = True
