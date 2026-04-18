@@ -47,23 +47,9 @@ class RuntimeStatusMixin:
                     getattr(self, btn_name).configure(state="disabled")
             if hasattr(self, "chk_task_force_full_rebuild"):
                 self.chk_task_force_full_rebuild.configure(state="disabled")
-            for btn_name in (
-                "btn_save_cfg_shared",
-                "btn_save_cfg_convert",
-                "btn_save_cfg_ai",
-                "btn_save_cfg_merge",
-                "btn_save_cfg_ui",
-                "btn_save_cfg_rules",
-                "btn_reset_cfg_shared",
-                "btn_reset_cfg_convert",
-                "btn_reset_cfg_ai",
-                "btn_reset_cfg_merge",
-                "btn_reset_cfg_ui",
-                "btn_reset_cfg_rules",
-                "btn_save_cfg_dirty",
-            ):
-                if hasattr(self, btn_name):
-                    getattr(self, btn_name).configure(state="disabled")
+            # 节级 btn_save_cfg_*/btn_reset_cfg_* 已下线，仅保留 dirty 汇总按钮。
+            if hasattr(self, "btn_save_cfg_dirty"):
+                self.btn_save_cfg_dirty.configure(state="disabled")
             self.progress["mode"] = "determinate"
             self.progress["value"] = 0
             self.var_status.set(
@@ -97,22 +83,7 @@ class RuntimeStatusMixin:
                     getattr(self, btn_name).configure(state="normal")
             if hasattr(self, "chk_task_force_full_rebuild"):
                 self.chk_task_force_full_rebuild.configure(state="normal")
-            for btn_name in (
-                "btn_save_cfg_shared",
-                "btn_save_cfg_convert",
-                "btn_save_cfg_ai",
-                "btn_save_cfg_merge",
-                "btn_save_cfg_ui",
-                "btn_save_cfg_rules",
-                "btn_reset_cfg_shared",
-                "btn_reset_cfg_convert",
-                "btn_reset_cfg_ai",
-                "btn_reset_cfg_merge",
-                "btn_reset_cfg_ui",
-                "btn_reset_cfg_rules",
-            ):
-                if hasattr(self, btn_name):
-                    getattr(self, btn_name).configure(state="normal")
+            # 节级 btn_save_cfg_*/btn_reset_cfg_* 已下线。
             self._update_config_dirty_summary(getattr(self, "_last_section_dirty", {}))
             if hasattr(self, "_on_task_select"):
                 self._on_task_select()

@@ -54,6 +54,7 @@ log/
 2026/log/
 2026/.tmp_test_work/
 2026/.venv/
+2026/.python/
 2026/__pycache__/
 2026/.pytest_cache/
 2026/.mypy_cache/
@@ -84,3 +85,5 @@ log/
 # Repo-root temp scripts (e.g. _patch_*.py, _fix_*.py)
 _*.py
 _*.txt
+# 别误伤包初始化文件
+!__init__.py

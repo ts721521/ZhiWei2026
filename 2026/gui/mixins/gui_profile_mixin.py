@@ -137,6 +137,10 @@ class ProfileManagementMixin:
                 continue
             if lower == index_name or lower in known_files:
                 continue
+            # task_<id>.json 是任务运行时生成的独立配置文件（每任务一份），
+            # 不属于用户手动维护的"配置档"集合，避免在配置档下拉里露出来。
+            if lower.startswith("task_"):
+                continue
             abs_path = self._profile_abs_path(entry)
             if not os.path.isfile(abs_path):
                 continue

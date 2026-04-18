@@ -129,12 +129,13 @@ class ConfigTabUIMixin:
 
         # tab_cfg_* 宸插湪 _build_ui 涓涓哄埆鍚嶏紙鎸囧悜瀵瑰簲鐨勫姛鑳?tab 婊氬姩椤甸潰锛?
         # cfg_tabs 瀛?Notebook 宸茬Щ闄わ紝閰嶇疆鍐呭鐩存帴杩藉姞鍒板搴斿姛鑳?tab
+        # 单一入口 UI：所有 live-config tab 已下线，dirty section 标记统一指向配置中心。
         self._cfg_tab_meta = [
-            ("shared", self.tab_run_shared, "grp_shared_runtime"),
-            ("convert", self.tab_run_convert, "grp_convert_runtime"),
-            ("ai", self.tab_run_mshelp, "grp_mshelp_runtime"),
-            ("incremental", self.tab_run_convert, "grp_convert_runtime"),
-            ("merge", self.tab_run_merge, "grp_merge_runtime"),
+            ("shared", self.tab_settings, "tab_config_center"),
+            ("convert", self.tab_settings, "tab_config_center"),
+            ("ai", self.tab_settings, "tab_config_center"),
+            ("incremental", self.tab_settings, "tab_config_center"),
+            ("merge", self.tab_settings, "tab_config_center"),
             ("ui", self.tab_settings, "tab_config_center"),
             ("rules", self.tab_settings, "tab_config_center"),
         ]
@@ -143,17 +144,34 @@ class ConfigTabUIMixin:
         # 楂樼骇璁剧疆 tab 閲囩敤宸﹀彸鍙屽垪甯冨眬锛?
         # 宸﹀垪锛氬叡浜厤缃紙璺緞 / 杩涚▼ / 鏃ュ織锛? 杞崲瓒呮椂
         # 鍙冲垪锛氬悎骞惰緭鍑?+ MSHelp + UI + 瑙勫垯
-        settings_cols = tb.Frame(parent)
-        settings_cols.pack(fill=BOTH, expand=YES, pady=(4, 0))
+        # 全局默认：内层 Notebook 分 3 组（常用 / 规则 / 高级），降低 7 节平铺的认知负担
+        settings_nb = tb.Notebook(parent)
+        settings_nb.pack(fill=BOTH, expand=YES, pady=(4, 0))
 
-        settings_left = tb.Frame(settings_cols)
-        settings_left.grid(row=0, column=0, sticky="nsew", padx=(0, 6))
+        def _two_col(page):
+            page_l = tb.Frame(page)
+            page_l.grid(row=0, column=0, sticky="nsew", padx=(0, 6))
+            page_r = tb.Frame(page)
+            page_r.grid(row=0, column=1, sticky="nsew", padx=(6, 0))
+            page.columnconfigure(0, weight=1)
+            page.columnconfigure(1, weight=1)
+            return page_l, page_r
 
-        settings_right = tb.Frame(settings_cols)
-        settings_right.grid(row=0, column=1, sticky="nsew", padx=(6, 0))
+        page_common = tb.Frame(settings_nb, padding=6)
+        page_rules = tb.Frame(settings_nb, padding=6)
+        page_advanced = tb.Frame(settings_nb, padding=6)
+        settings_nb.add(page_common, text=self.tr("cfg_page_common"))
+        settings_nb.add(page_rules, text=self.tr("cfg_page_rules"))
+        settings_nb.add(page_advanced, text=self.tr("cfg_page_advanced"))
 
-        settings_cols.columnconfigure(0, weight=1)
-        settings_cols.columnconfigure(1, weight=1)
+        common_left, common_right = _two_col(page_common)
+        rules_left, rules_right = _two_col(page_rules)
+        adv_left, adv_right = _two_col(page_advanced)
+
+        # 旧变量名 settings_left/settings_right 默认指向「常用」页两列；
+        # 仅个别 labelframe 切换到 rules / advanced 页。
+        settings_left = common_left
+        settings_right = common_right
 
         # Shared defaults: paths锛堝乏鍒楋級
         lf_cfg_path = tb.Labelframe(settings_left, text=self.tr("sec_paths"), padding=6)
@@ -168,9 +186,9 @@ class ConfigTabUIMixin:
             None,
         )
 
-        # Shared defaults: process strategy锛堝乏鍒楋級
+        # Shared defaults: process strategy（移到 高级 页 / 左列）
         lf_proc_shared = tb.Labelframe(
-            settings_left, text=self.tr("grp_cfg_shared_process"), padding=6
+            adv_left, text=self.tr("grp_cfg_shared_process"), padding=6
         )
         lf_proc_shared.pack(fill=X, pady=3)
         self._add_section_help(lf_proc_shared, "tip_section_cfg_process")
@@ -216,11 +234,7 @@ class ConfigTabUIMixin:
         )
         self.btn_log_folder.pack(side=LEFT, padx=2)
         self._attach_tooltip(self.btn_log_folder, "tip_choose_log")
-        (
-            frm_cfg_shared_actions,
-            self.btn_save_cfg_shared,
-            self.btn_reset_cfg_shared,
-        ) = self._add_cfg_section_reset_action(settings_left, "shared")
+        # 节级保存/重置按钮已下线：单 tab UI + 任务向导后底部全局按钮足够覆盖。
 
         # Convert defaults锛堝乏鍒楋級
         lf_proc_convert = tb.Labelframe(
@@ -317,11 +331,7 @@ class ConfigTabUIMixin:
             self.ent_office_restart_every_n_files,
             "tip_input_office_restart_every_n_files",
         )
-        (
-            frm_cfg_convert_actions,
-            self.btn_save_cfg_convert,
-            self.btn_reset_cfg_convert,
-        ) = self._add_cfg_section_reset_action(settings_left, "convert")
+        # 节级保存/重置按钮已下线。
 
         # 鍚堝苟琛屼负绫诲紑鍏冲凡鍦ㄨ繍琛岃缃腑缁熶竴鎺у埗锛岃繖閲屼粎淇濈暀閮ㄥ垎杈撳嚭鐩稿叧榛樿鍊硷紝閬垮厤閲嶅鎺т欢锛堝彸鍒楋級
         lf_proc_merge_output = tb.Labelframe(
@@ -374,60 +384,20 @@ class ConfigTabUIMixin:
         self._attach_tooltip(
             self.ent_merge_filename_pattern, "tip_input_merge_filename_pattern"
         )
-        (
-            frm_cfg_merge_actions,
-            self.btn_save_cfg_merge,
-            self.btn_reset_cfg_merge,
-        ) = self._add_cfg_section_reset_action(settings_right, "merge")
-
-        # MSHelp 閰嶇疆璁剧疆锛堝彸鍒楋級
-        lf_cfg_ai_mshelp = tb.Labelframe(
-            settings_right, text=self.tr("grp_mshelp_runtime"), padding=6
-        )
-        lf_cfg_ai_mshelp.pack(fill=X, pady=5)
-        tb.Label(
-            lf_cfg_ai_mshelp,
-            text=self.tr("lbl_mshelp_folder_name"),
-            font=("System", 9),
-        ).pack(anchor="w")
-        self.ent_cfg_mshelpviewer_folder_name = tb.Entry(
-            lf_cfg_ai_mshelp, textvariable=self.var_mshelpviewer_folder_name
-        )
-        self.ent_cfg_mshelpviewer_folder_name.pack(fill=X)
-        self._attach_tooltip(
-            self.ent_cfg_mshelpviewer_folder_name, "tip_input_mshelp_folder_name"
-        )
+        # markdown image manifest（MD<->PDF map）原属 MSHelp/AI 块，
+        # 拆掉孤立小框后并入合并输出 Labelframe。
         tb.Checkbutton(
-            lf_cfg_ai_mshelp,
-            text=self.tr("chk_mshelp_merge_output"),
-            variable=self.var_enable_mshelp_merge_output,
-        ).pack(anchor="w", pady=(6, 0))
-        tb.Checkbutton(
-            lf_cfg_ai_mshelp,
-            text=self.tr("chk_mshelp_output_docx"),
-            variable=self.var_enable_mshelp_output_docx,
-        ).pack(anchor="w", pady=(6, 0))
-        tb.Checkbutton(
-            lf_cfg_ai_mshelp,
-            text=self.tr("chk_mshelp_output_pdf"),
-            variable=self.var_enable_mshelp_output_pdf,
-        ).pack(anchor="w")
-        tb.Checkbutton(
-            lf_cfg_ai_mshelp,
+            lf_proc_merge_output,
             text="Markdown image manifest (MD<->PDF map)",
             variable=self.var_enable_markdown_image_manifest,
         ).pack(anchor="w", pady=(6, 0))
-        (
-            frm_cfg_ai_actions,
-            self.btn_save_cfg_ai,
-            self.btn_reset_cfg_ai,
-        ) = self._add_cfg_section_reset_action(settings_right, "ai")
+        # 节级保存/重置按钮（merge / ai）已下线。
 
         # 澧為噺閰嶇疆鍦ㄨ繍琛屽弬鏁拌浆鎹?tab 涓凡灞曠ず锛屼笉鍐嶅崟鐙崰鐢ㄩ〉闈?
 
-        # UI / tooltip 閰嶇疆锛堝彸鍒楋級
+        # UI / tooltip 配置（移到 高级 页 / 右列）
         lf_proc_ui = tb.Labelframe(
-            settings_right, text=self.tr("grp_cfg_ui"), padding=6
+            adv_right, text=self.tr("grp_cfg_ui"), padding=6
         )
         lf_proc_ui.pack(fill=X, pady=3)
         self._add_section_help(lf_proc_ui, "tip_section_cfg_process")
@@ -570,15 +540,11 @@ class ConfigTabUIMixin:
             self.var_tooltip_auto_theme,
         ):
             v.trace_add("write", lambda *_: self.validate_tooltip_inputs(silent=True))
-        (
-            frm_cfg_ui_actions,
-            self.btn_save_cfg_ui,
-            self.btn_reset_cfg_ui,
-        ) = self._add_cfg_section_reset_action(settings_right, "ui")
+        # 节级保存/重置按钮（ui）已下线。
 
-        # Rules defaults: excluded folders锛堝彸鍒楋級
+        # Rules defaults: excluded folders（规则 页 / 左列）
         lf_rules_excluded = tb.Labelframe(
-            settings_right, text=self.tr("grp_cfg_rules_excluded"), padding=6
+            rules_left, text=self.tr("grp_cfg_rules_excluded"), padding=6
         )
         lf_rules_excluded.pack(fill=X, pady=5)
         self._add_section_help(lf_rules_excluded, "tip_section_cfg_lists")
@@ -588,9 +554,9 @@ class ConfigTabUIMixin:
         )
         self.txt_excluded_folders.pack(fill=X, pady=(0, 5))
 
-        # Rules defaults: keyword strategy锛堝彸鍒楋級
+        # Rules defaults: keyword strategy（规则 页 / 左列）
         lf_rules_keywords = tb.Labelframe(
-            settings_right, text=self.tr("grp_cfg_rules_keywords"), padding=6
+            rules_left, text=self.tr("grp_cfg_rules_keywords"), padding=6
         )
         lf_rules_keywords.pack(fill=X, pady=5)
         tb.Label(lf_rules_keywords, text=self.tr("lbl_keywords")).pack(anchor="w")
@@ -598,11 +564,39 @@ class ConfigTabUIMixin:
             lf_rules_keywords, height=3, font=("Consolas", 8), bootstyle="default"
         )
         self.txt_price_keywords.pack(fill=X)
-        (
-            frm_cfg_rules_actions,
-            self.btn_save_cfg_rules,
-            self.btn_reset_cfg_rules,
-        ) = self._add_cfg_section_reset_action(settings_right, "rules")
+        # 节级保存/重置按钮（rules）已下线。
+
+        # 全局默认：扩展名筛选（chip 编辑器；任务向导可覆盖）—— 规则 页 / 右列
+        lf_rules_ext = tb.Labelframe(
+            rules_right, text=self.tr("lbl_allowed_extensions"), padding=6
+        )
+        lf_rules_ext.pack(fill=X, pady=5)
+        tb.Label(lf_rules_ext, text=self.tr("hint_allowed_extensions")).pack(anchor="w")
+        # 初值仅占位；真正的值由 _load_config_to_ui() 调用 _cfg_set_allowed_extensions 注入。
+        _ext_initial = {
+            "word": [".doc", ".docx"],
+            "excel": [".xls", ".xlsx"],
+            "powerpoint": [".ppt", ".pptx"],
+            "pdf": [".pdf"],
+            "cab": [".cab"],
+        }
+        try:
+            loader = getattr(self, "_load_config_for_write", None)
+            if callable(loader):
+                _cfg_dict = loader() or {}
+                _ext_cfg = _cfg_dict.get("allowed_extensions") if isinstance(_cfg_dict, dict) else None
+                if isinstance(_ext_cfg, dict) and any(_ext_cfg.values()):
+                    _ext_initial = _ext_cfg
+        except Exception:
+            pass
+        ext_frame, self._cfg_get_allowed_extensions, self._cfg_set_allowed_extensions = (
+            self._create_extension_chip_editor(
+                lf_rules_ext,
+                initial=_ext_initial,
+                on_change=lambda _v: self._set_config_dirty(True),
+            )
+        )
+        ext_frame.pack(fill=X, pady=(4, 0))
 
         # Emphasized save in config tab锛堝簳閮ㄦí鍚戞寜閽尯锛岃法涓ゅ垪锛?
         cfg_actions = tb.Frame(parent)
@@ -638,17 +632,12 @@ class ConfigTabUIMixin:
         self._auto_attach_action_tooltips(lf_proc_shared)
         self._auto_attach_action_tooltips(lf_cfg_log)
         self._auto_attach_action_tooltips(lf_proc_convert)
-        self._auto_attach_action_tooltips(lf_cfg_ai_mshelp)
+        # MSHelp 配置块已删除。
         self._auto_attach_action_tooltips(lf_proc_merge_output)
         self._auto_attach_action_tooltips(lf_proc_ui)
         self._auto_attach_action_tooltips(lf_rules_excluded)
         self._auto_attach_action_tooltips(lf_rules_keywords)
-        self._auto_attach_action_tooltips(frm_cfg_shared_actions)
-        self._auto_attach_action_tooltips(frm_cfg_convert_actions)
-        self._auto_attach_action_tooltips(frm_cfg_ai_actions)
-        self._auto_attach_action_tooltips(frm_cfg_merge_actions)
-        self._auto_attach_action_tooltips(frm_cfg_ui_actions)
-        self._auto_attach_action_tooltips(frm_cfg_rules_actions)
+        # 节级 frm_cfg_*_actions 已删除，不再 auto attach。
         self._auto_attach_action_tooltips(cfg_actions)
         self._auto_attach_input_tooltips(lf_cfg_path, "tip_section_cfg_paths")
         self._auto_attach_input_tooltips(lf_proc_shared, "tip_section_cfg_process")
@@ -657,7 +646,7 @@ class ConfigTabUIMixin:
         self._auto_attach_input_tooltips(
             lf_proc_merge_output, "tip_section_cfg_process"
         )
-        self._auto_attach_input_tooltips(lf_cfg_ai_mshelp, "tip_mode_mshelp")
+        # MSHelp 配置块已删除，不再附加 tip_mode_mshelp。
         self._auto_attach_input_tooltips(lf_proc_ui, "tip_section_cfg_process")
         self._auto_attach_input_tooltips(lf_rules_excluded, "tip_section_cfg_lists")
         self._auto_attach_input_tooltips(lf_rules_keywords, "tip_section_cfg_lists")

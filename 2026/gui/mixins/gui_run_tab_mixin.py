@@ -166,14 +166,7 @@ class RunTabUIMixin:
             command=self._on_run_mode_change,
             bootstyle="toolbutton-outline",
         ).grid(row=1, column=1, sticky="ew", padx=2, pady=2)
-        tb.Radiobutton(
-            grid_frame,
-            text=self.tr("mode_mshelp"),
-            variable=self.var_run_mode,
-            value=MODE_MSHELP_ONLY,
-            command=self._on_run_mode_change,
-            bootstyle="toolbutton-outline",
-        ).grid(row=2, column=0, columnspan=2, sticky="ew", padx=2, pady=2)
+        # MSHelp 模式已剥离为独立 CLI（tools/mshelp_run.py），界面不再露出。
         grid_frame.columnconfigure(0, weight=1)
         grid_frame.columnconfigure(1, weight=1)
 
@@ -263,53 +256,12 @@ class RunTabUIMixin:
             value=COLLECT_MODE_INDEX_ONLY,
         ).pack(anchor="w")
 
-        lf_mshelp_runtime = tb.Labelframe(
-            self._scroll_mshelp, text=self.tr("grp_mshelp_runtime"), padding=6
-        )
-        lf_mshelp_runtime.pack(fill=X, pady=3)
-        tb.Label(
-            lf_mshelp_runtime,
-            text=self.tr("lbl_mshelp_folder_name"),
-            font=("System", 9, "bold"),
-        ).pack(anchor="w")
+        # MSHelp 配置块已下线（独立 CLI 见 tools/mshelp_run.py），
+        # 但保留 IntVar/StringVar 占位，以便 config 加载/保存/对比逻辑无需改动。
         self.var_mshelpviewer_folder_name = tk.StringVar(value="MSHelpViewer")
-        self.ent_mshelpviewer_folder_name = tb.Entry(
-            lf_mshelp_runtime, textvariable=self.var_mshelpviewer_folder_name
-        )
-        self.ent_mshelpviewer_folder_name.pack(fill=X)
-        self._attach_tooltip(
-            self.ent_mshelpviewer_folder_name, "tip_input_mshelp_folder_name"
-        )
         self.var_enable_mshelp_merge_output = tk.IntVar(value=1)
-        self.chk_enable_mshelp_merge_output = tb.Checkbutton(
-            lf_mshelp_runtime,
-            text=self.tr("chk_mshelp_merge_output"),
-            variable=self.var_enable_mshelp_merge_output,
-        )
-        self.chk_enable_mshelp_merge_output.pack(anchor="w", pady=(6, 0))
-        self._attach_tooltip(
-            self.chk_enable_mshelp_merge_output, "tip_toggle_mshelp_merge_output"
-        )
         self.var_enable_mshelp_output_docx = tk.IntVar(value=0)
-        self.chk_enable_mshelp_output_docx = tb.Checkbutton(
-            lf_mshelp_runtime,
-            text=self.tr("chk_mshelp_output_docx"),
-            variable=self.var_enable_mshelp_output_docx,
-        )
-        self.chk_enable_mshelp_output_docx.pack(anchor="w", pady=(6, 0))
-        self._attach_tooltip(
-            self.chk_enable_mshelp_output_docx, "tip_toggle_mshelp_output_docx"
-        )
         self.var_enable_mshelp_output_pdf = tk.IntVar(value=0)
-        self.chk_enable_mshelp_output_pdf = tb.Checkbutton(
-            lf_mshelp_runtime,
-            text=self.tr("chk_mshelp_output_pdf"),
-            variable=self.var_enable_mshelp_output_pdf,
-        )
-        self.chk_enable_mshelp_output_pdf.pack(anchor="w")
-        self._attach_tooltip(
-            self.chk_enable_mshelp_output_pdf, "tip_toggle_mshelp_output_pdf"
-        )
 
         # Section 2: paths (runtime only)
         lf_paths = tb.Labelframe(
@@ -856,12 +808,12 @@ class RunTabUIMixin:
             self.chk_upload_dedup_merged, "tip_toggle_upload_dedup_merged"
         )
 
-        # Section: Google Drive 涓婁紶
+        # Google Drive 上传暂不暴露：构建到一个孤立 Frame 中，
+        # 控件/状态变量保留，便于 GDriveMixin、配置 IO/save/dirty/compose 链路无需改动。
+        self._frm_gdrive_hidden = tb.Frame(self)
         lf_gdrive = tb.Labelframe(
-            self._scroll_output, text=self.tr("grp_gdrive_upload"), padding=(8, 6)
+            self._frm_gdrive_hidden, text=self.tr("grp_gdrive_upload"), padding=(8, 6)
         )
-        lf_gdrive.pack(fill=X, pady=3)
-        self._add_section_help(lf_gdrive, "tip_section_gdrive_upload")
         self.var_enable_gdrive_upload = tk.IntVar(value=0)
         self.chk_enable_gdrive_upload = tb.Checkbutton(
             lf_gdrive,
@@ -1256,7 +1208,7 @@ class RunTabUIMixin:
         self._set_locator_action_state(False)
         self._auto_attach_action_tooltips(lf_mode)
         self._auto_attach_action_tooltips(lf_collect)
-        self._auto_attach_action_tooltips(lf_mshelp_runtime)
+        # MSHelp Labelframe 已删除。
         self._auto_attach_action_tooltips(lf_paths)
         self._auto_attach_action_tooltips(lf_settings)
         self._auto_attach_action_tooltips(lf_convert_content)
@@ -1268,7 +1220,7 @@ class RunTabUIMixin:
         self._auto_attach_input_tooltips(lf_settings, "tip_section_run_advanced")
         self._auto_attach_input_tooltips(lf_merge_runtime, "tip_section_run_advanced")
         self._auto_attach_input_tooltips(lf_collect, "tip_section_run_advanced")
-        self._auto_attach_input_tooltips(lf_mshelp_runtime, "tip_mode_mshelp")
+        # MSHelp Labelframe 已删除，不再附加 tip_mode_mshelp。
         self._auto_attach_input_tooltips(lf_locator, "tip_section_run_locator")
         self._build_task_tab_content()
         self._attach_tooltip(self.entry_temp_sandbox_root, "tip_input_sandbox_root")

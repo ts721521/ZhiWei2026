@@ -290,6 +290,14 @@ class ConfigIOMixin:
         if isinstance(price_kws, list):
             self.txt_price_keywords.insert("end", "\n".join(price_kws))
 
+        # 扩展名 chip 编辑器：从 cfg 同步桶到 UI（如果还没构建则跳过）
+        if hasattr(self, "_cfg_set_allowed_extensions"):
+            ext_cfg = cfg.get("allowed_extensions") or {}
+            try:
+                self._cfg_set_allowed_extensions(ext_cfg)
+            except Exception:
+                pass
+
         self.var_timeout_seconds.set(str(cfg.get("timeout_seconds", 60)))
         self.var_pdf_wait_seconds.set(str(cfg.get("pdf_wait_seconds", 15)))
         self.var_ppt_timeout_seconds.set(str(cfg.get("ppt_timeout_seconds", 180)))

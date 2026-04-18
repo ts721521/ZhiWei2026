@@ -206,6 +206,13 @@ class ConfigComposeMixin:
                 line.strip() for line in kw_text.splitlines() if line.strip()
             ]
 
+            # 扩展名 chip 编辑器：写回 allowed_extensions 桶（仅写入非空桶以保留默认）。
+            getter = getattr(self, "_cfg_get_allowed_extensions", None)
+            if callable(getter):
+                ext_value = getter() or {}
+                if any(ext_value.get(k) for k in ext_value):
+                    cfg["allowed_extensions"] = ext_value
+
         def _to_int(var, default):
             try:
                 v = int(var.get().strip())

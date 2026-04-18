@@ -15,6 +15,7 @@ from office_converter import (
     MODE_COLLECT_ONLY,
     MODE_MSHELP_ONLY,
     COLLECT_MODE_COPY_AND_INDEX,
+    COLLECT_MODE_INDEX_ONLY,
     MERGE_MODE_CATEGORY,
     MERGE_MODE_ALL_IN_ONE,
     ENGINE_WPS,
@@ -27,6 +28,17 @@ from task_manager import (
     build_task_runtime_config,
     normalize_task_binding_mode,
 )
+
+
+def _deep_merge_dict(base, override):
+    """浅层足够大多数配置字段；嵌套 dict 递归合并，其它类型 override 覆盖。"""
+    out = dict(base) if isinstance(base, dict) else {}
+    for key, value in (override or {}).items():
+        if isinstance(value, dict) and isinstance(out.get(key), dict):
+            out[key] = _deep_merge_dict(out.get(key), value)
+        else:
+            out[key] = value
+    return out
 
 
 class TaskWorkflowMixin:
@@ -148,6 +160,11 @@ class TaskWorkflowMixin:
 
         task_cfg_path = self._safe_abs_path(task.get("config_snapshot_path", ""))
         if task_cfg_path:
+            # 任务自带的独立 profile（config_profiles/task_*.json）始终视为"在当前作用域"，
+            # 否则统一任务模式下新任务全被过滤掉，列表永远是空的。
+            base = os.path.basename(task_cfg_path).lower()
+            if base.startswith("task_") and base.endswith(".json"):
+                return True
             return task_cfg_path == current_config
 
         mode = normalize_task_binding_mode(task.get("config_binding_mode"))
@@ -367,7 +384,52 @@ class TaskWorkflowMixin:
                 return row
         return None
 
-    def _build_task_config_binding_meta(self):
+    def _task_independent_profile_path(self, task_id):
+        """返回任务独立配置文件的绝对路径：config_profiles/<task_id>.json。
+
+        task_id 由 _new_task_id() 生成，已经带 "task_" 前缀，这里直接复用，
+        不再叠加，避免出现 "task_task_..." 的丑陋文件名。
+        """
+        script_dir = str(getattr(self, "script_dir", "")).strip() or os.getcwd()
+        safe_id = str(task_id or "").strip() or "unknown_task"
+        return os.path.abspath(
+            os.path.join(script_dir, "config_profiles", f"{safe_id}.json")
+        )
+
+    def _write_independent_task_profile(self, task_id, base_cfg):
+        """把任务的完整配置写到独立 profile 文件，返回绝对路径。"""
+        target_path = self._task_independent_profile_path(task_id)
+        parent = os.path.dirname(target_path)
+        if parent:
+            os.makedirs(parent, exist_ok=True)
+        payload = dict(base_cfg) if isinstance(base_cfg, dict) else {}
+        with open(target_path, "w", encoding="utf-8") as f:
+            json.dump(payload, f, ensure_ascii=False, indent=2)
+        return target_path
+
+    def _build_task_config_binding_meta(self, task_id=None, base_cfg=None):
+        """构造任务的配置绑定元信息。
+
+        - 传入 task_id 且 base_cfg 可写：写出独立 profile 文件，返回 PROFILE 绑定。
+          这是统一任务模式下的默认路径——每个任务独立配置独立文件。
+        - 未传 task_id（历史调用，例如"把活动配置绑定到任务"对话框）：
+          退回 ACTIVE 绑定，跟随当前活动配置档。
+        """
+        safe_id = str(task_id or "").strip()
+        if safe_id and isinstance(base_cfg, dict):
+            try:
+                profile_path = self._write_independent_task_profile(safe_id, base_cfg)
+            except (OSError, RuntimeError, TypeError, ValueError) as exc:
+                self._report_nonfatal_ui_error(
+                    "task.write_independent_profile", exc=exc
+                )
+            else:
+                return {
+                    "config_binding_mode": TASK_BINDING_PROFILE,
+                    "config_snapshot_path": profile_path,
+                    "config_snapshot_profile_name": safe_id,
+                    "config_snapshot_profile_file": os.path.basename(profile_path),
+                }
         meta = {
             "config_binding_mode": TASK_BINDING_ACTIVE,
             "config_snapshot_path": os.path.abspath(str(self.config_path or "").strip()),
@@ -602,6 +664,8 @@ class TaskWorkflowMixin:
     def _on_task_select(self):
         task_id = self._get_selected_task_id()
         task = self.task_store.get_task(task_id) if task_id else None
+        # 记录面包屑上要显示的当前任务
+        self._active_task_id = task_id if task else None
         if not task:
             if hasattr(self, "txt_task_detail"):
                 self._set_text_widget_content(
@@ -610,6 +674,8 @@ class TaskWorkflowMixin:
             if hasattr(self, "btn_task_resume"):
                 self.btn_task_resume.configure(state="disabled")
             self._update_task_tab_for_app_mode()
+            if hasattr(self, "_update_breadcrumb"):
+                self._update_breadcrumb()
             return
 
         project_cfg = self._load_config_for_write()
@@ -733,44 +799,31 @@ class TaskWorkflowMixin:
         can_resume = bool(cp and done < planned)
         self.btn_task_resume.configure(state="normal" if can_resume else "disabled")
         self._update_task_tab_for_app_mode()
+        if hasattr(self, "_update_breadcrumb"):
+            self._update_breadcrumb()
 
     def _update_task_tab_for_app_mode(self):
-        """In classic mode hide task tab entirely; in task mode show it and enable Run/Resume (design 7.1)."""
+        """统一任务模式：强制 app_mode=task，始终展示任务标签并启用任务相关按钮。"""
         if not hasattr(self, "var_app_mode"):
             return
-        # 统一任务模式：强制 app_mode 为 task，始终展示任务标签并启用任务相关按钮。
         if getattr(self, "var_app_mode", None) is not None:
             current = str(self.var_app_mode.get() or "").strip().lower()
             if current != "task":
                 try:
                     self.var_app_mode.set("task")
                 except (AttributeError, TypeError, ValueError, tk.TclError, RuntimeError):
-                    # 保守降级：不影响后续 UI 更新
                     return
-        is_classic = False
         if hasattr(self, "main_notebook") and hasattr(self, "tab_run_tasks"):
-            self._set_run_tab_state(
-                self.tab_run_tasks, "hidden" if is_classic else "normal"
-            )
-        # 打开任务模式后任务管理标签页显示为绿色
-        self._set_task_tab_highlight(not is_classic)
+            self._set_run_tab_state(self.tab_run_tasks, "normal")
+        self._set_task_tab_highlight(True)
         if not hasattr(self, "btn_task_run"):
             return
-        if is_classic:
-            self.btn_task_run.configure(state="disabled")
-            if hasattr(self, "btn_task_resume"):
-                self.btn_task_resume.configure(state="disabled")
-            if hasattr(self, "btn_task_batch_run"):
-                self.btn_task_batch_run.configure(state="disabled")
-            if hasattr(self, "btn_task_schedule"):
-                self.btn_task_schedule.configure(state="disabled")
-        else:
-            self.btn_task_run.configure(state="normal")
-            if hasattr(self, "btn_task_batch_run"):
-                self.btn_task_batch_run.configure(state="normal")
-            if hasattr(self, "btn_task_schedule"):
-                self.btn_task_schedule.configure(state="normal")
-            # resume state left as set by _on_task_select
+        self.btn_task_run.configure(state="normal")
+        if hasattr(self, "btn_task_batch_run"):
+            self.btn_task_batch_run.configure(state="normal")
+        if hasattr(self, "btn_task_schedule"):
+            self.btn_task_schedule.configure(state="normal")
+        # resume state left as set by _on_task_select
 
     def _on_app_mode_change_for_task_tab(self):
         self._update_task_tab_for_app_mode()
@@ -972,32 +1025,76 @@ class TaskWorkflowMixin:
         f2_src_btns = tk.Frame(f2_src, bg=_bg)
         f2_src_btns.pack(side=LEFT, fill=Y)
 
-        def add_src():
-            # Ask user if they want to select multiple folders
-            result = messagebox.askyesno(
-                self.tr("msg_task_pick_source"),
-                self.tr("msg_multi_select_folders"),
-                icon="question",
-                parent=win,
-            )
-            if result:
-                # Multi-select mode - open multi-folder dialog
-                self._open_task_multi_folder_dialog(win, lst_src)
-            else:
-                # Single-select mode
-                p = filedialog.askdirectory(
-                    title=self.tr("msg_task_pick_source"), parent=win
-                )
-                if p and p not in lst_src.get(0, END):
-                    lst_src.insert(END, p)
+        def _add_paths(paths):
+            existing = set(lst_src.get(0, END))
+            added = 0
+            for p in paths:
+                p = (p or "").strip().strip('"').strip("'")
+                if not p or p in existing:
+                    continue
+                lst_src.insert(END, p)
+                existing.add(p)
+                added += 1
+            return added
+
+        def add_src_browse():
+            # 直接打开统一对话框（含 单选 + 扫父目录 + 多选 + 路径粘贴），
+            # 删掉原先「多选/单选」二次确认弹窗。
+            self._open_task_multi_folder_dialog(win, lst_src)
 
         def remove_src():
             sel = lst_src.curselection()
             if sel:
                 lst_src.delete(sel[0])
 
-        tk.Button(f2_src_btns, text="+", command=add_src, width=3).pack(pady=2)
-        tk.Button(f2_src_btns, text="-", command=remove_src, width=3).pack(pady=2)
+        tk.Button(f2_src_btns, text=self.tr("btn_browse"), command=add_src_browse, width=6).pack(pady=2)
+        tk.Button(f2_src_btns, text="-", command=remove_src, width=6).pack(pady=2)
+        tk.Button(
+            f2_src_btns,
+            text="C",
+            command=lambda: lst_src.delete(0, END),
+            width=6,
+        ).pack(pady=2)
+
+        # 内联输入：单行回车 add；多行粘贴 add；支持引号包裹路径。
+        f2_src_inline = tk.Frame(f2, bg=_bg)
+        f2_src_inline.pack(fill=X, pady=(4, 0))
+        ent_src_inline = tk.Entry(f2_src_inline)
+        ent_src_inline.pack(side=LEFT, fill=X, expand=True, padx=(0, 4))
+
+        def _commit_inline(event=None):
+            raw = ent_src_inline.get()
+            if not raw:
+                return "break"
+            parts = [s for s in raw.replace("\r", "\n").split("\n") if s.strip()]
+            if len(parts) <= 1:
+                parts = [raw]
+            n = _add_paths(parts)
+            ent_src_inline.delete(0, END)
+            if n == 0:
+                return "break"
+            return "break"
+
+        ent_src_inline.bind("<Return>", _commit_inline)
+
+        def _paste_clipboard():
+            try:
+                clip = win.clipboard_get()
+            except Exception:
+                clip = ""
+            if not clip:
+                return
+            parts = [s for s in clip.replace("\r", "\n").split("\n") if s.strip()]
+            _add_paths(parts)
+
+        tk.Button(f2_src_inline, text=self.tr("btn_paste"), command=_paste_clipboard, width=6).pack(side=LEFT)
+        tk.Label(
+            f2,
+            text=self.tr("hint_source_inline"),
+            bg=_bg,
+            fg="#888",
+            font=("System", 8),
+        ).pack(anchor=W, pady=(2, 0))
         tk.Label(f2, text=self.tr("lbl_target"), bg=_bg).pack(anchor=W, pady=(8, 0))
         f2_tgt = tk.Frame(f2, bg=_bg)
         f2_tgt.pack(fill=X)
@@ -1022,44 +1119,65 @@ class TaskWorkflowMixin:
         tk.Label(
             f3, text=self.tr("wizard_step3"), font=("System", 11, "bold"), bg=_bg
         ).pack(anchor=W)
+        # ── 模式选择 ──────────────────────────────────────────────
+        f3_mode = tk.Frame(f3, bg=_bg)
+        f3_mode.pack(fill=X)
         var_mode = tk.StringVar(value=MODE_CONVERT_THEN_MERGE)
         for val, key in [
             (MODE_CONVERT_ONLY, "mode_convert"),
             (MODE_CONVERT_THEN_MERGE, "mode_convert_merge"),
             (MODE_MERGE_ONLY, "mode_merge"),
             (MODE_COLLECT_ONLY, "mode_collect"),
-            (MODE_MSHELP_ONLY, "mode_mshelp"),
         ]:
             tk.Radiobutton(
-                f3, text=self.tr(key), variable=var_mode, value=val, bg=_bg
+                f3_mode, text=self.tr(key), variable=var_mode, value=val, bg=_bg
             ).pack(anchor=W)
+
+        # ── 模式相关字段：按模式动态显示/隐藏 ────────────────────
+        # 输出选择（独立 / 合并 / 两者都要）：仅 convert+merge 时有意义
+        f3_output_choice = tk.Frame(f3, bg=_bg)
         tk.Label(
-            f3, text=self.tr("grp_output_controls"), font=("System", 9, "bold"), bg=_bg
+            f3_output_choice,
+            text=self.tr("grp_output_controls"),
+            font=("System", 9, "bold"),
+            bg=_bg,
         ).pack(anchor=W, pady=(8, 0))
         var_output_choice = tk.StringVar(value="both")
         tk.Radiobutton(
-            f3,
+            f3_output_choice,
             text=self.tr("wizard_output_only_independent"),
             variable=var_output_choice,
             value="only_independent",
             bg=_bg,
         ).pack(anchor=W)
         tk.Radiobutton(
-            f3,
+            f3_output_choice,
             text=self.tr("wizard_output_only_merged"),
             variable=var_output_choice,
             value="only_merged",
             bg=_bg,
         ).pack(anchor=W)
         tk.Radiobutton(
-            f3,
+            f3_output_choice,
             text=self.tr("wizard_output_both"),
             variable=var_output_choice,
             value="both",
             bg=_bg,
         ).pack(anchor=W)
+
+        # 转换格式：仅含转换的模式
+        f3_convert = tk.Frame(f3, bg=_bg)
+        var_pdf = tk.IntVar(value=1)
+        var_md = tk.IntVar(value=1)
+        tk.Checkbutton(
+            f3_convert, text=self.tr("chk_output_pdf"), variable=var_pdf, bg=_bg
+        ).pack(anchor=W, pady=(4, 0))
+        tk.Checkbutton(
+            f3_convert, text=self.tr("chk_output_md"), variable=var_md, bg=_bg
+        ).pack(anchor=W)
+
+        # 合并参数：仅含合并的模式
         f3_merge = tk.Frame(f3, bg=_bg)
-        f3_merge.pack(fill=X, pady=(8, 0))
         var_merge_how = tk.StringVar(value=MERGE_MODE_CATEGORY)
         tk.Radiobutton(
             f3_merge,
@@ -1086,8 +1204,53 @@ class TaskWorkflowMixin:
         lbl_mb_tip = tk.Label(f3_merge, text="", bg=_bg, fg="#666")
         lbl_mb_tip.pack(anchor=W, pady=(2, 0))
 
-        def _wizard_update_merge_ui():
-            need_merge = var_output_choice.get() in ("only_merged", "both")
+        # 收集参数：仅 collect_only
+        f3_collect = tk.Frame(f3, bg=_bg)
+        tk.Label(
+            f3_collect,
+            text="收集策略",
+            font=("System", 9, "bold"),
+            bg=_bg,
+        ).pack(anchor=W, pady=(8, 0))
+        var_collect_mode = tk.StringVar(value=COLLECT_MODE_COPY_AND_INDEX)
+        tk.Radiobutton(
+            f3_collect,
+            text="复制 + 生成索引（推荐用于 AnythingLLM 等知识库）",
+            variable=var_collect_mode,
+            value=COLLECT_MODE_COPY_AND_INDEX,
+            bg=_bg,
+        ).pack(anchor=W)
+        tk.Radiobutton(
+            f3_collect,
+            text="仅生成索引（不复制原文件）",
+            variable=var_collect_mode,
+            value=COLLECT_MODE_INDEX_ONLY,
+            bg=_bg,
+        ).pack(anchor=W)
+
+        def _wizard_update_mode_ui(*_):
+            mode = var_mode.get()
+            is_collect = mode == MODE_COLLECT_ONLY
+            is_merge_only = mode == MODE_MERGE_ONLY
+            is_convert_only = mode == MODE_CONVERT_ONLY
+            is_combo = mode == MODE_CONVERT_THEN_MERGE
+            # collect_only 用独立的收集策略面板，其它字段不显示
+            for f in (f3_output_choice, f3_convert, f3_merge):
+                f.pack_forget()
+            f3_collect.pack_forget()
+            if is_collect:
+                f3_collect.pack(fill=X, pady=(4, 0))
+                return
+            # 转换格式仅 convert/combo 模式可见
+            if is_convert_only or is_combo:
+                f3_convert.pack(fill=X, pady=(4, 0))
+            # 输出选择仅在 combo 模式下有意义（convert_only 不产合并；merge_only 必产合并）
+            if is_combo:
+                f3_output_choice.pack(fill=X, pady=(4, 0))
+            # 合并参数：merge_only / combo 且选了合并输出
+            need_merge = is_merge_only or (
+                is_combo and var_output_choice.get() in ("only_merged", "both")
+            )
             if need_merge:
                 f3_merge.pack(fill=X, pady=(8, 0))
                 is_split = var_merge_how.get() == MERGE_MODE_CATEGORY
@@ -1097,20 +1260,39 @@ class TaskWorkflowMixin:
                 else:
                     ent_mb.configure(state="disabled")
                     lbl_mb_tip.configure(text=self.tr("tip_wizard_merge_size_disabled"))
-            else:
-                f3_merge.pack_forget()
 
-        var_output_choice.trace_add("write", lambda *a: _wizard_update_merge_ui())
-        var_merge_how.trace_add("write", lambda *a: _wizard_update_merge_ui())
-        _wizard_update_merge_ui()
-        var_pdf = tk.IntVar(value=1)
-        var_md = tk.IntVar(value=1)
-        tk.Checkbutton(
-            f3, text=self.tr("chk_output_pdf"), variable=var_pdf, bg=_bg
-        ).pack(anchor=W, pady=(4, 0))
-        tk.Checkbutton(f3, text=self.tr("chk_output_md"), variable=var_md, bg=_bg).pack(
-            anchor=W
+        # 扩展名筛选：所有模式都吃 allowed_extensions（合并要识别桶；采集靠它过滤），始终可见。
+        f3_ext = tk.Frame(f3, bg=_bg)
+        f3_ext.pack(fill=X, pady=(8, 0))
+        tk.Label(
+            f3_ext,
+            text=self.tr("lbl_allowed_extensions"),
+            font=("System", 9, "bold"),
+            bg=_bg,
+        ).pack(anchor=W)
+        tk.Label(
+            f3_ext,
+            text=self.tr("hint_allowed_extensions"),
+            bg=_bg,
+            fg="#888",
+            font=("System", 8),
+        ).pack(anchor=W, pady=(0, 2))
+        _initial_ext = (self.config or {}).get("allowed_extensions") or {
+            "word": [".doc", ".docx"],
+            "excel": [".xls", ".xlsx"],
+            "powerpoint": [".ppt", ".pptx"],
+            "pdf": [".pdf"],
+            "cab": [".cab"],
+        }
+        ext_frame, ext_getter, ext_setter = self._create_extension_chip_editor(
+            f3_ext, initial=_initial_ext
         )
+        ext_frame.pack(fill=X, pady=(2, 0))
+
+        var_mode.trace_add("write", lambda *a: _wizard_update_mode_ui())
+        var_output_choice.trace_add("write", lambda *a: _wizard_update_mode_ui())
+        var_merge_how.trace_add("write", lambda *a: _wizard_update_mode_ui())
+        _wizard_update_mode_ui()
         tk.Label(
             f4, text=self.tr("wizard_step4"), font=("System", 11, "bold"), bg=_bg
         ).pack(anchor=W)
@@ -1131,7 +1313,9 @@ class TaskWorkflowMixin:
             f2.pack_forget()
             f3.pack_forget()
             f4.pack_forget()
-            (f1, f2, f3, f4)[step - 1].pack(fill=BOTH, expand=True)
+            # 步骤顺序：1 名称 → 2 模式与输出 → 3 路径与增量 → 4 确认
+            # 先选模式，路径根据模式语义再填，避免用户回头改。
+            (f1, f3, f2, f4)[step - 1].pack(fill=BOTH, expand=True)
             btn_back.configure(state="normal" if step > 1 else "disabled")
             btn_next.configure(state="normal" if step < 4 else "disabled")
             btn_save.pack_forget()
@@ -1200,6 +1384,8 @@ class TaskWorkflowMixin:
                 if data["output_enable_merged"]
                 else MERGE_MODE_ALL_IN_ONE
             )
+            data["collect_mode"] = var_collect_mode.get()
+            data["allowed_extensions"] = ext_getter()
 
         def _go(delta):
             _collect()
@@ -1267,8 +1453,19 @@ class TaskWorkflowMixin:
             overrides["merge_filename_pattern"] = (
                 d.get("merge_filename_pattern") or "Merged_{category}_{timestamp}_{idx}"
             )
+            overrides["collect_mode"] = d.get("collect_mode", COLLECT_MODE_COPY_AND_INDEX)
+            ext_value = d.get("allowed_extensions") or {}
+            if any(ext_value.get(k) for k in ext_value):
+                overrides["allowed_extensions"] = ext_value
+            new_task_id = self._new_task_id()
+            # 独立配置：把项目配置 + 本次 overrides 合并后写到 config_profiles/task_<id>.json
+            # 让任务运行时直接读自己的 profile，而不是跟随当前活动配置档。
+            independent_cfg = _deep_merge_dict(project_cfg, overrides)
+            binding_meta = self._build_task_config_binding_meta(
+                task_id=new_task_id, base_cfg=independent_cfg
+            )
             task = {
-                "id": self._new_task_id(),
+                "id": new_task_id,
                 "name": d["name"],
                 "description": d.get("description", ""),
                 "source_folders": source_folders,
@@ -1276,7 +1473,7 @@ class TaskWorkflowMixin:
                 "target_folder": d["target_folder"],
                 "run_incremental": d["run_incremental"],
                 "project_config_snapshot": dict(project_cfg),
-                **self._build_task_config_binding_meta(),
+                **binding_meta,
                 "config_overrides": overrides,
                 "status": "idle",
             }

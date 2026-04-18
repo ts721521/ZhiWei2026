@@ -158,6 +158,47 @@ class UIShellMixin:
 
     # ===================== UI 閺嬪嫬缂?(Modern Layout) =====================
 
+    def _update_breadcrumb(self):
+        """刷新顶部面包屑（模式 + 当前任务）。缺失 lbl 时安全跳过。"""
+        lbl_mode = getattr(self, "lbl_breadcrumb_mode", None)
+        lbl_task = getattr(self, "lbl_breadcrumb_task", None)
+        if lbl_mode is None or lbl_task is None:
+            return
+        try:
+            mode = self.var_run_mode.get() if hasattr(self, "var_run_mode") else ""
+        except Exception:
+            mode = ""
+        mode_key_map = {
+            "convert_only": "mode_convert",
+            "merge_only": "mode_merge",
+            "convert_then_merge": "mode_convert_merge",
+            "collect_only": "mode_collect",
+            "mshelp_only": "mode_mshelp",
+        }
+        mode_label = self.tr(mode_key_map.get(mode, "mode_convert_merge")) if mode else ""
+        task_name = ""
+        tid = getattr(self, "_active_task_id", None) or getattr(
+            self, "current_task_id", None
+        )
+        if tid and hasattr(self, "task_store"):
+            try:
+                for t in (self.task_store.list_tasks() or []):
+                    if isinstance(t, dict) and t.get("id") == tid:
+                        task_name = t.get("name") or ""
+                        break
+            except Exception:
+                pass
+        try:
+            lbl_mode.configure(text=f"{self.tr('lbl_breadcrumb_mode')}: {mode_label}")
+            if task_name:
+                lbl_task.configure(
+                    text=f"{self.tr('lbl_breadcrumb_task')}: {task_name}"
+                )
+            else:
+                lbl_task.configure(text=self.tr("lbl_breadcrumb_no_task"))
+        except Exception:
+            pass
+
     def _create_scrollable_page(self, parent):
         canvas = tk.Canvas(parent, highlightthickness=0)
         scrollbar = tb.Scrollbar(parent, orient="vertical", command=canvas.yview)
@@ -370,6 +411,23 @@ class UIShellMixin:
         body_frame = tb.Frame(self, padding=10)
         body_frame.pack(fill=BOTH, expand=YES)
 
+        # 顶部面包屑：左 当前模式 / 右 当前任务名（点回任务中心）
+        breadcrumb = tb.Frame(body_frame)
+        breadcrumb.pack(fill=X, pady=(0, 4))
+        self.lbl_breadcrumb_mode = tb.Label(
+            breadcrumb, text="", bootstyle="primary", font=("System", 9, "bold")
+        )
+        self.lbl_breadcrumb_mode.pack(side=LEFT)
+        tb.Label(breadcrumb, text="  •  ", bootstyle="secondary").pack(side=LEFT)
+        self.lbl_breadcrumb_task = tb.Label(
+            breadcrumb, text="", bootstyle="secondary", cursor="hand2"
+        )
+        self.lbl_breadcrumb_task.pack(side=LEFT)
+        self.lbl_breadcrumb_task.bind(
+            "<Button-1>",
+            lambda _e: self._go_to_task_center() if hasattr(self, "_go_to_task_center") else None,
+        )
+
         self.config_container = tb.Frame(body_frame)
         self.config_container.pack(fill=BOTH, expand=YES)
         self.main_notebook = tb.Notebook(self.config_container)
@@ -379,7 +437,9 @@ class UIShellMixin:
         self.tab_run_shared = tb.Frame(self.main_notebook)
         self.tab_run_convert = tb.Frame(self.main_notebook)
         self.tab_run_merge = tb.Frame(self.main_notebook)
-        self.tab_run_mshelp = tb.Frame(self.main_notebook)
+        # MSHelp 已剥离为独立 CLI（tools/mshelp_run.py），GUI 不再露出该 tab。
+        # 保留同名属性指向 tab_run_merge，避免其它 mixin 中的 getattr/赋值崩溃。
+        self.tab_run_mshelp = self.tab_run_merge
         self.tab_run_locator = tb.Frame(self.main_notebook)
         self.tab_run_output = tb.Frame(self.main_notebook)
         self.tab_run_tasks = tb.Frame(self.main_notebook)
@@ -387,38 +447,20 @@ class UIShellMixin:
 
         # 椤跺眰 7 涓姛鑳?tab锛?
         # 1) 妯″紡涓庤矾寰? 2) 杞崲閫夐」  3) 鍚堝苟/姊崇悊  4) MSHelp  5) 瀹氫綅  6) 鎴愭灉鏂囦欢  7) 楂樼骇璁剧疆
-        self.main_notebook.add(self.tab_run_shared, text=self.tr("grp_shared_runtime"))
-        self.main_notebook.add(
-            self.tab_run_convert, text=self.tr("grp_convert_runtime")
-        )
-        self.main_notebook.add(
-            self.tab_run_merge,
-            text=f"{self.tr('grp_merge_runtime')} / {self.tr('grp_collect_runtime')}",
-        )
-        self.main_notebook.add(self.tab_run_mshelp, text=self.tr("grp_mshelp_runtime"))
-        self.main_notebook.add(self.tab_run_locator, text=self.tr("grp_locator_tools"))
-        self.main_notebook.add(self.tab_run_output, text=self.tr("grp_output_files"))
+        # 单一入口设计：只挂出「任务中心」+「配置中心」。
+        # 其余 tab_run_* Frame 保留为孤立容器，原有 widget/var 在背后继续构建，
+        # 配置入口完全交给任务向导（按模式渲染对应字段）。
         self.main_notebook.add(self.tab_run_tasks, text=self.tr("grp_task_runtime"))
         self.main_notebook.add(self.tab_settings, text=self.tr("tab_config_center"))
 
         # 记录原始 tab 顺序与标签 key，用于隐藏后恢复时带正确 text
+        # 当前只有任务中心 + 配置中心两个 tab；其它 tab Frame 留作孤儿容器，
+        # 但不再列入 _all_tabs，避免 RunModeStateMixin 等代码尝试切换到隐藏页。
         self._all_tabs = [
-            self.tab_run_shared,
-            self.tab_run_convert,
-            self.tab_run_merge,
-            self.tab_run_mshelp,
-            self.tab_run_locator,
-            self.tab_run_output,
             self.tab_run_tasks,
             self.tab_settings,
         ]
         self._all_tab_text_keys = [
-            "grp_shared_runtime",
-            "grp_convert_runtime",
-            ("grp_merge_runtime", "grp_collect_runtime"),
-            "grp_mshelp_runtime",
-            "grp_locator_tools",
-            "grp_output_files",
             "grp_task_runtime",
             "tab_config_center",
         ]
@@ -427,7 +469,8 @@ class UIShellMixin:
         self._scroll_shared = self._create_scrollable_page(self.tab_run_shared)
         self._scroll_convert = self._create_scrollable_page(self.tab_run_convert)
         self._scroll_merge = self._create_scrollable_page(self.tab_run_merge)
-        self._scroll_mshelp = self._create_scrollable_page(self.tab_run_mshelp)
+        # MSHelp 已剥离：保留 _scroll_mshelp 别名指向 _scroll_merge，避免老代码崩溃。
+        self._scroll_mshelp = self._scroll_merge
         self._scroll_locator = self._create_scrollable_page(self.tab_run_locator)
         self._scroll_output = self._create_scrollable_page(self.tab_run_output)
         self._scroll_tasks = self._create_scrollable_page(self.tab_run_tasks)
@@ -437,7 +480,8 @@ class UIShellMixin:
         self.tab_cfg_shared = self._scroll_shared
         self.tab_cfg_convert = self._scroll_convert
         self.tab_cfg_merge = self._scroll_merge
-        self.tab_cfg_ai = self._scroll_mshelp
+        # AI/MSHelp 配置已下线，保留别名指向通用设置 tab，防止其它代码读取时报错。
+        self.tab_cfg_ai = self._scroll_settings
         self.tab_cfg_ui = self._scroll_settings
         self.tab_cfg_rules = self._scroll_settings
 
@@ -606,24 +650,8 @@ class UIShellMixin:
         )
         self.btn_task_refresh.pack(pady=(2, 8), fill=X)
 
-        self.btn_task_load_to_ui = tb.Button(
-            btn_col,
-            text=self.tr("btn_task_load_to_ui"),
-            command=self._on_click_task_load_to_ui,
-            bootstyle="secondary-outline",
-            width=12,
-        )
-        self.btn_task_load_to_ui.pack(pady=2, fill=X)
-
-        self.btn_task_save_to_task = tb.Button(
-            btn_col,
-            text=self.tr("btn_task_save_to_task"),
-            command=self._on_click_task_save_to_task,
-            bootstyle="secondary-outline",
-            width=12,
-        )
-        self.btn_task_save_to_task.pack(pady=2, fill=X)
-
+        # 「加载到 UI」「保存到任务」在强制任务模式下意义已塌（每任务独立 profile，
+        # UI 不再是任务配置的来源/目标），按钮已移除；后台方法保留以防外部调用。
         self.btn_task_schedule = tb.Button(
             btn_col,
             text=self.tr("btn_task_schedule"),
@@ -651,15 +679,7 @@ class UIShellMixin:
         )
         self.btn_task_batch_run.pack(pady=2, fill=X)
 
-        self.btn_task_resume = tb.Button(
-            btn_col,
-            text=self.tr("btn_task_resume"),
-            command=lambda: self._on_click_task_run(resume=True),
-            bootstyle="warning-outline",
-            width=12,
-        )
-        self.btn_task_resume.pack(pady=2, fill=X)
-
+        # 「续跑」按钮已移除：开启「增量模式」后再点「运行」即为续跑，避免双入口。
         self.btn_task_stop = tb.Button(
             btn_col,
             text=self.tr("btn_task_stop"),

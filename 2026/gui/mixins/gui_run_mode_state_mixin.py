@@ -221,6 +221,8 @@ class RunModeStateMixin:
                 pass
         self._apply_disabled_reason_tooltips()
         self._update_output_summary_label()
+        if hasattr(self, "_update_breadcrumb"):
+            self._update_breadcrumb()
 
     def _apply_disabled_reason_tooltips(self):
         """Set or clear _tooltip_disabled_reason on mode-sensitive widgets so gray controls show reason."""

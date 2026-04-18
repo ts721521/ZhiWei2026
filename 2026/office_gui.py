@@ -234,6 +234,7 @@ from gui.mixins import (
     ConfigSaveMixin,
     ConfigTabUIMixin,
     ExecutionFlowMixin,
+    ExtensionChipEditorMixin,
     GDriveMixin,
     LocatorMixin,
     MiscUIMixin,
@@ -478,7 +479,7 @@ class GUIOfficeConverter(OfficeConverter):
 # ========= 涓荤獥鍙?========
 
 
-class OfficeGUI(TaskWorkflowMixin, TaskScheduleMixin, RunTabUIMixin, RunModeStateMixin, SourceFolderMixin, ConfigTabUIMixin, ConfigDirtyStateMixin, ConfigIOMixin, ConfigComposeMixin, ConfigSaveMixin, TooltipSettingsMixin, ConfigLogicMixin, RuntimeStatusMixin, TaskOnlyStartMixin, ExecutionFlowMixin, ProfileManagementMixin, UIShellMixin, LocatorMixin, GDriveMixin, MiscUIMixin, TooltipMixin, tb.Window):
+class OfficeGUI(TaskWorkflowMixin, TaskScheduleMixin, RunTabUIMixin, RunModeStateMixin, SourceFolderMixin, ConfigTabUIMixin, ConfigDirtyStateMixin, ConfigIOMixin, ConfigComposeMixin, ConfigSaveMixin, TooltipSettingsMixin, ConfigLogicMixin, RuntimeStatusMixin, TaskOnlyStartMixin, ExecutionFlowMixin, ExtensionChipEditorMixin, ProfileManagementMixin, UIShellMixin, LocatorMixin, GDriveMixin, MiscUIMixin, TooltipMixin, tb.Window):
     TOOLTIP_DEFAULTS = {
         "tooltip_delay_ms": 300,
         "tooltip_bg": "#FFF7D6",
