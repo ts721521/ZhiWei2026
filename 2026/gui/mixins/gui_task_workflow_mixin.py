@@ -1277,13 +1277,23 @@ class TaskWorkflowMixin:
             fg="#888",
             font=("System", 8),
         ).pack(anchor=W, pady=(0, 2))
-        _initial_ext = (self.config or {}).get("allowed_extensions") or {
+        # 注意：self.config 是 tk 控件方法，不是配置 dict。读取项目全局默认走 _load_config_for_write。
+        _initial_ext = {
             "word": [".doc", ".docx"],
             "excel": [".xls", ".xlsx"],
             "powerpoint": [".ppt", ".pptx"],
             "pdf": [".pdf"],
             "cab": [".cab"],
         }
+        try:
+            loader = getattr(self, "_load_config_for_write", None)
+            if callable(loader):
+                _cfg_dict = loader() or {}
+                _ext_cfg = _cfg_dict.get("allowed_extensions") if isinstance(_cfg_dict, dict) else None
+                if isinstance(_ext_cfg, dict) and any(_ext_cfg.values()):
+                    _initial_ext = _ext_cfg
+        except Exception:
+            pass
         ext_frame, ext_getter, ext_setter = self._create_extension_chip_editor(
             f3_ext, initial=_initial_ext
         )
