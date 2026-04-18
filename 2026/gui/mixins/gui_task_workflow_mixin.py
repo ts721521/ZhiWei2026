@@ -946,6 +946,7 @@ class TaskWorkflowMixin:
             ),
             "collect_mode": str(_overrides.get("collect_mode", COLLECT_MODE_COPY_AND_INDEX)),
             "allowed_extensions": _overrides.get("allowed_extensions") if isinstance(_overrides.get("allowed_extensions"), dict) else None,
+            "global_md5_dedup": bool(_overrides.get("global_md5_dedup", False)),
         }
         win._wizard_data = data
         win._wizard_step = 1
@@ -1225,18 +1226,60 @@ class TaskWorkflowMixin:
             bg=_bg,
         ).pack(anchor=W)
 
+        # 去重策略：复制模式始终按 SHA256 内容去重（不可关）；转换模式可选 MD5 同类型去重
+        f3_dedup = tk.Frame(f3, bg=_bg)
+        tk.Label(
+            f3_dedup,
+            text="去重策略",
+            font=("System", 9, "bold"),
+            bg=_bg,
+        ).pack(anchor=W, pady=(8, 0))
+        lbl_dedup_collect = tk.Label(
+            f3_dedup,
+            text="复制/收集模式自动按内容 SHA256 去重，重复文件记录在生成的索引 Excel 的 Duplicates 表",
+            bg=_bg,
+            fg="#555",
+            wraplength=440,
+            justify=LEFT,
+        )
+        var_global_md5_dedup_w = tk.IntVar(value=1 if data["global_md5_dedup"] else 0)
+        chk_md5_dedup = tk.Checkbutton(
+            f3_dedup,
+            text=self.tr("chk_global_md5_dedup"),
+            variable=var_global_md5_dedup_w,
+            bg=_bg,
+        )
+        lbl_dedup_convert_tip = tk.Label(
+            f3_dedup,
+            text=self.tr("tip_toggle_global_md5_dedup"),
+            bg=_bg,
+            fg="#888",
+            font=("System", 8),
+            wraplength=440,
+            justify=LEFT,
+        )
+
         def _wizard_update_mode_ui(*_):
             mode = var_mode.get()
             is_collect = mode == MODE_COLLECT_ONLY
             is_merge_only = mode == MODE_MERGE_ONLY
             is_convert_only = mode == MODE_CONVERT_ONLY
             is_combo = mode == MODE_CONVERT_THEN_MERGE
+            # 去重面板：collect 显示只读说明；其它显示 MD5 复选框
+            for w in (lbl_dedup_collect, chk_md5_dedup, lbl_dedup_convert_tip):
+                w.pack_forget()
+            if is_collect:
+                lbl_dedup_collect.pack(anchor=W, pady=(2, 0))
+            else:
+                chk_md5_dedup.pack(anchor=W, pady=(2, 0))
+                lbl_dedup_convert_tip.pack(anchor=W, pady=(0, 2))
             # collect_only 用独立的收集策略面板，其它字段不显示
-            for f in (f3_output_choice, f3_convert, f3_merge):
+            for f in (f3_output_choice, f3_convert, f3_merge, f3_dedup):
                 f.pack_forget()
             f3_collect.pack_forget()
             if is_collect:
                 f3_collect.pack(fill=X, pady=(4, 0))
+                f3_dedup.pack(fill=X, pady=(4, 0))
                 return
             # 转换格式仅 convert/combo 模式可见
             if is_convert_only or is_combo:
@@ -1257,6 +1300,8 @@ class TaskWorkflowMixin:
                 else:
                     ent_mb.configure(state="disabled")
                     lbl_mb_tip.configure(text=self.tr("tip_wizard_merge_size_disabled"))
+            # 非 collect 模式也要显示去重面板（给出 MD5 checkbox）
+            f3_dedup.pack(fill=X, pady=(4, 0))
 
         # 扩展名筛选：所有模式都吃 allowed_extensions（合并要识别桶；采集靠它过滤），始终可见。
         f3_ext = tk.Frame(f3, bg=_bg)
@@ -1396,6 +1441,7 @@ class TaskWorkflowMixin:
             )
             data["collect_mode"] = var_collect_mode.get()
             data["allowed_extensions"] = ext_getter()
+            data["global_md5_dedup"] = bool(var_global_md5_dedup_w.get())
 
         def _go(delta):
             _collect()
@@ -1470,6 +1516,7 @@ class TaskWorkflowMixin:
                 d.get("merge_filename_pattern") or "Merged_{category}_{timestamp}_{idx}"
             )
             overrides["collect_mode"] = d.get("collect_mode", COLLECT_MODE_COPY_AND_INDEX)
+            overrides["global_md5_dedup"] = bool(d.get("global_md5_dedup", False))
             ext_value = d.get("allowed_extensions") or {}
             if any(ext_value.get(k) for k in ext_value):
                 overrides["allowed_extensions"] = ext_value
