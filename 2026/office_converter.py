@@ -133,7 +133,7 @@ try:
 except ImportError:
     HAS_MARKITDOWN = False
 
-__version__ = "5.21.0"
+__version__ = "5.21.1"
 
 from converter.constants import (
     wdFormatPDF,

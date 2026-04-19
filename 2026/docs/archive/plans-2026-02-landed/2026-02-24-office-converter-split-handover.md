@@ -2477,3 +2477,10 @@ python3 -m unittest tests.test_converter_collect_index_module tests.test_convert
 ### 66.3 当前状态
 
 - 同步副本与门禁路径：`docs/plans/2026-02-24-office-converter-split-handover.md`。
+
+---
+
+## 67. 2026-04-18 v5.21.1 任务向导：复制布局显示在路径步骤
+
+- 将「归集子模式 / 复制布局」UI 从向导第 2 步移至第 3 步（与源、目标、增量同页），避免选归集后进入路径页时看不到扁平化选项；确认页摘要补充这两项。
+- 版本 v5.21.1；`tests.test_ui_translation_coverage` OK。

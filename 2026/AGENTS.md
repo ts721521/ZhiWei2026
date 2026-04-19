@@ -183,6 +183,9 @@ python scripts/install_git_hook.py
 - **版本与变更习惯**：新增 §3.1「版本与变更记录」：交付新功能或重要修复须更新 `office_converter.py` 的 `__version__`、`CHANGELOG.md` 及视情况在 AGENTS 末尾添加 dated note。可参考外部模板库（如 00_Template_Index）的版本与文档更新习惯，按本项目结构适配。
 - 版本已升至 v5.20.0，CHANGELOG 已追加 [v5.20.0] - 2026-02-28。
 
+## 2026-04-18 note (任务向导复制布局步骤)
+- v5.21.1：任务向导第 3 步（路径）显示「归集子模式 + 复制布局」，与第 2 步选「归集/索引」后的操作路径一致；见 `CHANGELOG.md` [v5.21.1]。
+
 ## 2026-04-18 note (Collect 复制布局)
 - 新增 `collect_copy_layout`（`preserve_tree` | `flat`），仅在 `copy_and_index` 时影响拷贝目标路径；默认 `preserve_tree` 与旧行为一致。
 - 门禁用交接摘要：`docs/plans/2026-02-24-office-converter-split-handover.md` §66；完整历史仍见 `docs/archive/plans-2026-02-landed/2026-02-24-office-converter-split-handover.md`。

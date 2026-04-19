@@ -2,6 +2,12 @@
 
 All notable changes to this project are documented in this file.
 
+## [v5.21.1] - 2026-04-18
+### Fixed
+- **任务向导**：将「归集子模式」与「复制布局」从第 2 步移到第 3 步（路径与增量），避免选「归集/索引」后进入路径页时看不到扁平化选项；确认页摘要中补充归集子模式与复制布局。
+
+---
+
 ## [v5.21.0] - 2026-04-18
 ### Added
 - **Collect 复制布局**：在「复制 + 生成索引」（`copy_and_index`）子模式下，新增配置 `collect_copy_layout`：`preserve_tree`（默认，保持源目录相对结构）与 `flat`（全部复制到目标根目录；同名文件依次命名为 `name__1.ext`、`name__2.ext`…）。运行参数 Tab 与任务向导提供单选项；`index_only` 不受影响。

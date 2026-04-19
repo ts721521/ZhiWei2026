@@ -1122,6 +1122,74 @@ class TaskWorkflowMixin:
         tk.Checkbutton(
             f2, text=self.tr("chk_incremental_mode"), variable=var_inc, bg=_bg
         ).pack(anchor=W, pady=(8, 0))
+        # 收集策略 + 复制布局：放在「路径」步骤 (f2)，与源/目标一起查看；若在 f3 则第 3 步会看不到
+        f2_collect = tk.Frame(f2, bg=_bg)
+        tk.Label(
+            f2_collect,
+            text=self.tr("lbl_wizard_collect_strategy"),
+            font=("System", 9, "bold"),
+            bg=_bg,
+        ).pack(anchor=W, pady=(8, 0))
+        var_collect_mode = tk.StringVar(value=data["collect_mode"])
+        tk.Radiobutton(
+            f2_collect,
+            text=self.tr("rad_wizard_collect_copy_index"),
+            variable=var_collect_mode,
+            value=COLLECT_MODE_COPY_AND_INDEX,
+            bg=_bg,
+        ).pack(anchor=W)
+        tk.Radiobutton(
+            f2_collect,
+            text=self.tr("rad_wizard_collect_index_only"),
+            variable=var_collect_mode,
+            value=COLLECT_MODE_INDEX_ONLY,
+            bg=_bg,
+        ).pack(anchor=W)
+        tk.Label(
+            f2_collect,
+            text=self.tr("lbl_collect_copy_layout"),
+            font=("System", 9, "bold"),
+            bg=_bg,
+        ).pack(anchor=W, pady=(6, 0))
+        var_collect_copy_layout = tk.StringVar(value=data["collect_copy_layout"])
+        rb_collect_layout_tree = tk.Radiobutton(
+            f2_collect,
+            text=self.tr("rad_collect_copy_preserve_tree"),
+            variable=var_collect_copy_layout,
+            value=COLLECT_COPY_LAYOUT_PRESERVE_TREE,
+            bg=_bg,
+        )
+        rb_collect_layout_tree.pack(anchor=W)
+        rb_collect_layout_flat = tk.Radiobutton(
+            f2_collect,
+            text=self.tr("rad_collect_copy_flat"),
+            variable=var_collect_copy_layout,
+            value=COLLECT_COPY_LAYOUT_FLAT,
+            bg=_bg,
+        )
+        rb_collect_layout_flat.pack(anchor=W)
+        tk.Label(
+            f2_collect,
+            text=self.tr("tip_collect_copy_layout"),
+            bg=_bg,
+            fg="#888",
+            font=("System", 8),
+            wraplength=440,
+            justify=LEFT,
+        ).pack(anchor=W, pady=(2, 0))
+
+        def _sync_wizard_collect_layout_state(*_):
+            st = (
+                "normal"
+                if var_collect_mode.get() == COLLECT_MODE_COPY_AND_INDEX
+                else "disabled"
+            )
+            rb_collect_layout_tree.configure(state=st)
+            rb_collect_layout_flat.configure(state=st)
+
+        var_collect_mode.trace_add("write", _sync_wizard_collect_layout_state)
+        _sync_wizard_collect_layout_state()
+
         tk.Label(
             f3, text=self.tr("wizard_step3"), font=("System", 11, "bold"), bg=_bg
         ).pack(anchor=W)
@@ -1210,64 +1278,6 @@ class TaskWorkflowMixin:
         lbl_mb_tip = tk.Label(f3_merge, text="", bg=_bg, fg="#666")
         lbl_mb_tip.pack(anchor=W, pady=(2, 0))
 
-        # 收集参数：仅 collect_only
-        f3_collect = tk.Frame(f3, bg=_bg)
-        tk.Label(
-            f3_collect,
-            text="收集策略",
-            font=("System", 9, "bold"),
-            bg=_bg,
-        ).pack(anchor=W, pady=(8, 0))
-        var_collect_mode = tk.StringVar(value=data["collect_mode"])
-        tk.Radiobutton(
-            f3_collect,
-            text="复制 + 生成索引（推荐用于 AnythingLLM 等知识库）",
-            variable=var_collect_mode,
-            value=COLLECT_MODE_COPY_AND_INDEX,
-            bg=_bg,
-        ).pack(anchor=W)
-        tk.Radiobutton(
-            f3_collect,
-            text="仅生成索引（不复制原文件）",
-            variable=var_collect_mode,
-            value=COLLECT_MODE_INDEX_ONLY,
-            bg=_bg,
-        ).pack(anchor=W)
-        tk.Label(
-            f3_collect,
-            text=self.tr("lbl_collect_copy_layout"),
-            font=("System", 9, "bold"),
-            bg=_bg,
-        ).pack(anchor=W, pady=(6, 0))
-        var_collect_copy_layout = tk.StringVar(value=data["collect_copy_layout"])
-        rb_collect_layout_tree = tk.Radiobutton(
-            f3_collect,
-            text=self.tr("rad_collect_copy_preserve_tree"),
-            variable=var_collect_copy_layout,
-            value=COLLECT_COPY_LAYOUT_PRESERVE_TREE,
-            bg=_bg,
-        )
-        rb_collect_layout_tree.pack(anchor=W)
-        rb_collect_layout_flat = tk.Radiobutton(
-            f3_collect,
-            text=self.tr("rad_collect_copy_flat"),
-            variable=var_collect_copy_layout,
-            value=COLLECT_COPY_LAYOUT_FLAT,
-            bg=_bg,
-        )
-        rb_collect_layout_flat.pack(anchor=W)
-
-        def _sync_wizard_collect_layout_state(*_):
-            st = (
-                "normal"
-                if var_collect_mode.get() == COLLECT_MODE_COPY_AND_INDEX
-                else "disabled"
-            )
-            rb_collect_layout_tree.configure(state=st)
-            rb_collect_layout_flat.configure(state=st)
-
-        var_collect_mode.trace_add("write", _sync_wizard_collect_layout_state)
-
         # 去重策略：复制模式始终按 SHA256 内容去重（不可关）；转换模式可选 MD5 同类型去重
         f3_dedup = tk.Frame(f3, bg=_bg)
         tk.Label(
@@ -1315,12 +1325,12 @@ class TaskWorkflowMixin:
             else:
                 chk_md5_dedup.pack(anchor=W, pady=(2, 0))
                 lbl_dedup_convert_tip.pack(anchor=W, pady=(0, 2))
-            # collect_only 用独立的收集策略面板，其它字段不显示
+            # collect_only：收集策略在路径页 f2_collect；其它字段不显示
             for f in (f3_output_choice, f3_convert, f3_merge, f3_dedup):
                 f.pack_forget()
-            f3_collect.pack_forget()
+            f2_collect.pack_forget()
             if is_collect:
-                f3_collect.pack(fill=X, pady=(4, 0))
+                f2_collect.pack(fill=X, pady=(4, 0))
                 f3_dedup.pack(fill=X, pady=(4, 0))
                 _sync_wizard_collect_layout_state()
                 return
@@ -1445,11 +1455,30 @@ class TaskWorkflowMixin:
                 if len(d.get("source_folders", [])) <= 1
                 else f"{d['source_folder']} (+{len(d['source_folders']) - 1})"
             )
+            collect_extra = ""
+            if d.get("run_mode") == MODE_COLLECT_ONLY:
+                cm = d.get("collect_mode")
+                if cm == COLLECT_MODE_COPY_AND_INDEX:
+                    sub_lbl = self.tr("rad_wizard_collect_copy_index")
+                else:
+                    sub_lbl = self.tr("rad_wizard_collect_index_only")
+                collect_extra += (
+                    f"{self.tr('lbl_wizard_collect_strategy')}: {sub_lbl}\n"
+                )
+                if cm == COLLECT_MODE_COPY_AND_INDEX:
+                    lay = d.get("collect_copy_layout", COLLECT_COPY_LAYOUT_PRESERVE_TREE)
+                    lay_lbl = (
+                        self.tr("rad_collect_copy_preserve_tree")
+                        if lay == COLLECT_COPY_LAYOUT_PRESERVE_TREE
+                        else self.tr("rad_collect_copy_flat")
+                    )
+                    collect_extra += f"{self.tr('lbl_collect_copy_layout')} {lay_lbl}\n"
             lbl_summary.configure(
                 text=f"{self.tr('msg_task_input_name')} {d['name']}\n"
                 f"{self.tr('lbl_source')} {src_display}\n"
                 f"{self.tr('lbl_target')} {d['target_folder']}\n"
                 f"{self.tr('chk_incremental_mode')}: {'Y' if d['run_incremental'] else 'N'}\n"
+                f"{collect_extra}"
                 f"Run mode: {d['run_mode']}\n"
                 f"{_merge_summary_text(d)}"
             )

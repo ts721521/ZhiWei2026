@@ -7,24 +7,26 @@
 python3 -m unittest discover -s tests -p "test_*.py" -v
 ```
 
-## 当前状态（v5.21.0 · 2026-04-18）
+## 当前状态（v5.21.1 · 2026-04-18）
 
-最近一次按需回归（Collect `collect_copy_layout` 与配置链路）：
+最近一次按需回归（v5.21.1 任务向导 i18n + 历史 collect 套件）：
 
 | 套件 | 结果 |
 |------|------|
+| `tests.test_ui_translation_coverage` | OK |
 | `tests.test_converter_collect_index_module` | OK |
 | `tests.test_converter_config_validation_module` | OK |
 | `tests.test_converter_config_load_module` | OK |
 | `tests.test_default_config_schema` | OK |
 | `tests.test_converter_constants_module` | OK |
 | `tests.test_converter_config_defaults_module` | OK |
-| **合计** | **17 tests, OK** |
+| **合计** | **18 tests, OK** |
 
 命令（在 `2026/` 目录下，使用 `python3`）：
 
 ```bash
 python3 -m unittest \
+  tests.test_ui_translation_coverage \
   tests.test_converter_collect_index_module \
   tests.test_converter_config_validation_module \
   tests.test_converter_config_load_module \
@@ -69,6 +71,7 @@ python3 -m unittest discover -s tests -p "test_*.py" -v
 | 2026-02-13 | v5.18 | 25 (23 PASS / 2 SKIP) | 早期最小套件 |
 | 2026-02-24 | v5.19.1 | 71 | 全量回归 |
 | 2026-02-26 | v5.19.1 | 394 | Google Drive 上传模块加入 |
+| 2026-04-18 | v5.21.1 | 按需 18（向导 i18n + collect/config） | 向导复制布局移至路径步骤 |
 | 2026-04-18 | v5.21.0 | 按需 17（collect 复制布局 + 配置） | `collect_copy_layout` |
 | 2026-04-18 | v5.20.0 | 按需 24（核心任务/向导/i18n） | classic 模式移除后回归 |
 
