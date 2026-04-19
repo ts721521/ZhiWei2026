@@ -59,3 +59,7 @@ python3 -m unittest tests.test_ui_translation_coverage -v
 ### 67.3 版本
 
 - `office_converter.py` → `5.21.1`；`CHANGELOG.md` [v5.21.1]。
+
+### 67.4 v5.21.2（同日补充）
+
+- 将 `f2_collect` 从「增量」下方移到第 3 步标题 `f2_step_lbl` 正下方，并用 `pack(..., after=f2_step_lbl)`，避免长页面下用户看不到「扁平化」选项。

@@ -185,6 +185,7 @@ python scripts/install_git_hook.py
 
 ## 2026-04-18 note (任务向导复制布局步骤)
 - v5.21.1：任务向导第 3 步（路径）显示「归集子模式 + 复制布局」，与第 2 步选「归集/索引」后的操作路径一致；见 `CHANGELOG.md` [v5.21.1]。
+- v5.21.2：上述选项移到第 3 步**标题正下方**（先于源/目标列表），避免被挤到页面底部难以发现；见 `CHANGELOG.md` [v5.21.2]。
 
 ## 2026-04-18 note (Collect 复制布局)
 - 新增 `collect_copy_layout`（`preserve_tree` | `flat`），仅在 `copy_and_index` 时影响拷贝目标路径；默认 `preserve_tree` 与旧行为一致。

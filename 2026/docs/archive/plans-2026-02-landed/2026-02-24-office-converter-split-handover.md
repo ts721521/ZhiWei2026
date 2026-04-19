@@ -2484,3 +2484,10 @@ python3 -m unittest tests.test_converter_collect_index_module tests.test_convert
 
 - 将「归集子模式 / 复制布局」UI 从向导第 2 步移至第 3 步（与源、目标、增量同页），避免选归集后进入路径页时看不到扁平化选项；确认页摘要补充这两项。
 - 版本 v5.21.1；`tests.test_ui_translation_coverage` OK。
+
+---
+
+## 68. 2026-04-18 v5.21.2 任务向导：复制布局置顶到路径步骤标题下
+
+- 第 3 步内容较多时，归集选项若在「增量」下方需长滚动；现改为紧挨「3. 路径与增量」标题、`pack(..., after=标题)`。
+- 版本 v5.21.2。

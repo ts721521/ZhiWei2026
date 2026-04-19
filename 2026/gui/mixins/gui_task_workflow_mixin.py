@@ -1013,9 +1013,78 @@ class TaskWorkflowMixin:
         txt_desc.pack(fill=X, pady=(0, 8))
         if data["description"]:
             txt_desc.insert("1.0", data["description"])
-        tk.Label(
+        f2_step_lbl = tk.Label(
             f2, text=self.tr("wizard_step2"), font=("System", 11, "bold"), bg=_bg
+        )
+        f2_step_lbl.pack(anchor=W)
+        # 归集选项放在本步标题下、路径控件之上，避免被压在列表/目标/增量下方需长滚动才看见
+        f2_collect = tk.Frame(f2, bg=_bg)
+        tk.Label(
+            f2_collect,
+            text=self.tr("lbl_wizard_collect_strategy"),
+            font=("System", 9, "bold"),
+            bg=_bg,
+        ).pack(anchor=W, pady=(4, 0))
+        var_collect_mode = tk.StringVar(value=data["collect_mode"])
+        tk.Radiobutton(
+            f2_collect,
+            text=self.tr("rad_wizard_collect_copy_index"),
+            variable=var_collect_mode,
+            value=COLLECT_MODE_COPY_AND_INDEX,
+            bg=_bg,
         ).pack(anchor=W)
+        tk.Radiobutton(
+            f2_collect,
+            text=self.tr("rad_wizard_collect_index_only"),
+            variable=var_collect_mode,
+            value=COLLECT_MODE_INDEX_ONLY,
+            bg=_bg,
+        ).pack(anchor=W)
+        tk.Label(
+            f2_collect,
+            text=self.tr("lbl_collect_copy_layout"),
+            font=("System", 9, "bold"),
+            bg=_bg,
+        ).pack(anchor=W, pady=(6, 0))
+        var_collect_copy_layout = tk.StringVar(value=data["collect_copy_layout"])
+        rb_collect_layout_tree = tk.Radiobutton(
+            f2_collect,
+            text=self.tr("rad_collect_copy_preserve_tree"),
+            variable=var_collect_copy_layout,
+            value=COLLECT_COPY_LAYOUT_PRESERVE_TREE,
+            bg=_bg,
+        )
+        rb_collect_layout_tree.pack(anchor=W)
+        rb_collect_layout_flat = tk.Radiobutton(
+            f2_collect,
+            text=self.tr("rad_collect_copy_flat"),
+            variable=var_collect_copy_layout,
+            value=COLLECT_COPY_LAYOUT_FLAT,
+            bg=_bg,
+        )
+        rb_collect_layout_flat.pack(anchor=W)
+        tk.Label(
+            f2_collect,
+            text=self.tr("tip_collect_copy_layout"),
+            bg=_bg,
+            fg="#888",
+            font=("System", 8),
+            wraplength=440,
+            justify=LEFT,
+        ).pack(anchor=W, pady=(2, 0))
+
+        def _sync_wizard_collect_layout_state(*_):
+            st = (
+                "normal"
+                if var_collect_mode.get() == COLLECT_MODE_COPY_AND_INDEX
+                else "disabled"
+            )
+            rb_collect_layout_tree.configure(state=st)
+            rb_collect_layout_flat.configure(state=st)
+
+        var_collect_mode.trace_add("write", _sync_wizard_collect_layout_state)
+        _sync_wizard_collect_layout_state()
+
         tk.Label(f2, text=self.tr("lbl_source"), bg=_bg).pack(anchor=W)
         f2_src = tk.Frame(f2, bg=_bg)
         f2_src.pack(fill=X)
@@ -1122,73 +1191,6 @@ class TaskWorkflowMixin:
         tk.Checkbutton(
             f2, text=self.tr("chk_incremental_mode"), variable=var_inc, bg=_bg
         ).pack(anchor=W, pady=(8, 0))
-        # 收集策略 + 复制布局：放在「路径」步骤 (f2)，与源/目标一起查看；若在 f3 则第 3 步会看不到
-        f2_collect = tk.Frame(f2, bg=_bg)
-        tk.Label(
-            f2_collect,
-            text=self.tr("lbl_wizard_collect_strategy"),
-            font=("System", 9, "bold"),
-            bg=_bg,
-        ).pack(anchor=W, pady=(8, 0))
-        var_collect_mode = tk.StringVar(value=data["collect_mode"])
-        tk.Radiobutton(
-            f2_collect,
-            text=self.tr("rad_wizard_collect_copy_index"),
-            variable=var_collect_mode,
-            value=COLLECT_MODE_COPY_AND_INDEX,
-            bg=_bg,
-        ).pack(anchor=W)
-        tk.Radiobutton(
-            f2_collect,
-            text=self.tr("rad_wizard_collect_index_only"),
-            variable=var_collect_mode,
-            value=COLLECT_MODE_INDEX_ONLY,
-            bg=_bg,
-        ).pack(anchor=W)
-        tk.Label(
-            f2_collect,
-            text=self.tr("lbl_collect_copy_layout"),
-            font=("System", 9, "bold"),
-            bg=_bg,
-        ).pack(anchor=W, pady=(6, 0))
-        var_collect_copy_layout = tk.StringVar(value=data["collect_copy_layout"])
-        rb_collect_layout_tree = tk.Radiobutton(
-            f2_collect,
-            text=self.tr("rad_collect_copy_preserve_tree"),
-            variable=var_collect_copy_layout,
-            value=COLLECT_COPY_LAYOUT_PRESERVE_TREE,
-            bg=_bg,
-        )
-        rb_collect_layout_tree.pack(anchor=W)
-        rb_collect_layout_flat = tk.Radiobutton(
-            f2_collect,
-            text=self.tr("rad_collect_copy_flat"),
-            variable=var_collect_copy_layout,
-            value=COLLECT_COPY_LAYOUT_FLAT,
-            bg=_bg,
-        )
-        rb_collect_layout_flat.pack(anchor=W)
-        tk.Label(
-            f2_collect,
-            text=self.tr("tip_collect_copy_layout"),
-            bg=_bg,
-            fg="#888",
-            font=("System", 8),
-            wraplength=440,
-            justify=LEFT,
-        ).pack(anchor=W, pady=(2, 0))
-
-        def _sync_wizard_collect_layout_state(*_):
-            st = (
-                "normal"
-                if var_collect_mode.get() == COLLECT_MODE_COPY_AND_INDEX
-                else "disabled"
-            )
-            rb_collect_layout_tree.configure(state=st)
-            rb_collect_layout_flat.configure(state=st)
-
-        var_collect_mode.trace_add("write", _sync_wizard_collect_layout_state)
-        _sync_wizard_collect_layout_state()
 
         tk.Label(
             f3, text=self.tr("wizard_step3"), font=("System", 11, "bold"), bg=_bg
@@ -1330,7 +1332,7 @@ class TaskWorkflowMixin:
                 f.pack_forget()
             f2_collect.pack_forget()
             if is_collect:
-                f2_collect.pack(fill=X, pady=(4, 0))
+                f2_collect.pack(fill=X, pady=(4, 0), after=f2_step_lbl)
                 f3_dedup.pack(fill=X, pady=(4, 0))
                 _sync_wizard_collect_layout_state()
                 return
