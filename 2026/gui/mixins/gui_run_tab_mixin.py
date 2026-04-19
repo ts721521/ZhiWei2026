@@ -88,6 +88,8 @@ from office_converter import (
     MODE_MSHELP_ONLY,
     MERGE_CONVERT_SUBMODE_MERGE_ONLY,
     MERGE_CONVERT_SUBMODE_PDF_TO_MD,
+    COLLECT_COPY_LAYOUT_FLAT,
+    COLLECT_COPY_LAYOUT_PRESERVE_TREE,
     COLLECT_MODE_COPY_AND_INDEX,
     COLLECT_MODE_INDEX_ONLY,
     MERGE_MODE_CATEGORY,
@@ -236,6 +238,36 @@ class RunTabUIMixin:
             variable=self.var_collect_mode,
             value=COLLECT_MODE_INDEX_ONLY,
         ).pack(anchor="w")
+        self.frm_collect_copy_layout = tb.Frame(lf_collect, padding=(10, 0))
+        self.frm_collect_copy_layout.pack(fill=X)
+        tb.Label(
+            self.frm_collect_copy_layout,
+            text=self.tr("lbl_collect_copy_layout"),
+            font=("System", 9, "bold"),
+        ).pack(anchor="w", pady=(4, 0))
+        frm_copy_layout_radios = tb.Frame(self.frm_collect_copy_layout)
+        frm_copy_layout_radios.pack(fill=X, padx=(0, 0))
+        self.var_collect_copy_layout = tk.StringVar(
+            value=COLLECT_COPY_LAYOUT_PRESERVE_TREE
+        )
+        tb.Radiobutton(
+            frm_copy_layout_radios,
+            text=self.tr("rad_collect_copy_preserve_tree"),
+            variable=self.var_collect_copy_layout,
+            value=COLLECT_COPY_LAYOUT_PRESERVE_TREE,
+        ).pack(anchor="w")
+        tb.Radiobutton(
+            frm_copy_layout_radios,
+            text=self.tr("rad_collect_copy_flat"),
+            variable=self.var_collect_copy_layout,
+            value=COLLECT_COPY_LAYOUT_FLAT,
+        ).pack(anchor="w")
+        self._attach_tooltip(
+            self.frm_collect_copy_layout, "tip_collect_copy_layout"
+        )
+        self.var_collect_mode.trace_add(
+            "write", lambda *_: self._sync_collect_copy_layout_state()
+        )
 
         # MSHelp 配置块已下线（独立 CLI 见 tools/mshelp_run.py），
         # 但保留 IntVar/StringVar 占位，以便 config 加载/保存/对比逻辑无需改动。

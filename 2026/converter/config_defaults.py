@@ -2,6 +2,7 @@
 """Config default normalization extracted from office_converter.py."""
 
 from converter.constants import (
+    COLLECT_COPY_LAYOUT_PRESERVE_TREE,
     ENGINE_ASK,
     KILL_MODE_ASK,
     MERGE_CONVERT_SUBMODE_MERGE_ONLY,
@@ -104,6 +105,7 @@ def apply_config_defaults(
     cfg.setdefault("gdrive_token_path", "")
     cfg.setdefault("overwrite_same_size", True)
     cfg.setdefault("merge_mode", MERGE_MODE_CATEGORY)
+    cfg.setdefault("collect_copy_layout", COLLECT_COPY_LAYOUT_PRESERVE_TREE)
     cfg.setdefault("merge_source", "source")
     cfg.setdefault("enable_merge_index", False)
     cfg.setdefault("enable_merge_excel", False)

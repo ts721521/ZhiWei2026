@@ -34,6 +34,10 @@ MERGE_CONVERT_SUBMODE_PDF_TO_MD = "pdf_to_md"
 COLLECT_MODE_COPY_AND_INDEX = "copy_and_index"  # dedup + copy + Excel
 COLLECT_MODE_INDEX_ONLY = "index_only"  # Excel only, no copying
 
+# collect_only copy layout (when copying: flat under target vs preserve source tree)
+COLLECT_COPY_LAYOUT_PRESERVE_TREE = "preserve_tree"
+COLLECT_COPY_LAYOUT_FLAT = "flat"
+
 # Merge modes
 MERGE_MODE_CATEGORY = "category_split"  # split by Price_/Word_/Excel_ categories
 MERGE_MODE_ALL_IN_ONE = "all_in_one"  # merge all PDFs into one file

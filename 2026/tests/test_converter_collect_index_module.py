@@ -3,6 +3,7 @@
 from pathlib import Path
 
 from office_converter import OfficeConverter
+from converter.collect_index import _assign_flat_collect_targets
 
 
 class ConverterCollectIndexSplitTests(unittest.TestCase):
@@ -53,6 +54,17 @@ class ConverterCollectIndexSplitTests(unittest.TestCase):
             self.assertIn("has_openpyxl", seen.get("kwargs", {}))
         finally:
             oc.collect_office_files_and_build_excel_impl = original
+
+    def test_assign_flat_collect_targets_disambiguates_same_basename(self):
+        unique = [
+            {"src": "/a/foo/x.docx", "dst": "/old/tree/x.docx"},
+            {"src": "/b/bar/x.docx", "dst": "/old/other/x.docx"},
+        ]
+        dups = [{"keep_src": "/a/foo/x.docx", "keep_dst": "/old/tree/x.docx"}]
+        _assign_flat_collect_targets(unique, dups, "/tgt")
+        self.assertEqual(unique[0]["dst"], "/tgt/x__1.docx")
+        self.assertEqual(unique[1]["dst"], "/tgt/x__2.docx")
+        self.assertEqual(dups[0]["keep_dst"], "/tgt/x__1.docx")
 
 
 if __name__ == "__main__":

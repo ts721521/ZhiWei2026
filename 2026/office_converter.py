@@ -133,7 +133,7 @@ try:
 except ImportError:
     HAS_MARKITDOWN = False
 
-__version__ = "5.20.0"
+__version__ = "5.21.2"
 
 from converter.constants import (
     wdFormatPDF,
@@ -155,6 +155,8 @@ from converter.constants import (
     MODE_MSHELP_ONLY,
     MERGE_CONVERT_SUBMODE_MERGE_ONLY,
     MERGE_CONVERT_SUBMODE_PDF_TO_MD,
+    COLLECT_COPY_LAYOUT_FLAT,
+    COLLECT_COPY_LAYOUT_PRESERVE_TREE,
     COLLECT_MODE_COPY_AND_INDEX,
     COLLECT_MODE_INDEX_ONLY,
     MERGE_MODE_CATEGORY,

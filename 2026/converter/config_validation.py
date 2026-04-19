@@ -2,6 +2,8 @@
 """Runtime config schema validation helpers."""
 
 from converter.constants import (
+    COLLECT_COPY_LAYOUT_FLAT,
+    COLLECT_COPY_LAYOUT_PRESERVE_TREE,
     COLLECT_MODE_COPY_AND_INDEX,
     COLLECT_MODE_INDEX_ONLY,
     ENGINE_ASK,
@@ -69,6 +71,12 @@ def validate_runtime_config_or_raise(cfg):
         cfg,
         "collect_mode",
         {COLLECT_MODE_COPY_AND_INDEX, COLLECT_MODE_INDEX_ONLY},
+        errors,
+    )
+    _validate_enum(
+        cfg,
+        "collect_copy_layout",
+        {COLLECT_COPY_LAYOUT_PRESERVE_TREE, COLLECT_COPY_LAYOUT_FLAT},
         errors,
     )
     _validate_enum(
